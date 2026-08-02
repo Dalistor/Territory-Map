@@ -26,6 +26,7 @@ Histórico de todas as implementações realizadas neste projeto.
 | [0020](0020/README.md) | Rate limit por IP e expiração automática de códigos de acesso | 2026-08-02 | Concluído | `server/app/core/rate_limit.py`, `server/app/core/scheduler.py`, `server/app/jobs/__init__.py`, `server/app/jobs/expire_codes.py`, `server/app/main.py`, `server/app/routers/auth.py`, `server/migrations/env.py`, `server/tests/routers/conftest.py`, `server/tests/routers/test_rate_limit_routes.py`, `server/tests/core/test_scheduler.py`, `server/tests/jobs/test_expire_codes_job.py` |
 | [0021](0021/README.md) | Testes de integração ponta a ponta | 2026-08-02 | Concluído | `server/tests/integration/conftest.py`, `server/tests/integration/test_full_flow_integration.py`, `server/tests/integration/test_device_swap_integration.py`, `server/tests/integration/test_tenant_isolation_integration.py`, `server/tests/integration/test_demarcation_integrity_integration.py`, `server/tests/integration/test_revocation_integration.py` |
 | [0022](0022/README.md) | CI/CD: testes, imagem no GHCR e deploy por SSH | 2026-08-02 | Concluído | `.github/workflows/server.yml`, `server/docker-entrypoint.sh`, `server/Dockerfile`, `docker-compose.yml`, `server/README.md` |
+| [0023](0023/README.md) | Deploy automático da branch main na VPS de produção | 2026-08-02 | Concluído | `.github/workflows/server.yml`, `server/README.md` |
 
 ---
 

@@ -481,14 +481,33 @@ alvo desktop com `flutter config --enable-macos-desktop` (idem para windows/linu
 | Job | Quando | O que faz |
 |-----|--------|-----------|
 | `test` | `push` e `pull_request` que toquem `server/**` ou o workflow | PostGIS real como service container, `ruff check`, `ruff format --check`, `alembic upgrade head`, `pytest --cov`, e um portão que **falha se `app/services/` sair de 100%** |
-| `build-and-deploy` | só `push` na `main`, depois do `test` | Buildx com cache de layers, publica no **GHCR** com as tags `latest` e o SHA (autenticando com o `GITHUB_TOKEN`), e por SSH roda `docker compose pull && docker compose up -d && docker image prune -f` no `DEPLOY_PATH` |
+| `build-and-deploy` | `push` na `main` ou `workflow_dispatch`, depois do `test` | Buildx com cache de layers, publica no **GHCR** com as tags `latest` e o SHA; sincroniza o compose para a VPS; roda `docker compose pull && up -d && image prune -f`; verifica `127.0.0.1:$API_PORT/health` com 30 tentativas |
 
-O deploy não aplica migrations de fora: quem faz isso é o `server/docker-entrypoint.sh`, dentro do
-container, antes do uvicorn.
+**Ambiente em produção:** `76.13.160.146`, diretório `/opt/territory-map`, API em HTTP na 8000.
 
-**Cadastro manual no GitHub** (`Settings → Secrets and variables → Actions`) — secrets `SSH_HOST`,
-`SSH_USER`, `SSH_PRIVATE_KEY`, `SSH_PORT` e a variable `DEPLOY_PATH`. `GITHUB_TOKEN` não entra na
-lista. Instruções, geração do par de chaves e preparação da VPS em `server/README.md`.
+**O que viaja para a VPS:** só o `docker-compose.yml` e o `docker/postgres/init/`. A aplicação chega
+como imagem do GHCR — o código-fonte nunca é enviado. O `--delete` do rsync é escopado a `docker/`,
+então o `.env` de produção, que mora um nível acima, está fora do alcance dele por construção.
+
+**Migrations** não são aplicadas de fora: quem faz isso é o `server/docker-entrypoint.sh`, dentro do
+container, antes do uvicorn. Uma migration destrutiva sobe junto com o deploy, sem confirmação.
+
+**Ensaiar sem tocar na VPS:** Actions → `server` → Run workflow → marcar `dry_run`. Ele simula o
+rsync e pula build, rollout e health check.
+
+**Credenciais** — GitHub Environment **`production`**, restrito à branch `main`: secrets
+`SSH_PRIVATE_KEY` e `SSH_KNOWN_HOSTS`; variables `SSH_HOST`, `SSH_USER`, `SSH_PORT`, `DEPLOY_PATH`.
+Já cadastrados. Host/usuário/porta são variables de propósito, para aparecerem no log e tornarem
+falha de conexão legível. Rotação e revogação em `server/README.md`; detalhes em
+`.claude/implements/0023/`.
+
+**Não há rollback automático.** Voltar é reverter o commit, ou fixar
+`API_IMAGE=ghcr.io/dalistor/territory-map-server:<sha>` no `.env` da VPS e subir à mão.
+
+⚠️ **A API está exposta em HTTP puro na porta 8000.** JWT do admin e token do app trafegam em texto
+claro. Antes de uso real, colocar proxy reverso com TLS na frente, fechar a 8000 no firewall e
+apontar `FORWARDED_ALLOW_IPS` para o IP do proxy — senão o rate limit por IP passa a ver sempre o
+mesmo endereço. Também não há backup do volume `postgis_data`.
 
 **Admin** — build das três plataformas no GitHub Actions, disparado por **git tag** (`v*`). Flutter
 não faz cross-compile, então é um job por SO, cada um no seu runner, e os artefatos vão para uma
