@@ -4,7 +4,7 @@ Planejamentos de implementações complexas, decompostos em tasks para subagente
 
 | # | Título | Data | Status | Tasks |
 |---|--------|------|--------|-------|
-| — | — | — | — | — |
+| [0001](0001/README.md) | Servidor FastAPI + PostGIS completo, em Docker, com CI/CD | 2026-08-02 | Concluída | 22 tasks |
 
 ---
 

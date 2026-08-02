@@ -25,7 +25,7 @@ usuário e quem trabalhou cada quadra. Só o admin tem senha.
 
 | Camada | Tecnologia |
 |--------|-----------|
-| Servidor | Python 3.12+, FastAPI, SQLAlchemy 2.x, Pydantic v2, Alembic |
+| Servidor | Python 3.12+, FastAPI, SQLAlchemy 2.x **síncrono** + psycopg 3, Pydantic v2, Alembic, uv |
 | Banco | PostgreSQL 16 + **PostGIS** |
 | Geometria (Python) | Shapely / GeoAlchemy2 |
 | Auth | JWT (`python-jose`) + hash de senha com **bcrypt** (`passlib`) |
@@ -39,25 +39,34 @@ usuário e quem trabalhou cada quadra. Só o admin tem senha.
 
 ## Estrutura do Projeto
 
-Monorepo. Nada foi implementado ainda — esta é a estrutura alvo.
+Monorepo. Do lado cliente nada foi implementado ainda; no servidor existem o scaffold (config,
+`/health`, Docker e Compose), a base ORM com a sessão do banco, as exceções de domínio e o Alembic
+— o resto abaixo é a estrutura alvo.
 
 ```
 Territory map/
 ├── CLAUDE.md
-├── docker-compose.yml          # postgis + api (prod)
+├── docker-compose.yml          # postgis + api (prod), api vinda do GHCR
 ├── docker-compose.dev.yml      # só o postgis, para desenvolvimento local
+├── docker/
+│   └── postgres/init/          # cria territory_map e territory_map_test com postgis
+├── .github/
+│   └── workflows/server.yml    # CI do servidor + build da imagem + deploy por SSH
 ├── .claude/
 │   ├── implements/status.md    # histórico de implementações
 │   └── specs/index.md          # índice de specs planejadas
 ├── server/                     # FastAPI
+│   ├── README.md               # comandos locais e os secrets a cadastrar no GitHub
+│   ├── docker-entrypoint.sh    # alembic upgrade head e depois uvicorn
 │   ├── app/
 │   │   ├── main.py             # bootstrap da aplicação
-│   │   ├── core/               # config, segurança, sessão do banco
+│   │   ├── core/               # config, segurança, sessão do banco, rate limit, scheduler
 │   │   ├── models/             # entidades SQLAlchemy
 │   │   ├── schemas/            # DTOs Pydantic
 │   │   ├── repositories/       # acesso a dados
 │   │   ├── services/           # regras de negócio
-│   │   └── routers/            # endpoints HTTP
+│   │   ├── routers/            # endpoints HTTP
+│   │   └── jobs/               # tarefas agendadas, também executáveis com python -m
 │   ├── migrations/             # Alembic
 │   ├── tests/
 │   ├── pyproject.toml
@@ -93,6 +102,15 @@ modelo ou cliente da API entre os dois.
 Coordenadas sempre em **WGS84 (SRID 4326)**, no par `(latitude, longitude)`.
 Nas APIs de mapa e no GeoJSON a ordem é `[longitude, latitude]` — atenção à inversão.
 
+**`GEOMETRY`, não `GEOGRAPHY`.** As regras do projeto são predicados topológicos (`ST_Within`,
+`ST_Touches`, `ST_Intersects`) e o PostGIS só os oferece para `geometry` — em `geography` existem
+apenas `ST_Intersects`, `ST_Covers` e `ST_DWithin`. Predicado topológico independe de projeção, então
+`geometry(4326)` dá o resultado correto. Quando for preciso **área ou distância em metros**, aí sim
+converter na hora: `boundary::geography`. Índice GIST em toda coluna geométrica.
+
+Um território é **sempre uma área contígua** — `POLYGON`, nunca `MULTIPOLYGON`. Se a região tiver
+partes desconexas, são territórios diferentes.
+
 ### Congregation
 | Campo | Tipo | Notas |
 |-------|------|-------|
@@ -112,7 +130,7 @@ O publicador. Criado **pelo admin**, nunca pelo app.
 | `id` | UUID | PK |
 | `congregation_id` | UUID | FK → Congregation |
 | `name` | str | o nome que o admin digitou no cadastro |
-| `access_code` | str? | **único global** enquanto existe, curto (ex.: 8 caracteres, alfabeto sem `0/O/1/I`). Fica **nulo** depois de usado ou expirado. |
+| `access_code` | str? | **único global** enquanto existe, curto (8 caracteres, alfabeto sem `0/O/1/I/L` — a fonte única é `ACCESS_CODE_ALPHABET` em `app/core/security.py`; não reescreva a string em outro lugar). Fica **nulo** depois de usado ou expirado. |
 | `access_code_expires_at` | datetime? | `created_at + 24h` |
 | `activated_at` | datetime? | nulo enquanto nenhum código foi resgatado; atualizado a cada novo resgate |
 | `token_version` | int | começa em 0, `+1` a cada resgate. Invalida o token do aparelho anterior. |
@@ -132,7 +150,7 @@ que cumpre a função. O que dura é o token do app guardado no aparelho. Índic
 | `id` | UUID | PK |
 | `congregation_id` | UUID | FK → Congregation |
 | `name` | str | único dentro da congregação |
-| `boundary` | `GEOGRAPHY(POLYGON, 4326)` | a demarcação do território |
+| `boundary` | `GEOMETRY(POLYGON, 4326)` | a demarcação do território |
 | `created_at` | datetime | |
 
 ### Block
@@ -141,7 +159,7 @@ que cumpre a função. O que dura é o token do app guardado no aparelho. Índic
 | `id` | UUID | PK |
 | `territory_id` | UUID | FK → Territory |
 | `number` | int | único dentro do território |
-| `polygon` | `GEOGRAPHY(POLYGON, 4326)` | o contorno da quadra |
+| `polygon` | `GEOMETRY(POLYGON, 4326)` | o contorno da quadra |
 | `last_worked_at` | datetime? | **derivado** do `BlockWorkLog` mais recente. Nulo = nunca trabalhada. |
 | `created_at` | datetime | |
 
@@ -209,7 +227,10 @@ Registro de que uma quadra foi trabalhada. Append-only pelo app.
   dos três é — a diferença entregaria a existência de códigos válidos.
 - Uma rotina periódica limpa os códigos vencidos e não usados (`access_code = NULL` onde
   `access_code_expires_at < now()`), para que a expiração não dependa só da checagem em tempo de
-  resgate.
+  resgate. É `app/jobs/expire_codes.py`, agendado de hora em hora por um `BackgroundScheduler` que
+  o `lifespan` do FastAPI sobe e desce (`app/core/scheduler.py`), e também executável à mão com
+  `python -m app.jobs.expire_codes`. Com vários workers uvicorn cada um sobe o seu scheduler e o job
+  roda uma vez por worker — inofensivo, porque a varredura é idempotente e não toma lock.
 - O admin pode **gerar um novo código** para um usuário existente a qualquer momento — é o caminho
   para troca de aparelho, reinstalação do app ou código perdido/vencido. Gerar um novo substitui o
   anterior, que deixa de valer na hora.
@@ -268,6 +289,9 @@ Registro de que uma quadra foi trabalhada. Append-only pelo app.
 - **PostGIS em vez de validar tudo em Python.** As regras do projeto são todas geoespaciais
   (dentro-de, sobrepõe, próximo-de). PostGIS resolve isso com índice espacial; Shapely fica para
   pré-validações baratas antes de tocar o banco.
+- **SQLAlchemy síncrono, não async.** O volume é de dezenas de requisições por dia e as regras são
+  transacionais e sequenciais. Async traria complexidade de driver com PostGIS sem ganho algum
+  aqui, e deixaria os testes mais difíceis. FastAPI roda endpoint `def` em threadpool sem problema.
 - **OpenStreetMap em vez de Google Maps.** Gratuito, sem chave nem conta de billing, e cobre
   polígonos, marcadores e rótulos numerados — tudo que o caso de uso pede. Respeitar a
   [política de uso dos tiles](https://operations.osmfoundation.org/policies/tiles/) do OSM:
@@ -318,9 +342,13 @@ Registro de que uma quadra foi trabalhada. Append-only pelo app.
 | Repositories | `server/app/repositories/` | Queries, ORM, chamadas PostGIS | Regra de negócio, HTTP, autorização |
 | Services | `server/app/services/` | Regras de negócio e orquestração | SQL cru fora do repositório, `Request`/`Response`, `HTTPException` |
 | Routers | `server/app/routers/` | Receber requisição, autenticar, chamar service, devolver resposta | Regra de negócio, query direta |
-| Core | `server/app/core/` | Config, sessão do banco, segurança, dependências | Regra de negócio de domínio |
+| Jobs | `server/app/jobs/` | Tarefa agendada: abrir sessão, chamar service, comitar, logar | Regra de negócio, query direta, HTTP |
+| Core | `server/app/core/` | Config, sessão do banco, segurança, dependências, rate limit, scheduler | Regra de negócio de domínio |
 
 **Direção da dependência:** `router → service → repository → model`. Nunca o inverso.
+Um job é um router sem HTTP: mesma posição na cadeia (`job → service → repository → model`), mesma
+regra de só orquestrar. É também um dos dois lugares — o outro é o router — onde ler o relógio é
+permitido; o service recebe a leitura por `now_provider`.
 DTOs só nas bordas (router ↔ service); repositório trabalha com models.
 Serviço não conhece HTTP: sinaliza erro com exceção de domínio, e o router traduz para status code.
 
@@ -360,7 +388,7 @@ do outro; o que for comum sobe para `core`.
 
 | Item | Servidor | `packages/core` | App e Admin (Flutter) |
 |------|----------|-----------------|-----------------------|
-| Framework | pytest + pytest-asyncio | `package:test` (Dart puro) | `flutter_test` |
+| Framework | pytest | `package:test` (Dart puro) | `flutter_test` |
 | Rodar tudo | `cd server && pytest` | `cd packages/core && dart test` | `cd app && flutter test` |
 | Rodar um arquivo | `pytest tests/services/test_territory_service.py` | `dart test test/geo/latlng_test.dart` | `flutter test test/domain/foo_test.dart` |
 | Cobertura | `pytest --cov=app --cov-report=term-missing` | `dart test --coverage=coverage` | `flutter test --coverage` |
@@ -370,6 +398,20 @@ do outro; o que for comum sobe para `core`.
 **TDD é obrigatório em toda regra de negócio do servidor** — validação geométrica, login,
 numeração de quadras. Espelhe a estrutura de `app/` dentro de `tests/`.
 
+**`server/tests/integration/` é a exceção ao espelhamento** — não corresponde a nenhuma pasta de
+`app/`, porque o que ela testa são os fluxos ponta a ponta (caminho completo, troca de aparelho,
+isolamento entre congregações, integridade da demarcação, revogação), não uma camada. Sobem o app
+FastAPI real sobre o PostGIS real e criam por HTTP tudo que a API permite criar; a congregação é a
+única linha escrita direto no banco, porque não existe endpoint que a crie. O conftest próprio
+(`tests/integration/conftest.py`) sobrescreve `get_session` reproduzindo o contrato de produção —
+commit no sucesso, rollback na falha —, então cada requisição é uma transação de verdade e um 422
+comprovadamente não deixa nada gravado.
+
+**Nome de arquivo de teste é único no servidor inteiro.** As pastas de `tests/` não são pacotes
+(não há `__init__.py`), então dois arquivos de mesmo basename em pastas diferentes fazem o pytest
+abortar a coleta. Espelhar `app/` no nome, e não só na pasta: `tests/core/test_geo.py` e
+`tests/schemas/test_geo_schemas.py`, `tests/services/test_user_service.py`.
+
 `packages/core` é Dart puro justamente para que a lógica compartilhada (conversão de coordenadas,
 pré-validação de polígono, mapeamento de erro) seja testável em milissegundos, sem emulador nem
 janela. É onde o TDD do lado cliente vale a pena.
@@ -378,6 +420,10 @@ janela. É onde o TDD do lado cliente vale a pena.
 - **Banco**: as regras geométricas dependem do PostGIS de verdade — teste os services contra um
   PostGIS real em container (`docker-compose.dev.yml`), cada teste dentro de uma transação com
   rollback. Não mocke geometria; um fake de `ST_Within` testa o fake, não a regra.
+  As fixtures estão em `server/tests/conftest.py`: `session` (transação revertida no fim de cada
+  teste), `engine` (banco de teste migrado uma vez por execução) e `make_congregation`. O conftest
+  aponta o processo inteiro para `TEST_DATABASE_URL`, então nenhum teste alcança o banco de
+  desenvolvimento — basta pedir a fixture `session`.
 - **Repositórios**: em teste de service que *não* seja geométrico, use fake in-memory implementando
   a mesma interface — não `MagicMock` solto.
 - **Relógio**: injete um provider de tempo; nunca chame `datetime.now()` direto no service.
@@ -386,18 +432,34 @@ janela. É onde o TDD do lado cliente vale a pena.
 
 ## Como Rodar
 
-Ainda não há código. Passos alvo:
+O servidor já sobe; os clientes Flutter ainda não existem (passos alvo).
 
 **Banco (necessário para servidor e testes):**
 ```bash
 docker compose -f docker-compose.dev.yml up -d
 ```
+Sobe o PostGIS em `localhost:5432` já com os databases `territory_map` e `territory_map_test`, com
+a extensão habilitada nos dois. O script que faz isso é `docker/postgres/init/`, e ele só roda em
+volume vazio — se precisar recriar os bancos, `docker compose -f docker-compose.dev.yml down -v`.
 
 **Servidor:**
 ```bash
-cd server && uv sync && alembic upgrade head && uvicorn app.main:app --reload
+cd server && cp .env.example .env && uv sync
+uv run alembic upgrade head
+uv run uvicorn app.main:app --reload
 ```
-API em `http://localhost:8000`, docs em `/docs`.
+API em `http://localhost:8000`, docs em `/docs`, healthcheck em `/health`.
+Lint: `uv run ruff check .` e `uv run ruff format .`.
+
+**Stack completa em container (produção):**
+```bash
+cp server/.env.example .env    # na raiz; ajuste o host do banco para `db`
+docker compose up -d
+```
+O `docker-compose.yml` **não constrói** a imagem: puxa `ghcr.io/dalistor/territory-map-server:latest`,
+publicada pela CI. Defina `API_IMAGE` no `.env` para fixar um SHA ou apontar para outra imagem. O
+container roda `alembic upgrade head` no entrypoint antes de subir o uvicorn — não há passo de
+migração separado no deploy. Detalhes em `server/README.md`.
 
 **App (Android):**
 ```bash
@@ -413,9 +475,20 @@ alvo desktop com `flutter config --enable-macos-desktop` (idem para windows/linu
 
 ## Como Fazer Deploy
 
-**Servidor** — VPS Ubuntu com Docker, deploy automático por **GitHub Actions** em push na `main`
-(build da imagem + `docker compose up -d` via SSH). Ainda não configurado; usar a skill
-`/centaur-driven-deploy` quando o servidor estiver de pé.
+**Servidor** — VPS Ubuntu com Docker, deploy automático por **GitHub Actions**
+(`.github/workflows/server.yml`).
+
+| Job | Quando | O que faz |
+|-----|--------|-----------|
+| `test` | `push` e `pull_request` que toquem `server/**` ou o workflow | PostGIS real como service container, `ruff check`, `ruff format --check`, `alembic upgrade head`, `pytest --cov`, e um portão que **falha se `app/services/` sair de 100%** |
+| `build-and-deploy` | só `push` na `main`, depois do `test` | Buildx com cache de layers, publica no **GHCR** com as tags `latest` e o SHA (autenticando com o `GITHUB_TOKEN`), e por SSH roda `docker compose pull && docker compose up -d && docker image prune -f` no `DEPLOY_PATH` |
+
+O deploy não aplica migrations de fora: quem faz isso é o `server/docker-entrypoint.sh`, dentro do
+container, antes do uvicorn.
+
+**Cadastro manual no GitHub** (`Settings → Secrets and variables → Actions`) — secrets `SSH_HOST`,
+`SSH_USER`, `SSH_PRIVATE_KEY`, `SSH_PORT` e a variable `DEPLOY_PATH`. `GITHUB_TOKEN` não entra na
+lista. Instruções, geração do par de chaves e preparação da VPS em `server/README.md`.
 
 **Admin** — build das três plataformas no GitHub Actions, disparado por **git tag** (`v*`). Flutter
 não faz cross-compile, então é um job por SO, cada um no seu runner, e os artefatos vão para uma
@@ -461,10 +534,16 @@ O Linux precisa das dependências GTK no runner (`libgtk-3-dev`, `ninja-build`, 
 - **`access_code` é credencial, não identificador.** Nunca em URL, nunca em log, nunca em mensagem
   de erro. Aparece na tela do admin enquanto está válido e some depois. Inexistente, expirado e já
   usado respondem igual.
-- **`POST /app/activate` precisa de rate limit.** É o único endpoint em que um código curto pode ser
-  adivinhado por tentativa e erro. Limitar por IP e cortar após poucas falhas seguidas. Com 8
-  caracteres, uso único e 24 horas de janela, o risco já é baixo — o rate limit é o que o mantém
-  baixo se o alfabeto ou o tamanho mudarem depois.
+- **As duas rotas públicas têm rate limit por IP** (`slowapi`, em `app/core/rate_limit.py`):
+  `POST /app/activate` 10/minuto e `POST /auth/login` 5/minuto, respondendo **429** no formato de erro
+  padrão da API. São os únicos endpoints alcançáveis sem token e os únicos em que uma credencial pode
+  ser adivinhada por tentativa e erro. Com 8 caracteres, uso único e 24 horas de janela o risco já era
+  baixo — o rate limit é o que o mantém baixo se o alfabeto ou o tamanho mudarem depois.
+- **Em produção, servir com `--proxy-headers`.** O limite é chaveado por `request.client.host`; atrás
+  de um proxy reverso toda requisição chega do proxy, e sem isso (com o proxy setando `X-Forwarded-For`)
+  todos os chamadores dividem um balde só — o primeiro que adivinhar tranca a congregação inteira.
+  Os contadores são em memória e por processo, então o teto efetivo é o limite × número de workers;
+  se um dia precisar de balde compartilhado, apontar o `storage_uri` do limiter para um Redis.
 - **Comparação de código em tempo constante** (`secrets.compare_digest`), não `==`.
 - **O log de trabalho identifica pessoas.** Guarda quem esteve em qual quadra e quando. Guardar só
   isso — nada de posição GPS, rota ou horário de deslocamento no `BlockWorkLog`.
@@ -498,9 +577,6 @@ O Linux precisa das dependências GTK no runner (`libgtk-3-dev`, `ninja-build`, 
 
 ## Pontos em Aberto
 
-- **Território não contíguo**: se um território puder ser formado por áreas separadas ("grupos de
-  demarcações"), `boundary` precisa ser `MULTIPOLYGON` em vez de `POLYGON`. Definir antes da
-  primeira migração — mudar depois é retrabalho.
 - Estratégia de **sincronização offline** do app (pull completo vs. delta por timestamp).
 - Se o admin precisa **exportar** territórios (PDF/imagem) para uso impresso.
 - Se existe fluxo de **atribuição** de território a publicador, ou se isso segue fora do sistema.

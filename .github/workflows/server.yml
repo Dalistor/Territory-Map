@@ -1,0 +1,177 @@
+name: server
+
+# Lint + tests on every push and pull request that touches the server, and, on
+# `main` only, an image published to GHCR and rolled out to the VPS over SSH.
+
+on:
+  push:
+    paths:
+      - "server/**"
+      - ".github/workflows/server.yml"
+  pull_request:
+    paths:
+      - "server/**"
+      - ".github/workflows/server.yml"
+
+# A new push supersedes the run still in flight for the same branch. `main` is
+# the exception: cancelling it halfway could abort a deploy mid-rollout.
+concurrency:
+  group: server-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+# Least privilege by default; only build-and-deploy widens it, to push to GHCR.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Lint and test
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: server
+
+    services:
+      # The geometric rules are PostGIS predicates, so CI runs against the same
+      # image as development and production -- never a mock.
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: territory
+          POSTGRES_PASSWORD: territory
+          # The image enables the postgis extension in POSTGRES_DB on init; the
+          # test database is created by the step below.
+          POSTGRES_DB: territory_map
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U territory -d territory_map"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+          --health-start-period 20s
+
+    env:
+      DATABASE_URL: postgresql+psycopg://territory:territory@localhost:5432/territory_map
+      TEST_DATABASE_URL: postgresql+psycopg://territory:territory@localhost:5432/territory_map_test
+      # CI-only value. The real secret lives on the VPS, never in this file.
+      JWT_SECRET: ci-only-not-a-real-secret
+      PGPASSWORD: territory
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Create the test database with PostGIS
+        # docker-compose.dev.yml does this with an init script mounted into the
+        # container; a service container has no such mount, so it is done here.
+        run: |
+          psql -h localhost -p 5432 -U territory -d territory_map -v ON_ERROR_STOP=1 \
+            -c 'CREATE EXTENSION IF NOT EXISTS postgis'
+          psql -h localhost -p 5432 -U territory -d territory_map -v ON_ERROR_STOP=1 \
+            -c 'CREATE DATABASE territory_map_test'
+          psql -h localhost -p 5432 -U territory -d territory_map_test -v ON_ERROR_STOP=1 \
+            -c 'CREATE EXTENSION IF NOT EXISTS postgis'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.12.x"
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: "server/uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Lint (ruff check)
+        run: uv run ruff check .
+
+      - name: Format check (ruff format)
+        run: uv run ruff format --check .
+
+      - name: Apply migrations
+        run: uv run alembic upgrade head
+
+      - name: Tests with coverage
+        run: uv run pytest --cov=app --cov-report=term-missing
+
+      - name: Enforce 100% coverage on app/services/
+        # CLAUDE.md sets 100% on the services layer -- that is where every
+        # business rule lives. The overall report above is informational; this
+        # step is the gate that fails the job.
+        run: >-
+          uv run python -m coverage report
+          --include="app/services/*"
+          --show-missing
+          --fail-under=100
+
+  build-and-deploy:
+    name: Build image and deploy
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Resolve the image name
+        id: image
+        # GHCR rejects uppercase in a repository path, and `github.repository`
+        # keeps the owner's original casing.
+        run: |
+          repo=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "name=ghcr.io/${repo}-server" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./server
+          file: ./server/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.image.outputs.name }}:latest
+            ${{ steps.image.outputs.name }}:${{ github.sha }}
+          # Layer cache in the Actions cache, so a code-only change does not
+          # reinstall the Python dependencies.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          envs: DEPLOY_PATH
+          script: |
+            # Plain `set -eu`: the remote login shell is not guaranteed to be
+            # bash, and `pipefail` is not POSIX.
+            set -eu
+            if [ -z "${DEPLOY_PATH:-}" ]; then
+              echo "The DEPLOY_PATH repository variable is not set." >&2
+              exit 1
+            fi
+            cd "$DEPLOY_PATH"
+            docker compose pull
+            docker compose up -d
+            docker image prune -f

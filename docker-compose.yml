@@ -1,0 +1,42 @@
+name: territory-map
+
+# Production stack. Requires a .env file in this directory
+# (start from server/.env.example).
+#
+# The api image is built and published to GHCR by .github/workflows/server.yml;
+# this file only pulls it. Override API_IMAGE in .env to pin a specific commit
+# (ghcr.io/dalistor/territory-map-server:<sha>) or to point at a fork.
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-territory}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      # The application databases are created by the init script below.
+      POSTGRES_DB: postgres
+    volumes:
+      - postgis_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-territory} -d territory_map"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  api:
+    image: ${API_IMAGE:-ghcr.io/dalistor/territory-map-server:latest}
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgis_data:

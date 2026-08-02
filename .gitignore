@@ -1,0 +1,81 @@
+# ---------------------------------------------------------------- environment
+.env
+.env.*
+!.env.example
+
+# --------------------------------------------------------------------- Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# virtualenvs
+.venv/
+venv/
+env/
+
+# uv
+.uv/
+.python-version
+
+# testing / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# tooling caches
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+
+# --------------------------------------------------------------------- Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+*.iml
+generated_plugin_registrant.dart
+**/doc/api/
+coverage/
+*.g.dart.lock
+
+# Flutter / Dart local config
+**/android/local.properties
+**/android/.gradle/
+**/android/captures/
+**/android/key.properties
+**/android/app/debug/
+**/android/app/profile/
+**/android/app/release/
+**/ios/Flutter/.last_build_id
+**/ios/Flutter/App.framework
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/ephemeral/
+**/ios/Pods/
+**/ios/.symlinks/
+**/macos/Flutter/ephemeral/
+**/macos/Pods/
+**/linux/flutter/ephemeral/
+**/windows/flutter/ephemeral/
+*.ipa
+*.apk
+*.aab
+
+# ----------------------------------------------------------------------- IDEs
+.idea/
+.vscode/
+*.swp
+
+# ------------------------------------------------------------------------- OS
+.DS_Store
+Thumbs.db
