@@ -128,51 +128,60 @@ próprio workflow.
 
 ---
 
-## Passo manual do usuário: secrets e variables no GitHub
+## Secrets e variables no GitHub
 
-> Nada disso foi cadastrado automaticamente. **Você** precisa cadastrar — em especial a chave
-> privada, que não deve ser compartilhada com ninguém, nem colada em conversa, nem versionada.
+Tudo vive no **Environment `production`**, restrito à branch `main`. O job `build-and-deploy`
+declara `environment: production`; sem essa linha os valores chegariam vazios.
 
-Em `Settings → Secrets and variables → Actions` do repositório:
+### Secrets
 
-### Secrets (aba *Secrets*)
+| Nome | O que é |
+|------|---------|
+| `SSH_PRIVATE_KEY` | chave privada SSH completa, incluindo `-----BEGIN…`/`-----END…` e a quebra de linha final |
+| `SSH_KNOWN_HOSTS` | saída de `ssh-keyscan -p <porta> <host>` — fixa a host key e impede que o deploy fale com um intermediário |
 
-| Nome | O que é | Exemplo |
-|------|---------|---------|
-| `SSH_HOST` | IP ou hostname da VPS | `203.0.113.10` |
-| `SSH_USER` | usuário do deploy na VPS (precisa estar no grupo `docker`) | `deploy` |
-| `SSH_PRIVATE_KEY` | **chave privada** SSH, conteúdo completo do arquivo, incluindo as linhas `-----BEGIN…`/`-----END…` | conteúdo de `~/.ssh/territory_map_deploy` |
+### Variables
+
+| Nome | O que é | Valor atual |
+|------|---------|-------------|
+| `SSH_HOST` | IP ou hostname da VPS | `76.13.160.146` |
+| `SSH_USER` | usuário do deploy (precisa usar `docker` sem sudo) | `root` |
 | `SSH_PORT` | porta do SSH | `22` |
+| `DEPLOY_PATH` | diretório na VPS com o `docker-compose.yml` e o `.env` | `/opt/territory-map` |
 
-### Variables (aba *Variables*)
+Host, usuário e porta são **variables**, não secrets, de propósito: eles aparecem no log e é isso
+que torna uma falha de conexão legível. Só a chave privada e o known_hosts são sensíveis.
 
-| Nome | O que é | Exemplo |
-|------|---------|---------|
-| `DEPLOY_PATH` | diretório na VPS onde ficam o `docker-compose.yml` e o `.env` | `/srv/territory-map` |
+`GITHUB_TOKEN` não entra na lista — o Actions o fornece sozinho, e o workflow já pede
+`packages: write` para publicar no GHCR.
 
-`GITHUB_TOKEN` **não** entra nessa lista: o Actions o fornece sozinho, e o workflow já pede a
-permissão `packages: write` para publicar no GHCR.
-
-### Como gerar o par de chaves (rodar na sua máquina)
+### Como gerar e rotacionar o par de chaves
 
 ```bash
-ssh-keygen -t ed25519 -C "github-actions-territory-map" -f ~/.ssh/territory_map_deploy -N ""
+ssh-keygen -t ed25519 -C "github-actions-territory-map-main" -f ~/.ssh/territory_map_deploy -N ""
+ssh-copy-id -i ~/.ssh/territory_map_deploy.pub -p 22 root@SEU_HOST
+gh secret set SSH_PRIVATE_KEY -R Dalistor/Territory-Map --env production < ~/.ssh/territory_map_deploy
+```
 
-# a pública vai para a VPS:
-ssh-copy-id -i ~/.ssh/territory_map_deploy.pub deploy@SEU_HOST
+A passphrase precisa ser vazia (`-N ""`): o runner não tem tty para digitá-la.
 
-# a privada vai para o secret SSH_PRIVATE_KEY, e só para lá:
-cat ~/.ssh/territory_map_deploy
+### Revogar o acesso
+
+```bash
+ssh root@76.13.160.146 "grep -v 'github-actions-territory-map-main' ~/.ssh/authorized_keys > /tmp/ak && mv /tmp/ak ~/.ssh/authorized_keys"
+```
+
+```bash
+gh secret delete SSH_PRIVATE_KEY -R Dalistor/Territory-Map --env production
 ```
 
 ### Preparar a VPS antes do primeiro deploy
 
-1. Docker e o plugin Compose instalados; o usuário do deploy no grupo `docker`.
-2. Criar o diretório de `DEPLOY_PATH` e colocar nele o `docker-compose.yml` deste repositório e o
-   diretório `docker/postgres/init/` (o compose o monta no banco).
+1. Docker e o plugin Compose instalados; o usuário do deploy usando `docker` **sem sudo**.
+2. Criar o diretório de `DEPLOY_PATH`. O `docker-compose.yml` e o `docker/postgres/init/` são
+   enviados pelo próprio workflow — não precisa copiá-los à mão.
 3. Criar o `.env` nesse diretório a partir de `server/.env.example`, com o host do banco em `db`,
-   um `JWT_SECRET` real (`python -c "import secrets; print(secrets.token_urlsafe(64))"`) e uma
-   `POSTGRES_PASSWORD` real.
-4. Se o pacote do GHCR estiver privado, autenticar uma vez na VPS
-   (`docker login ghcr.io`) — ou marcar o pacote como público em
-   `Packages → territory-map-server → Package settings`.
+   um `JWT_SECRET` real e uma `POSTGRES_PASSWORD` real. Este arquivo **nunca** é enviado nem
+   sobrescrito pelo deploy; alterá-lo é sempre manual.
+4. Se o pacote do GHCR estiver privado, autenticar uma vez na VPS (`docker login ghcr.io`) — ou
+   marcar o pacote como público em `Packages → territory-map-server → Package settings`.

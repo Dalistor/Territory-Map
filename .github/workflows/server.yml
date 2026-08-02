@@ -12,6 +12,12 @@ on:
     paths:
       - "server/**"
       - ".github/workflows/server.yml"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Simulate only: no image is published and the VPS is not touched"
+        type: boolean
+        default: false
 
 # A new push supersedes the run still in flight for the same branch. `main` is
 # the exception: cancelling it halfway could abort a deploy mid-rollout.
@@ -110,12 +116,23 @@ jobs:
   build-and-deploy:
     name: Build image and deploy
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # The SSH credentials live in this Environment. Without this line the job
+    # cannot see them and they arrive as empty strings.
+    environment: production
 
     permissions:
       contents: read
       packages: write
+
+    env:
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/territory-map' }}
 
     steps:
       - name: Check out the repository
@@ -130,9 +147,11 @@ jobs:
           echo "name=ghcr.io/${repo}-server" >> "$GITHUB_OUTPUT"
 
       - name: Set up Buildx
+        if: ${{ inputs.dry_run != true }}
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
+        if: ${{ inputs.dry_run != true }}
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -140,6 +159,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
+        if: ${{ inputs.dry_run != true }}
         uses: docker/build-push-action@v6
         with:
           context: ./server
@@ -153,25 +173,109 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1
+      # Secrets and variables come in through `env:`. Interpolating `${{ }}`
+      # inside a `run:` body would turn the value into shell code.
+      - name: Configure SSH
         env:
-          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          envs: DEPLOY_PATH
-          script: |
-            # Plain `set -eu`: the remote login shell is not guaranteed to be
-            # bash, and `pipefail` is not POSIX.
-            set -eu
-            if [ -z "${DEPLOY_PATH:-}" ]; then
-              echo "The DEPLOY_PATH repository variable is not set." >&2
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          SSH_HOST: ${{ vars.SSH_HOST }}
+          SSH_USER: ${{ vars.SSH_USER }}
+        run: |
+          set -euo pipefail
+
+          # An empty value almost always means the secret was registered
+          # outside the Environment declared by this job.
+          for v in SSH_KEY KNOWN_HOSTS SSH_HOST SSH_USER; do
+            if [ -z "${!v}" ]; then
+              echo "::error::$v is empty. Check that it exists in the 'production' Environment and that the name matches exactly."
               exit 1
             fi
-            cd "$DEPLOY_PATH"
+          done
+
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          # printf, never echo: an OpenSSH key without its trailing newline
+          # makes ssh fail with `error in libcrypto`.
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+          cat > ~/.ssh/config <<EOF
+          Host deploy-target
+            HostName $SSH_HOST
+            User $SSH_USER
+            Port $SSH_PORT
+            IdentityFile ~/.ssh/id_deploy
+            IdentitiesOnly yes
+            BatchMode yes
+            ConnectTimeout 15
+            ServerAliveInterval 30
+            ServerAliveCountMax 20
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+          EOF
+          chmod 600 ~/.ssh/config
+
+          ssh -q deploy-target 'echo "SSH connection ok"'
+
+      - name: Check prerequisites on the VPS
+        run: |
+          set -euo pipefail
+          ssh deploy-target "set -e
+            mkdir -p '$DEPLOY_PATH'
+            test -f '$DEPLOY_PATH/.env' || {
+              echo '::error::$DEPLOY_PATH/.env does not exist — create it on the VPS before the first deploy'
+              exit 1
+            }
+            docker compose version >/dev/null"
+
+      # Only the compose file and the database init scripts travel over the
+      # wire; the application itself arrives as the image built above. `.env`
+      # is not inside docker/, so --delete can never reach it.
+      - name: Sync the compose stack
+        run: |
+          set -euo pipefail
+          DRY=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            DRY="--dry-run"
+            echo "::notice::dry-run — nothing on the VPS will change"
+          fi
+          rsync -az -i $DRY -e ssh \
+            ./docker-compose.yml "deploy-target:$DEPLOY_PATH/docker-compose.yml"
+          rsync -az --delete -i $DRY -e ssh \
+            ./docker/ "deploy-target:$DEPLOY_PATH/docker/"
+
+      - name: Pull the image and roll out
+        if: ${{ inputs.dry_run != true }}
+        run: |
+          set -euo pipefail
+          ssh deploy-target "set -e
+            cd '$DEPLOY_PATH'
             docker compose pull
             docker compose up -d
-            docker image prune -f
+            docker image prune -f"
+
+      # Without this the job goes green even when the API fails to boot.
+      - name: Health check
+        if: ${{ inputs.dry_run != true }}
+        run: |
+          set -euo pipefail
+          ssh deploy-target "set -e
+            cd '$DEPLOY_PATH'
+            port=\$(grep -E '^API_PORT=' .env | cut -d= -f2)
+            port=\${port:-8000}
+            for i in \$(seq 1 30); do
+              code=\$(curl -s -o /dev/null -w '%{http_code}' \"http://127.0.0.1:\$port/health\" || true)
+              echo \"attempt \$i: \$code\"
+              [ \"\$code\" = '200' ] && exit 0
+              sleep 5
+            done
+            echo '::error::health check failed'
+            docker compose ps
+            docker compose logs --tail 50
+            exit 1"
+
+      - name: Remove credentials from the runner
+        if: always()
+        run: rm -f ~/.ssh/id_deploy ~/.ssh/config ~/.ssh/known_hosts
