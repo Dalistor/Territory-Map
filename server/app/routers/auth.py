@@ -13,12 +13,19 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.core.db import get_session
-from app.core.rate_limit import ACTIVATE_RATE_LIMIT, LOGIN_RATE_LIMIT, limiter
+from app.core.rate_limit import (
+    ACTIVATE_RATE_LIMIT,
+    LOGIN_RATE_LIMIT,
+    REGISTER_RATE_LIMIT,
+    limiter,
+)
+from app.core.security import create_admin_token
 from app.repositories.congregation import CongregationRepository
 from app.repositories.user import UserRepository
-from app.schemas.auth import CongregationOut, LoginIn, TokenOut
+from app.schemas.auth import CongregationOut, LoginIn, RegisterIn, TokenOut
 from app.schemas.user import ActivateIn, ActivateOut, UserBriefOut
 from app.services.auth import AuthService
+from app.services.congregation import CongregationService
 from app.services.user import UserService
 
 router = APIRouter()

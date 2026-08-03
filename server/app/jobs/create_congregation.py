@@ -35,12 +35,23 @@ PASSWORD_ENV_VAR = "CONGREGATION_PASSWORD"
 
 
 def read_password(prompt: Callable[[str], str] = getpass.getpass) -> str:
-    """Take the password from the environment, or ask for it twice on the terminal."""
+    """Take the password from the environment, or ask for it twice on the terminal.
+
+    The wording matters: this password is being *defined* here, not looked up. There
+    is no separate admin account anywhere in the system -- the congregation is the
+    admin, and logging in means sending its name, its city and this password
+    together. Asking for "the admin's password" read as a credential the operator was
+    supposed to already have.
+    """
     from_env = os.environ.get(PASSWORD_ENV_VAR)
     if from_env:
         return from_env
 
-    password = prompt("Senha do admin: ")
+    print(
+        "Defina a senha de administrador desta congregação. É com ela, mais o nome e "
+        f"a cidade, que o app admin faz login. Mínimo de {MIN_PASSWORD_LENGTH} caracteres."
+    )
+    password = prompt("Nova senha: ")
     if password != prompt("Repita a senha: "):
         raise ValueError("As senhas não conferem.")
     return password
