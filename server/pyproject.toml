@@ -13,8 +13,11 @@ dependencies = [
     "pydantic>=2",
     "pydantic-settings>=2.3",
     "passlib[bcrypt]>=1.7.4",
-    # passlib 1.7.4 reads bcrypt.__about__, removed in bcrypt 5.x
-    "bcrypt>=4.0,<5",
+    # passlib 1.7.4 reads bcrypt.__about__, which bcrypt dropped in 4.1. passlib traps
+    # the AttributeError, so hashing still works, but it prints a full traceback on
+    # every first use -- alarming noise in an operator-facing command. Pinned below
+    # 4.1 until passlib ships a release that stops reading it.
+    "bcrypt>=4.0,<4.1",
     "python-jose[cryptography]>=3.3",
     # cryptography 49+ ships macOS wheels for arm64 only; capping keeps
     # x86_64 macOS dev machines from having to build it via Rust/OpenSSL.

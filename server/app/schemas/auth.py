@@ -5,22 +5,11 @@ plus the congregation it belongs to, so the desktop app can show whose data it i
 looking at without a second request.
 """
 
-from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel
 
-from app.schemas.common import MAX_PASSWORD_LENGTH, OutSchema, Password, ShortText
-
-#: Only the *new* password has a floor. Login must keep accepting whatever was set
-#: before, or raising the bar here would lock out an existing admin instead of
-#: prompting them to change it.
-MIN_NEW_PASSWORD_LENGTH = 12
-
-NewPassword = Annotated[
-    str,
-    StringConstraints(min_length=MIN_NEW_PASSWORD_LENGTH, max_length=MAX_PASSWORD_LENGTH),
-]
+from app.schemas.common import OutSchema, Password, ShortText
 
 
 class LoginIn(BaseModel):
@@ -29,14 +18,6 @@ class LoginIn(BaseModel):
     name: ShortText
     city: ShortText
     password: Password
-
-
-class RegisterIn(BaseModel):
-    """A new congregation, as the admin fills it in on the sign-up screen."""
-
-    name: ShortText
-    city: ShortText
-    password: NewPassword
 
 
 class CongregationOut(OutSchema):

@@ -27,9 +27,10 @@ from app.models.congregation import Congregation
 from app.repositories.congregation import CongregationRepository
 from app.services.congregation import CongregationService
 
-#: Short enough not to annoy the one person who types it, long enough that the bcrypt
-#: cost is the last line of defence rather than the first.
-MIN_PASSWORD_LENGTH = 12
+#: A floor, not a recommendation. Online guessing is throttled to five attempts a
+#: minute per IP on `/auth/login`, so the exposure of a short password is an offline
+#: attack on a leaked database, where bcrypt's cost is what buys the time.
+MIN_PASSWORD_LENGTH = 6
 
 PASSWORD_ENV_VAR = "CONGREGATION_PASSWORD"
 

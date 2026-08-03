@@ -32,14 +32,8 @@ ACTIVATE_LIMIT_PER_MINUTE = 10
 #: a human who has failed five times in a minute is not going to succeed on the sixth.
 LOGIN_LIMIT_PER_MINUTE = 5
 
-#: Per hour, not per minute: a congregation is registered once and then never again.
-#: The `X-App-Key` gate already keeps this route away from anyone without a client
-#: binary; this is what stops whoever has one from filling the database with tenants.
-REGISTER_LIMIT_PER_HOUR = 3
-
 ACTIVATE_RATE_LIMIT = f"{ACTIVATE_LIMIT_PER_MINUTE}/minute"
 LOGIN_RATE_LIMIT = f"{LOGIN_LIMIT_PER_MINUTE}/minute"
-REGISTER_RATE_LIMIT = f"{REGISTER_LIMIT_PER_HOUR}/hour"
 
 #: The machine-readable half of the error body, in the same shape every other failure
 #: of this API uses, so clients keep one branch for "the server said no".
