@@ -33,7 +33,10 @@ services:
     env_file:
       - .env
     ports:
-      - "${API_PORT:-8000}:8000"
+      # Bound to the loopback on purpose: nginx terminates TLS on the host and
+      # proxies to 127.0.0.1:8000. Publishing on 0.0.0.0 would keep the whole API
+      # reachable in cleartext on port 8000, straight past the certificate.
+      - "127.0.0.1:${API_PORT:-8000}:8000"
     depends_on:
       db:
         condition: service_healthy
