@@ -1,0 +1,81 @@
+name: core
+
+# The shared Dart package, checked on every change to it: both clients depend
+# on it, so a break here breaks both. Building the admin binaries lives in
+# admin-release.yml, which fires on a tag -- a `tags` filter here would silence
+# this workflow on ordinary pushes, since a push event with `tags` and no
+# `branches` matches only tags.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/core/**"
+      - ".github/workflows/core.yml"
+  pull_request:
+    paths:
+      - "packages/core/**"
+      - ".github/workflows/core.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: core-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: Shared package
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: packages/core
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Dart alone, not Flutter: the package deliberately does not depend on
+      # flutter, and using the bare SDK here is what keeps that honest -- an
+      # accidental flutter import would fail this job instead of going unnoticed
+      # until the first pure-Dart consumer.
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Install dependencies
+        run: dart pub get
+
+      - name: Format check
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Analyze
+        run: dart analyze --fatal-infos
+
+      - name: Test
+        run: dart test
+
+      - name: Coverage on geo/
+        # CLAUDE.md sets 100% on geo/: it is the single source of the coordinate
+        # conversion and the polygon pre-validation, and a gap there is a bug
+        # that reaches both clients.
+        run: |
+          dart pub global activate coverage
+          dart test --coverage=.coverage
+          dart pub global run coverage:format_coverage \
+            --lcov --in=.coverage --out=.coverage/lcov.info \
+            --report-on=lib --check-ignore
+          awk -F: '
+            /^SF:/ { file = $2 }
+            /^LF:/ { found = $2 }
+            /^LH:/ {
+              hit = $2
+              if (file ~ /lib\/geo\//) {
+                printf "%s: %d/%d\n", file, hit, found
+                if (hit != found) failed = 1
+              }
+            }
+            END { exit failed }
+          ' .coverage/lcov.info
