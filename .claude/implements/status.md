@@ -27,6 +27,7 @@ Histórico de todas as implementações realizadas neste projeto.
 | [0021](0021/README.md) | Testes de integração ponta a ponta | 2026-08-02 | Concluído | `server/tests/integration/conftest.py`, `server/tests/integration/test_full_flow_integration.py`, `server/tests/integration/test_device_swap_integration.py`, `server/tests/integration/test_tenant_isolation_integration.py`, `server/tests/integration/test_demarcation_integrity_integration.py`, `server/tests/integration/test_revocation_integration.py` |
 | [0022](0022/README.md) | CI/CD: testes, imagem no GHCR e deploy por SSH | 2026-08-02 | Concluído | `.github/workflows/server.yml`, `server/docker-entrypoint.sh`, `server/Dockerfile`, `docker-compose.yml`, `server/README.md` |
 | [0023](0023/README.md) | Deploy automático da branch main na VPS de produção | 2026-08-02 | Concluído | `.github/workflows/server.yml`, `server/README.md` |
+| [0024](0024/README.md) | Gate de chave de aplicação (`X-App-Key`) no servidor | 2026-08-02 | Concluído | `server/app/core/app_key.py`, `server/tests/core/test_app_key.py`, `server/app/core/config.py`, `server/app/main.py`, `server/.env.example`, `server/tests/services/test_auth_service.py` |
 
 ---
 

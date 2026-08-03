@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     ADMIN_TOKEN_TTL_HOURS: int = 12
     ACCESS_CODE_TTL_HOURS: int = 24
 
+    # Shared key both clients send on every request. Empty disables the gate, which
+    # is what keeps the test suite and local development from needing the header.
+    APP_SECRET: str = ""
+
     # NoDecode keeps pydantic-settings from trying to JSON-decode the raw env
     # value, so a plain comma-separated list works: CORS_ORIGINS=a,b
     CORS_ORIGINS: Annotated[list[str], NoDecode] = []

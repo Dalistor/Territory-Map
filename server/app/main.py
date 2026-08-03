@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 
+from app.core.app_key import install_app_key_gate
 from app.core.config import get_settings
 from app.core.exceptions import (
     DomainError,
@@ -91,6 +92,13 @@ app.add_exception_handler(DomainError, domain_error_handler)
 # other error of this API instead of slowapi's own body.
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
+# The outermost gate: a shared key both clients send on every request, checked
+# before routing. It is a shutter against unaddressed traffic, not authentication --
+# the value ships inside the APK and the desktop binary, and over plain HTTP it
+# travels in the clear next to the token it fronts. Authorization stays with the
+# JWT and the app token.
+install_app_key_gate(app, settings.APP_SECRET)
 
 if settings.CORS_ORIGINS:
     app.add_middleware(

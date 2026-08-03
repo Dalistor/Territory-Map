@@ -12,7 +12,13 @@ from app.models.congregation import Congregation
 from app.services import auth as auth_module
 from app.services.auth import AuthService
 
-NOW = datetime(2026, 8, 2, 12, 0, tzinfo=UTC)
+#: The injected clock. Anchored to the real one rather than to a literal date,
+#: because these tests decode the minted token with the real `decode_token`, which
+#: validates `exp` against wall time. A fixed date makes the suite pass for exactly
+#: twelve hours and then fail forever -- which is what happened on 2026-08-03.
+#: No assertion depends on the absolute value; `exp` is only ever checked relative
+#: to this. Truncated to the second so the timestamp comparison stays exact.
+NOW = datetime.now(UTC).replace(microsecond=0)
 
 
 class FakeCongregationRepository:

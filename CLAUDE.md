@@ -273,6 +273,21 @@ Registro de que uma quadra foi trabalhada. Append-only pelo app.
 - Alterar a demarcação de um território que já tem quadras precisa revalidar todas as quadras: se
   alguma ficar fora, a alteração é rejeitada com a lista das quadras afetadas.
 
+### Chave de aplicação (`X-App-Key`)
+- Toda requisição precisa trazer o header `X-App-Key` com o valor de `APP_SECRET`. **Os dois
+  clientes mandam em toda chamada** — quando `packages/core` existir, o cliente HTTP compartilhado
+  injeta o header, e nenhum caso de uso deve precisar saber disso.
+- **`GET /health` é isento**, por rota e não por fallback: o healthcheck do deploy e o runtime do
+  container chamam sem chave e precisam funcionar antes de qualquer cliente existir.
+- Header ausente e header errado recebem **a mesma** resposta 401. Comparação com
+  `secrets.compare_digest`.
+- `APP_SECRET` vazio **desliga** o gate — é o que mantém os testes e o desenvolvimento local sem
+  header — e o app emite WARNING no startup.
+- **Isto não é autenticação.** A chave é estática e viaja dentro do APK e do binário desktop; quem
+  tem qualquer um dos dois extrai o valor. Sobre HTTP puro ela trafega em texto claro, ao lado do
+  token que deveria proteger. Serve para o servidor parar de responder a varredura automática, e só.
+  Autorização continua sendo o JWT do admin e o token de app.
+
 ### App Android
 - A **única** escrita permitida ao app é marcar quadra como trabalhada. Nada de território, quadra,
   usuário ou congregação é criado, editado ou apagado pelo app.
