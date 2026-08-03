@@ -7,10 +7,18 @@ on:
   push:
     paths:
       - "server/**"
+      # The deploy syncs these to the VPS, so a change to either has to be able
+      # to trigger one.
+      - "docker-compose.yml"
+      - "docker/**"
       - ".github/workflows/server.yml"
   pull_request:
     paths:
       - "server/**"
+      # The deploy syncs these to the VPS, so a change to either has to be able
+      # to trigger one.
+      - "docker-compose.yml"
+      - "docker/**"
       - ".github/workflows/server.yml"
   workflow_dispatch:
     inputs:
