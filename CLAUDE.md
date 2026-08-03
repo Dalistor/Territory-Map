@@ -357,7 +357,7 @@ Registro de que uma quadra foi trabalhada. Append-only pelo app.
 | Repositories | `server/app/repositories/` | Queries, ORM, chamadas PostGIS | Regra de negócio, HTTP, autorização |
 | Services | `server/app/services/` | Regras de negócio e orquestração | SQL cru fora do repositório, `Request`/`Response`, `HTTPException` |
 | Routers | `server/app/routers/` | Receber requisição, autenticar, chamar service, devolver resposta | Regra de negócio, query direta |
-| Jobs | `server/app/jobs/` | Tarefa agendada: abrir sessão, chamar service, comitar, logar | Regra de negócio, query direta, HTTP |
+| Jobs | `server/app/jobs/` | Tarefa agendada ou de linha de comando: abrir sessão, chamar service, comitar, logar | Regra de negócio, query direta, HTTP |
 | Core | `server/app/core/` | Config, sessão do banco, segurança, dependências, rate limit, scheduler | Regra de negócio de domínio |
 
 **Direção da dependência:** `router → service → repository → model`. Nunca o inverso.
@@ -518,6 +518,26 @@ falha de conexão legível. Rotação e revogação em `server/README.md`; detal
 
 **Não há rollback automático.** Voltar é reverter o commit, ou fixar
 `API_IMAGE=ghcr.io/dalistor/territory-map-server:<sha>` no `.env` da VPS e subir à mão.
+
+**Bootstrap de uma instalação nova.** Não existe rota HTTP que crie congregação — cadastro aberto
+deixaria qualquer um criar tenant no servidor alheio. O caminho é um job dentro do container:
+
+```bash
+docker compose exec api python -m app.jobs.create_congregation "Nome" "Cidade"
+```
+
+A senha é pedida no terminal (nunca como argumento, que ficaria no histórico do shell e na lista de
+processos); `CONGREGATION_PASSWORD` no ambiente serve para execução não interativa. Mínimo de 12
+caracteres.
+
+**Backup.** `docker/backup.sh` roda por cron do root às 03:00, faz `pg_dump` comprimido em
+`/opt/territory-map/backups`, mantém 14 dias e apaga dump vazio em vez de deixá-lo parecendo
+backup. Fica **fora** de `docker/`, que o deploy espelha com `--delete`. É cópia local: sobrevive a
+migration ruim, tabela derrubada e volume corrompido — não à perda do host. Levar para fora da
+máquina é passo separado, ainda não feito.
+
+**Firewall:** `ufw` ativo, só 22, 80 e 443. A porta 8000 do container escuta apenas em `127.0.0.1`,
+que é para onde o nginx do host aponta.
 
 ⚠️ **A API está exposta em HTTP puro na porta 8000.** JWT do admin e token do app trafegam em texto
 claro. Antes de uso real, colocar proxy reverso com TLS na frente, fechar a 8000 no firewall e
