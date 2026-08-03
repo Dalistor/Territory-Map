@@ -1,0 +1,18 @@
+name: territory_core
+description: Modelos, cliente da API e conversões geométricas compartilhados entre o app e o admin.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+# Deliberately no `flutter` dependency: this package must run under `dart test`,
+# with no emulator and no window, which is what makes the shared logic cheap to
+# test. Anything that needs a widget belongs in app/ or admin/, not here.
+dependencies:
+  http: ^1.2.0
+  meta: ^1.15.0
+
+dev_dependencies:
+  lints: ^5.0.0
+  test: ^1.25.0

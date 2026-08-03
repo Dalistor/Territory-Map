@@ -39,7 +39,8 @@ usuário e quem trabalhou cada quadra. Só o admin tem senha.
 
 ## Estrutura do Projeto
 
-Monorepo. Do lado cliente nada foi implementado ainda; no servidor existem o scaffold (config,
+Monorepo. `packages/core` está implementado (modelos, cliente da API e `geo/`); `app/` e `admin/`
+ainda não existem. No servidor existem o scaffold (config,
 `/health`, Docker e Compose), a base ORM com a sessão do banco, as exceções de domínio e o Alembic
 — o resto abaixo é a estrutura alvo.
 
