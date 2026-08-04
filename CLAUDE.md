@@ -50,8 +50,9 @@ usuário e quem trabalhou cada quadra. Só o admin tem senha.
 
 ## Estrutura do Projeto
 
-Monorepo. `packages/core` está implementado (modelos, cliente da API e `geo/`); `app/` e `admin/`
-ainda não existem. No servidor existem o scaffold (config,
+Monorepo. O servidor e `packages/core` estão completos. O `admin/` está implementado — configuração
+inicial, mapa, editor de polígono, quadras, publicadores e histórico. O `app/` Android ainda não
+existe. No servidor existem o scaffold (config,
 `/health`, Docker e Compose), a base ORM com a sessão do banco, as exceções de domínio e o Alembic
 — o resto abaixo é a estrutura alvo.
 
@@ -337,10 +338,13 @@ Registro de que uma quadra foi trabalhada. Append-only pelo app.
   corrente.
 - **Risco assumido nas libs de edição de mapa.** São pacotes pequenos (~5k downloads, 32 likes) e
   sem release recente — não porque estejam abandonados, mas porque o `flutter_map` não quebrou API
-  desde a v8. Se pararem, são MIT e pequenos o bastante para *vendorizar*. Encapsular o editor num
-  widget próprio (`presentation/map/polygon_editor.dart`) para que essa troca fique confinada a um
-  arquivo. Não vêm de fábrica: desfazer, *snapping* e bloqueio de auto-interseção — este último já
-  é validado no servidor (`ST_IsValid`) e pré-validado em `packages/core/lib/geo/`.
+  desde a v8. Se pararem, são MIT e pequenos o bastante para *vendorizar*. O editor está confinado
+  em `admin/lib/presentation/map/polygon_editor.dart`, que é o único arquivo que os importa.
+- **O undo do editor precisou envolver a biblioteca.** O `PolyEditor` não expõe gancho para início
+  de arraste nem para remoção, então cada `DragMarker` que ele produz é reconstruído com o snapshot
+  encadeado antes do callback original. Sem isso, desfazer depois de arrastar pulava para antes do
+  último ponto *adicionado*, perdendo o arraste e um vértice junto. Não mexa nisso sem rodar
+  `test/polygon_editor_test.dart`. *Snapping* continua não existindo.
 - **Multi-tenant por congregação.** Todo dado é escopado por `congregation_id`, sempre derivado do
   token — nunca aceito como parâmetro vindo do cliente.
 - **Dois tipos de token, com poderes bem diferentes.** O JWT do admin expira rápido e pode tudo
