@@ -1,20 +1,25 @@
-name: core
+name: dart
 
-# The shared Dart package, checked on every change to it: both clients depend
-# on it, so a break here breaks both. Building the admin binaries lives in
-# admin-release.yml, which fires on a tag -- a `tags` filter here would silence
-# this workflow on ordinary pushes, since a push event with `tags` and no
-# `branches` matches only tags.
+# The Dart side of the monorepo, checked on every change: the shared package,
+# because a break there breaks both clients, and the admin, because otherwise
+# it is only ever compiled at release time and a mistake surfaces when it is
+# most expensive.
+#
+# Building the admin binaries lives in admin-release.yml, which fires on a tag
+# -- a `tags` filter here would silence this workflow on ordinary pushes, since
+# a push event with `tags` and no `branches` matches only tags.
 
 on:
   push:
     branches: [main]
     paths:
       - "packages/core/**"
+      - "admin/**"
       - ".github/workflows/core.yml"
   pull_request:
     paths:
       - "packages/core/**"
+      - "admin/**"
       - ".github/workflows/core.yml"
   workflow_dispatch:
 
@@ -79,3 +84,33 @@ jobs:
             }
             END { exit failed }
           ' .coverage/lcov.info
+
+  admin:
+    name: Admin
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: admin
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Format check
+        run: dart format --output=none --set-exit-if-changed lib test
+
+      - name: Analyze
+        run: flutter analyze
+
+      # No build here: producing a binary is the release job's business, and
+      # `flutter test` runs on the Dart VM, so this needs no desktop toolchain.
+      - name: Test
+        run: flutter test
