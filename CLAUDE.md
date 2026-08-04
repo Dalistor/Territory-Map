@@ -13,7 +13,18 @@ São três partes:
 |-------|---------|-----------|
 | **Servidor** | — | API REST, dono das regras de negócio e da validação geométrica |
 | **App Android** (Flutter) | Publicadores em campo | Abre e já mostra a posição do usuário no mapa, com os territórios e quadras da congregação desenhados por cima. Permite **marcar uma quadra como trabalhada**. |
-| **Admin** (Flutter desktop) | Responsável pelos territórios na congregação | Desenha as demarcações dos territórios, marca e numera as quadras, cadastra os publicadores e acompanha o que já foi trabalhado. Fala direto com o servidor. Roda em Windows, macOS e Linux. |
+| **Admin** (Flutter desktop) | Responsável pelos territórios na congregação | Desenha as demarcações dos territórios, marca e numera as quadras, cadastra os publicadores e acompanha o que já foi trabalhado. Fala direto com o servidor. Roda em Windows e Linux. |
+
+**Uso pessoal: o admin não tem tela de login no dia a dia.** É uma instalação de uma congregação
+só. Na primeira abertura o app pede nome, cidade e senha **uma única vez**, guarda os três no
+`flutter_secure_storage` e autentica sozinho dali em diante; ao receber 401 (o JWT dura 12h), ele
+refaz o login em silêncio e repete a requisição. Quem usa nunca mais vê a tela.
+
+**A congregação continua existindo no servidor, e isso é de propósito.** Ela é a única barreira de
+escopo da API: todo dado é filtrado por `congregation_id` derivado do token, e as rotas de escrita
+exigem esse token. Removê-la deixaria as rotas de admin protegidas só pelo `X-App-Key` — que viaja
+dentro do binário e é extraível — num servidor publicado na internet. Como o mecanismo já está
+pronto e testado, mantê-lo custa zero e é o que impede que quem achar o endereço apague tudo.
 
 **Sem cadastro feito pelo publicador.** Quem cadastra é o admin: no app admin ele preenche o **nome
 da pessoa**, o sistema gera um **código de acesso individual**, e ele entrega esse código àquela
@@ -31,7 +42,7 @@ usuário e quem trabalhou cada quadra. Só o admin tem senha.
 | Auth | JWT (`python-jose`) + hash de senha com **bcrypt** (`passlib`) |
 | Mapas | **OpenStreetMap** via `flutter_map` nos dois clientes. Sem chave de API, sem billing. |
 | App (Android) | Flutter (Dart), Riverpod para estado, Drift/SQLite para cache offline |
-| Admin (desktop) | **Flutter desktop** (Windows/macOS/Linux), Riverpod, `flutter_secure_storage` para o JWT |
+| Admin (desktop) | **Flutter desktop** (Windows/Linux), Riverpod, `flutter_secure_storage` para as credenciais |
 | Edição de polígono | `flutter_map_line_editor` + `flutter_map_dragmarker` (exigem `flutter_map ^8`) |
 | Código compartilhado | Pacote Dart local `packages/core` — modelos, cliente da API, conversões geométricas |
 | Infra | Docker + Docker Compose em um Ubuntu |
@@ -386,7 +397,12 @@ Mesma separação do app — é o mesmo framework.
 |--------|-------|------------------|----------|
 | Presentation | `admin/lib/presentation/` | Telas, mapa editável, providers Riverpod | Chamada HTTP direta, regra de negócio |
 | Domain | `admin/lib/domain/` | Casos de uso: desenhar demarcação, numerar quadra, cadastrar publicador | Dependência de Flutter ou HTTP |
-| Data | `admin/lib/data/` | Repositórios sobre o cliente da API, guarda do JWT | Widget, lógica de apresentação |
+| Data | `admin/lib/data/` | Repositórios sobre o cliente da API, credenciais no `flutter_secure_storage`, reautenticação silenciosa no 401 | Widget, lógica de apresentação |
+
+A reautenticação vive em `data/`, não na tela: nenhum caso de uso deve saber que o token expira.
+O caminho é `ApiErrorException.isUnauthorized` → refaz o login com as credenciais guardadas →
+repete a requisição **uma vez**. Falhando de novo, aí sim volta à tela de configuração inicial —
+provavelmente a senha mudou no servidor.
 
 ### Pacote compartilhado (`packages/core`)
 
@@ -484,10 +500,17 @@ cd app && flutter pub get && flutter run
 
 **Admin (desktop):**
 ```bash
-cd admin && flutter pub get && flutter run -d macos
+cd admin && flutter pub get && flutter run -d chrome
 ```
-Trocar `-d macos` por `-d windows` ou `-d linux` conforme a máquina. Na primeira vez, habilitar o
-alvo desktop com `flutter config --enable-macos-desktop` (idem para windows/linux).
+O alvo entregue é Windows/Linux, mas o desenvolvimento roda no **Chrome**: esta máquina não tem o
+Xcode completo, e `flutter run -d macos` não funcionaria. O Chrome dá verificação visual de
+verdade; os binários saem do CI por tag. Em máquina com o SO alvo, trocar por `-d windows` ou
+`-d linux`.
+
+**Pacote compartilhado:**
+```bash
+cd packages/core && dart pub get && dart test
+```
 
 ## Como Fazer Deploy
 
@@ -551,15 +574,21 @@ GitHub Release:
 
 | Alvo | Runner | Comando | Artefato |
 |------|--------|---------|----------|
-| Windows | `windows-latest` | `flutter build windows` | pasta `Release/` zipada |
-| macOS | `macos-latest` | `flutter build macos` | `.app` zipado |
-| Linux | `ubuntu-latest` | `flutter build linux` | pasta `bundle/` em `.tar.gz` |
+| Windows | `windows-latest` | `flutter build windows` | `build/windows/x64/runner/Release` |
+| Linux | `ubuntu-latest` | `flutter build linux` | `build/linux/x64/release/bundle` |
 
-Sem assinatura de código nem notarização — os binários não são assinados, então macOS e Windows vão
-exibir aviso de desenvolvedor não identificado na primeira execução. Documentar o "abrir mesmo
-assim" para o admin. Assinar depois é possível, mas exige certificado pago e conta de desenvolvedor.
+**macOS ficou de fora.** A máquina de desenvolvimento tem só as Command Line Tools, não o Xcode
+completo, então não há como construir nem verificar o resultado aqui — e o admin roda em Windows na
+prática. Voltar depois é uma entrada na matriz mais um runner `macos-latest`.
 
-O Linux precisa das dependências GTK no runner (`libgtk-3-dev`, `ninja-build`, `clang`).
+Sem assinatura de código — os binários não são assinados, então o Windows SmartScreen vai exibir
+aviso de desenvolvedor não identificado na primeira execução. Documentar o "abrir mesmo assim" para
+o admin. Assinar exige certificado pago.
+
+O Linux precisa das dependências GTK no runner (`libgtk-3-dev`, `ninja-build`).
+
+Build verde só prova que compila — ninguém clica num binário dentro do CI. Quem valida
+comportamento são os testes de widget e o que se abre no Chrome durante o desenvolvimento.
 
 **App Android** — build de APK/AAB também por tag, distribuído fora da Play Store no começo.
 
@@ -605,8 +634,9 @@ O Linux precisa das dependências GTK no runner (`libgtk-3-dev`, `ninja-build`, 
 - **Ordem das coordenadas** é a fonte clássica de bug aqui: PostGIS/GeoJSON usam `(lon, lat)` e o
   `flutter_map` usa `(lat, lon)`. A conversão mora numa única função em `packages/core/lib/geo/`,
   com teste. Não converter à mão em nenhum outro lugar.
-- **O admin guarda um JWT no desktop.** Usar `flutter_secure_storage` (Keychain no macOS, DPAPI no
-  Windows, libsecret no Linux) — nunca `SharedPreferences`, que é texto puro em disco.
+- **O admin guarda a senha da congregação no desktop**, não só o token — é o preço do login
+  automático. Usar `flutter_secure_storage` (DPAPI no Windows, libsecret no Linux) e nunca
+  `SharedPreferences`, que é texto puro em disco. Nunca logar essas credenciais, nem em modo debug.
 - **Binários do admin não são assinados.** Windows SmartScreen e Gatekeeper vão reclamar na primeira
   execução. É esperado; instruir o admin em vez de tentar contornar.
 - **Uso dos tiles do OSM** tem política própria: sem *bulk download*, com User-Agent identificado.
