@@ -1,0 +1,35 @@
+name: territory_admin
+description: "Gerenciamento de territórios de pregação — aplicativo do responsável."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Models, the API client and the coordinate conversion. Nothing the two
+  # clients share may be duplicated here -- it belongs in core.
+  territory_core:
+    path: ../packages/core
+
+  flutter_riverpod: ^2.6.1
+  # flutter_map 8 is what flutter_map_line_editor and flutter_map_dragmarker
+  # require; the polygon editor of a later slice depends on staying on this major.
+  flutter_map: ^8.0.0
+  latlong2: ^0.9.1
+  flutter_secure_storage: ^9.2.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  # Declared explicitly, even though territory_core already pulls it in: the
+  # tests use MockClient directly, and depending on it transitively would break
+  # the day core stops needing it.
+  http: ^1.2.0
+
+flutter:
+  uses-material-design: true
