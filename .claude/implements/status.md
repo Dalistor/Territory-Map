@@ -28,6 +28,24 @@ Histórico de todas as implementações realizadas neste projeto.
 | [0022](0022/README.md) | CI/CD: testes, imagem no GHCR e deploy por SSH | 2026-08-02 | Concluído | `.github/workflows/server.yml`, `server/docker-entrypoint.sh`, `server/Dockerfile`, `docker-compose.yml`, `server/README.md` |
 | [0023](0023/README.md) | Deploy automático da branch main na VPS de produção | 2026-08-02 | Concluído | `.github/workflows/server.yml`, `server/README.md` |
 | [0024](0024/README.md) | Gate de chave de aplicação (`X-App-Key`) no servidor | 2026-08-02 | Concluído | `server/app/core/app_key.py`, `server/tests/core/test_app_key.py`, `server/app/core/config.py`, `server/app/main.py`, `server/.env.example`, `server/tests/services/test_auth_service.py` |
+| [0025](0025/README.md) | Pacote Dart compartilhado `packages/core` | 2026-08-03 | Concluído | `packages/core/pubspec.yaml`, `packages/core/pubspec.lock`, `packages/core/analysis_options.yaml`, `packages/core/lib/territory_core.dart`, `packages/core/lib/geo/lat_lng.dart`, `packages/core/lib/api/api_client.dart`, `packages/core/lib/api/api_exception.dart`, `packages/core/lib/models/models.dart`, `packages/core/test/geo/lat_lng_test.dart`, `packages/core/test/api/api_client_test.dart`, `.github/workflows/core.yml`, `.github/workflows/admin-release.yml`, `CLAUDE.md`, `.gitignore` |
+| [0026](0026/README.md) | Admin desktop, primeira fatia: login silencioso e o mapa | 2026-08-03 | Concluído | `admin/pubspec.yaml`, `admin/pubspec.lock`, `admin/analysis_options.yaml`, `admin/lib/config.dart`, `admin/lib/main.dart`, `admin/lib/data/credentials_store.dart`, `admin/lib/data/session.dart`, `admin/lib/data/providers.dart`, `admin/lib/presentation/setup_screen.dart`, `admin/lib/presentation/home_screen.dart`, `admin/lib/presentation/map/territory_map.dart`, `admin/test/session_test.dart`, `admin/linux/**`, `admin/windows/**`, `admin/web/**` |
+| [0027](0027/README.md) | Admin desktop, segunda fatia: editor de polígono, quadras, publicadores e histórico | 2026-08-03 | Concluído | `admin/lib/presentation/map/polygon_editor.dart`, `admin/lib/presentation/territory_editor_screen.dart`, `admin/lib/presentation/block_editor_screen.dart`, `admin/lib/presentation/publishers_screen.dart`, `admin/lib/presentation/block_history_sheet.dart`, `admin/lib/presentation/home_screen.dart`, `admin/test/polygon_editor_test.dart`, `admin/pubspec.yaml`, `admin/pubspec.lock`, `.github/workflows/core.yml` |
+| [0028](0028/README.md) | Build do admin com dart-defines e GitHub Release de verdade | 2026-08-05 | Concluído | `.github/workflows/admin-release.yml` |
+| [0029](0029/README.md) | Camada de repositórios do admin em `data/` | 2026-08-05 | Concluído | `admin/lib/data/territory_repository.dart`, `admin/lib/data/block_repository.dart`, `admin/lib/data/publisher_repository.dart`, `admin/lib/data/work_log_repository.dart`, `admin/lib/data/providers.dart`, `admin/test/repositories_test.dart` |
+| [0030](0030/README.md) | README do admin: como rodar, como configurar o build e o aviso do SmartScreen | 2026-08-05 | Concluído | `admin/README.md` |
+| [0031](0031/README.md) | As telas do admin passam a falar com os repositórios | 2026-08-05 | Concluído | `admin/lib/data/providers.dart`, `admin/lib/presentation/home_screen.dart`, `admin/lib/presentation/publishers_screen.dart`, `admin/lib/presentation/territory_editor_screen.dart`, `admin/lib/presentation/block_editor_screen.dart`, `admin/lib/presentation/block_history_sheet.dart` |
+| [0032](0032/README.md) | Apagar quadra pela interface do admin | 2026-08-05 | Concluído | `admin/lib/presentation/home_screen.dart`, `admin/test/block_delete_test.dart` |
+| [0033](0033/README.md) | Sair da congregação pela interface do admin | 2026-08-07 | Concluído | `admin/lib/presentation/home_screen.dart`, `admin/test/sign_out_test.dart` |
+| [0034](0034/README.md) | Testes de widget: configuração inicial e roteamento do admin | 2026-08-07 | Concluído | `admin/test/setup_screen_test.dart`, `admin/test/app_routing_test.dart` |
+| [0035](0035/README.md) | Testes de widget: a `HomeScreen` e as cores do mapa | 2026-08-07 | Concluído | `admin/test/home_screen_test.dart` |
+| [0036](0036/README.md) | Testes de widget: publicadores e código de acesso | 2026-08-07 | Concluído | `admin/test/publishers_screen_test.dart` |
+| [0037](0037/README.md) | Testes de widget: editores de território e quadra, e o histórico de trabalho | 2026-08-07 | Concluído | `admin/test/territory_editor_test.dart`, `admin/test/block_editor_test.dart`, `admin/test/block_history_test.dart` |
+| [0038](0038/README.md) | Alinhar o `CLAUDE.md` ao admin que passou a existir | 2026-08-07 | Concluído | `CLAUDE.md` |
+
+> As entradas 0025–0027 foram registradas **retroativamente** pela Task 01 da spec 0002: o código
+> entrou em `e4af19a`, `0b693aa`, `d1153bd`, `38eccd6`, `12c95fe` e `9165f19` sem passar por uma
+> skill que documentasse na hora.
 
 ---
 

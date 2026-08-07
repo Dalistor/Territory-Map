@@ -78,23 +78,21 @@ class _BlockEditorScreenState extends ConsumerState<BlockEditorScreen> {
       _error = null;
     });
 
-    final api = ref.read(apiProvider);
-    final session = ref.read(sessionProvider);
+    final blocks = ref.read(blockRepositoryProvider);
     try {
-      await session.run(() async {
-        if (widget.isNew) {
-          return api.createBlock(
-            territoryId: widget.territory.id,
-            polygon: state.points,
-            number: _chosenNumber,
-          );
-        }
-        return api.updateBlock(
+      if (widget.isNew) {
+        await blocks.create(
+          territoryId: widget.territory.id,
+          polygon: state.points,
+          number: _chosenNumber,
+        );
+      } else {
+        await blocks.update(
           widget.block!.id,
           polygon: state.points,
           number: _chosenNumber,
         );
-      });
+      }
       ref.invalidate(territoriesProvider);
       if (mounted) Navigator.of(context).pop(true);
     } on core.ApiException catch (error) {

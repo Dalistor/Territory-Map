@@ -72,22 +72,20 @@ class _TerritoryEditorScreenState extends ConsumerState<TerritoryEditorScreen> {
       _error = null;
     });
 
-    final api = ref.read(apiProvider);
-    final session = ref.read(sessionProvider);
+    final territories = ref.read(territoryRepositoryProvider);
     try {
-      await session.run(() async {
-        if (widget.isNew) {
-          return api.createTerritory(
-            name: _name.text.trim(),
-            boundary: state.points,
-          );
-        }
-        return api.updateTerritory(
+      if (widget.isNew) {
+        await territories.create(
+          name: _name.text.trim(),
+          boundary: state.points,
+        );
+      } else {
+        await territories.update(
           widget.territory!.id,
           name: _name.text.trim(),
           boundary: state.points,
         );
-      });
+      }
       ref.invalidate(territoriesProvider);
       if (mounted) Navigator.of(context).pop(true);
     } on core.ApiException catch (error) {

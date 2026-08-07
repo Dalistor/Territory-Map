@@ -13,7 +13,18 @@ São três partes:
 |-------|---------|-----------|
 | **Servidor** | — | API REST, dono das regras de negócio e da validação geométrica |
 | **App Android** (Flutter) | Publicadores em campo | Abre e já mostra a posição do usuário no mapa, com os territórios e quadras da congregação desenhados por cima. Permite **marcar uma quadra como trabalhada**. |
-| **Admin** (Flutter desktop) | Responsável pelos territórios na congregação | Desenha as demarcações dos territórios, marca e numera as quadras, cadastra os publicadores e acompanha o que já foi trabalhado. Fala direto com o servidor. Roda em Windows e Linux. |
+| **Admin** (Flutter desktop) | Responsável pelos territórios na congregação | Desenha as demarcações dos territórios, marca, numera e **apaga** as quadras, cadastra os publicadores e acompanha o que já foi trabalhado. Fala direto com o servidor. Roda em Windows e Linux. |
+
+Duas ações do admin merecem destaque porque destroem dado:
+
+- **Apagar uma quadra** leva o histórico de trabalho dela junto — `block_work_logs.block_id` é
+  `ON DELETE CASCADE`, então isso é literal, não hipótese. A confirmação na tela diz isso com todas
+  as letras antes de perguntar.
+- **Sair da congregação** apaga nome, cidade e senha **deste computador** e devolve o app à tela de
+  configuração inicial. É o caminho para trocar de congregação ou corrigir uma senha digitada
+  errado, sem precisar mexer no keystore do sistema operacional. Nada é tocado no servidor: os
+  territórios, as quadras e os publicadores continuam lá, e digitar as credenciais de novo devolve
+  o acesso.
 
 **Uso pessoal: o admin não tem tela de login no dia a dia.** É uma instalação de uma congregação
 só. Na primeira abertura o app pede nome, cidade e senha **uma única vez**, guarda os três no
@@ -46,12 +57,13 @@ usuário e quem trabalhou cada quadra. Só o admin tem senha.
 | Edição de polígono | `flutter_map_line_editor` + `flutter_map_dragmarker` (exigem `flutter_map ^8`) |
 | Código compartilhado | Pacote Dart local `packages/core` — modelos, cliente da API, conversões geométricas |
 | Infra | Docker + Docker Compose em um Ubuntu |
-| CI/CD | GitHub Actions → deploy do servidor por SSH; build do admin nas 3 plataformas por tag |
+| CI/CD | GitHub Actions → deploy do servidor por SSH; build do admin (Windows e Linux) por tag, publicado numa GitHub Release |
 
 ## Estrutura do Projeto
 
 Monorepo. O servidor e `packages/core` estão completos. O `admin/` está implementado — configuração
-inicial, mapa, editor de polígono, quadras, publicadores e histórico. O `app/` Android ainda não
+inicial, mapa, editor de polígono, quadras (criar, editar e apagar), publicadores, histórico e saída
+da congregação —, com as seis telas cobertas por teste de widget. O `app/` Android ainda não
 existe. No servidor existem o scaffold (config,
 `/health`, Docker e Compose), a base ORM com a sessão do banco, as exceções de domínio e o Alembic
 — o resto abaixo é a estrutura alvo.
@@ -98,11 +110,13 @@ Territory map/
 │   │   ├── domain/             # casos de uso
 │   │   └── presentation/       # telas, widgets, providers
 │   └── test/
-└── admin/                      # Flutter — desktop
+└── admin/                      # Flutter — desktop (sem domain/; veja Arquitetura de Camadas)
+    ├── README.md               # como rodar, o build por tag e o aviso do SmartScreen
     ├── lib/
     │   ├── main.dart
-    │   ├── data/               # repositórios sobre o cliente da API
-    │   ├── domain/             # casos de uso (desenho, numeração, cadastro)
+    │   ├── config.dart         # APP_KEY e API_BASE_URL, injetados por --dart-define
+    │   ├── data/               # territory/block/publisher/work_log_repository.dart,
+    │   │                       # credentials_store.dart, session.dart, providers.dart
     │   └── presentation/       # telas, mapa editável, providers
     └── test/
 ```
@@ -395,15 +409,21 @@ Serviço não conhece HTTP: sinaliza erro com exceção de domínio, e o router 
 
 ### Admin (Flutter desktop)
 
-Mesma separação do app — é o mesmo framework.
+Duas camadas, não três — o admin **não tem `domain/`**, e isso é decisão tomada, não débito.
 
 | Camada | Pasta | Responsabilidade | Proibido |
 |--------|-------|------------------|----------|
-| Presentation | `admin/lib/presentation/` | Telas, mapa editável, providers Riverpod | Chamada HTTP direta, regra de negócio |
-| Domain | `admin/lib/domain/` | Casos de uso: desenhar demarcação, numerar quadra, cadastrar publicador | Dependência de Flutter ou HTTP |
-| Data | `admin/lib/data/` | Repositórios sobre o cliente da API, credenciais no `flutter_secure_storage`, reautenticação silenciosa no 401 | Widget, lógica de apresentação |
+| Presentation | `admin/lib/presentation/` | Telas, mapa editável, providers Riverpod | Chamada HTTP direta, conhecer `TerritoryMapApi` ou `Session` |
+| Data | `admin/lib/data/` | Um repositório por entidade (território, quadra, publicador, registro de trabalho) sobre o cliente da API, mais as credenciais no `flutter_secure_storage` e a `Session` com reautenticação silenciosa no 401 | Widget, lógica de apresentação |
 
-A reautenticação vive em `data/`, não na tela: nenhum caso de uso deve saber que o token expira.
+**Por que não existe `domain/` aqui.** Toda a regra de negócio vive no servidor — validação
+geométrica, sobreposição, numeração de quadra, geração de código. Um caso de uso no admin seria um
+repasse de uma linha sobre o cliente da API, uma camada que só custa arquivo. A camada que paga o
+próprio custo é a de **repositórios em `data/`**: é a interface que os testes de widget substituem
+por um fake, sem simular HTTP. É por isso que ela existe e a outra não. Se algum dia aparecer regra
+que seja de fato do cliente, aí sim cabe reabrir.
+
+A reautenticação vive em `data/`, não na tela: nenhuma tela deve saber que o token expira.
 O caminho é `ApiErrorException.isUnauthorized` → refaz o login com as credenciais guardadas →
 repete a requisição **uma vez**. Falhando de novo, aí sim volta à tela de configuração inicial —
 provavelmente a senha mudou no servidor.
@@ -426,10 +446,10 @@ do outro; o que for comum sobe para `core`.
 |------|----------|-----------------|-----------------------|
 | Framework | pytest | `package:test` (Dart puro) | `flutter_test` |
 | Rodar tudo | `cd server && pytest` | `cd packages/core && dart test` | `cd app && flutter test` |
-| Rodar um arquivo | `pytest tests/services/test_territory_service.py` | `dart test test/geo/latlng_test.dart` | `flutter test test/domain/foo_test.dart` |
+| Rodar um arquivo | `pytest tests/services/test_territory_service.py` | `dart test test/geo/latlng_test.dart` | `flutter test test/home_screen_test.dart` |
 | Cobertura | `pytest --cov=app --cov-report=term-missing` | `dart test --coverage=coverage` | `flutter test --coverage` |
 | Local e nome | `server/tests/**/test_*.py` | `packages/core/test/**/*_test.dart` | `<projeto>/test/**/*_test.dart` |
-| Meta | **100% nos services** (regras de negócio), 80% geral | **100%** em `geo/` | casos de uso do domínio |
+| Meta | **100% nos services** (regras de negócio), 80% geral | **100%** em `geo/` | uma tela, um teste de widget; repositórios cobertos por fake de HTTP |
 
 **TDD é obrigatório em toda regra de negócio do servidor** — validação geométrica, login,
 numeração de quadras. Espelhe a estrutura de `app/` dentro de `tests/`.
@@ -468,7 +488,7 @@ janela. É onde o TDD do lado cliente vale a pena.
 
 ## Como Rodar
 
-O servidor já sobe; os clientes Flutter ainda não existem (passos alvo).
+O servidor, `packages/core` e o admin já sobem; o `app/` Android ainda não existe (passos alvo).
 
 **Banco (necessário para servidor e testes):**
 ```bash
@@ -572,14 +592,28 @@ claro. Antes de uso real, colocar proxy reverso com TLS na frente, fechar a 8000
 apontar `FORWARDED_ALLOW_IPS` para o IP do proxy — senão o rate limit por IP passa a ver sempre o
 mesmo endereço. Também não há backup do volume `postgis_data`.
 
-**Admin** — build das três plataformas no GitHub Actions, disparado por **git tag** (`v*`). Flutter
-não faz cross-compile, então é um job por SO, cada um no seu runner, e os artefatos vão para uma
-GitHub Release:
+**Admin** — build no GitHub Actions (`.github/workflows/admin-release.yml`), disparado por **git tag**
+(`v*`). Flutter não faz cross-compile, então é um job por SO, cada um no seu runner:
 
 | Alvo | Runner | Comando | Artefato |
 |------|--------|---------|----------|
 | Windows | `windows-latest` | `flutter build windows` | `build/windows/x64/runner/Release` |
 | Linux | `ubuntu-latest` | `flutter build linux` | `build/linux/x64/release/bundle` |
+
+**A configuração é compilada junto com o binário.** As duas constantes de `admin/lib/config.dart`
+são `String.fromEnvironment`, então o build injeta o secret `APP_KEY` (o mesmo valor do `APP_SECRET`
+do servidor, que vira o header `X-App-Key`) e a variable `API_BASE_URL` por `--dart-define`. Um
+passo anterior ao `flutter build` **falha de propósito** se qualquer um dos dois estiver vazio,
+dizendo qual cadastrar e onde: um binário sem `APP_KEY` compila normalmente e toma 401 em toda
+requisição, e publicar isso é pior do que não publicar. Cadastrar os valores é passo manual
+(`gh secret set APP_KEY`, `gh variable set API_BASE_URL`), documentado em `admin/README.md`.
+
+**Os binários saem numa GitHub Release, não como artefato de Actions.** Artefato expira em 90 dias e
+exige estar logado no GitHub — não serve para entregar programa a quem vai usar. O job `release`
+roda depois do build, só quando o ref é uma tag, compacta cada alvo (`.zip` no Windows, `.tar.gz` no
+Linux, restaurando o bit de execução que o `upload-artifact` perde) e cria a Release com o `gh` CLI
+já presente no runner — sem action de terceiro tocando o token. O corpo traz como instalar e o aviso
+do SmartScreen. Um `workflow_dispatch` continua parando nos artefatos: não há tag para anexar.
 
 **macOS ficou de fora.** A máquina de desenvolvimento tem só as Command Line Tools, não o Xcode
 completo, então não há como construir nem verificar o resultado aqui — e o admin roda em Windows na
@@ -591,8 +625,11 @@ o admin. Assinar exige certificado pago.
 
 O Linux precisa das dependências GTK no runner (`libgtk-3-dev`, `ninja-build`).
 
-Build verde só prova que compila — ninguém clica num binário dentro do CI. Quem valida
-comportamento são os testes de widget e o que se abre no Chrome durante o desenvolvimento.
+Build verde só prova que compila — ninguém clica num binário dentro do CI. Quem valida comportamento
+são os testes de widget, que existem e cobrem as seis telas (configuração inicial, roteamento,
+`HomeScreen` e as cores do mapa, publicadores, os dois editores e o histórico), mais o que se abre
+no Chrome durante o desenvolvimento. Eles rodam no job de build antes de qualquer compilação, então
+uma tag com teste vermelho não vira Release.
 
 **App Android** — build de APK/AAB também por tag, distribuído fora da Play Store no começo.
 
@@ -673,9 +710,12 @@ comportamento são os testes de widget e o que se abre no Chrome durante o desen
   só o admin consegue devolver o acesso. Se isso virar chamado frequente, o remédio é o admin poder
   gerar o código em lote e a tela deixar isso a dois cliques — não afrouxar a regra.
 - Se o admin precisa de uma visão de **quadras não trabalhadas há mais de N dias** — é o relatório
-  mais provável de aparecer assim que houver histórico, e o índice já está preparado para ele.
-- **Desfazer no editor de polígono**: o `flutter_map_line_editor` não traz pilha de undo. Definir se
-  o admin precisa de undo/redo real ou se "apagar vértice por long-press" basta.
+  mais provável de aparecer assim que houver histórico, e o índice já está preparado para ele. O
+  mapa já destaca por cor (nunca trabalhada, acima de 120 dias, recente), mas não existe listagem.
+
+**Resolvidos, para não voltarem à mesa:** o desfazer do editor de polígono existe — é pilha própria
+(`PolygonEditorController`) envolvendo o `PolyEditor`, não o long-press —, e o admin já apaga quadra
+e sai da congregação pela interface.
 
 ## Implementações
 

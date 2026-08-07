@@ -1,10 +1,28 @@
 name: admin-release
 
-# Builds the desktop admin and attaches the binaries to a GitHub Release.
+# Builds the desktop admin and, on a tag, publishes the binaries as a GitHub
+# Release.
 #
 # Only on a tag: the binaries are a release artifact, not something to produce
 # on every push. Flutter does not cross-compile, so each target builds on its
-# own runner.
+# own runner. `workflow_dispatch` still builds and uploads Actions artifacts,
+# but creates no Release -- there is no tag to attach one to.
+#
+# Two values have to be registered in this repository, because both constants in
+# admin/lib/config.dart are `String.fromEnvironment` and are baked in at compile
+# time:
+#
+#   * secret   APP_KEY       -- the same value as the server's APP_SECRET, sent
+#                               as the `X-App-Key` header. Missing it means
+#                               every request from the published binary gets a
+#                               401.
+#   * variable API_BASE_URL  -- where the API lives, e.g.
+#                               https://territorymap.dalistor.com.br
+#
+# The build job checks both before compiling and fails loudly if either is
+# empty: shipping a binary that silently cannot talk to the server is worse than
+# shipping nothing. Registering them is a manual step, documented in
+# admin/README.md.
 #
 # macOS is deliberately absent. There is no Mac in this setup able to build it
 # (the dev machine has the Command Line Tools, not the full Xcode), and the
@@ -13,7 +31,7 @@ name: admin-release
 #
 # Nothing here is signed. Windows SmartScreen and Gatekeeper will warn on first
 # launch; that is expected and is documented for the admin rather than worked
-# around, since signing needs a paid certificate.
+# around, since signing needs a paid certificate. The release body says so.
 
 on:
   push:
@@ -25,8 +43,10 @@ concurrency:
   group: admin-release-${{ github.ref }}
   cancel-in-progress: false
 
+# Least privilege by default; only the release job widens it, to create the
+# Release and upload the archives to it.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -75,11 +95,116 @@ jobs:
       - name: Test
         run: flutter test
 
+      # Fail here rather than three minutes later with a binary that looks fine
+      # and 401s on every request. The values arrive through `env:` so nothing
+      # is interpolated into the shell, and `bash` is spelled out because the
+      # Windows runner would otherwise use pwsh.
+      - name: Check the build configuration
+        shell: bash
+        env:
+          APP_KEY: ${{ secrets.APP_KEY }}
+          API_BASE_URL: ${{ vars.API_BASE_URL }}
+        run: |
+          set -euo pipefail
+          missing=0
+
+          if [ -z "${APP_KEY}" ]; then
+            echo "::error::The APP_KEY secret is empty. Register it with: gh secret set APP_KEY (Settings > Secrets and variables > Actions > Secrets). It has to be the same value as APP_SECRET in the server's .env, or every request from the published binary gets a 401."
+            missing=1
+          fi
+
+          if [ -z "${API_BASE_URL}" ]; then
+            echo "::error::The API_BASE_URL variable is empty. Register it with: gh variable set API_BASE_URL (Settings > Secrets and variables > Actions > Variables), pointing at the public address of the API, e.g. https://territorymap.dalistor.com.br"
+            missing=1
+          fi
+
+          [ "$missing" -eq 0 ] || exit 1
+
+      # Interpolated rather than read from `env:` because this one command has
+      # to run under both bash and pwsh, and `${{ }}` is substituted before
+      # either shell sees it. Both values are masked in the log.
       - name: Build
-        run: flutter build ${{ matrix.target }} --release
+        run: >-
+          flutter build ${{ matrix.target }} --release
+          --dart-define=APP_KEY=${{ secrets.APP_KEY }}
+          --dart-define=API_BASE_URL=${{ vars.API_BASE_URL }}
 
       - uses: actions/upload-artifact@v4
         with:
           name: territory-map-admin-${{ matrix.target }}
           path: admin/${{ matrix.artifact }}
           if-no-files-found: error
+
+  release:
+    name: Publish the GitHub Release
+    needs: build
+    # Only a tag has something to attach a Release to; a manual run stops at
+    # the artifacts above.
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download the built binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: territory-map-admin-*
+          path: dist
+
+      - name: Package each build
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+
+          # upload-artifact does not preserve the executable bit, so the Linux
+          # binary comes back unrunnable unless it is restored here.
+          chmod +x "dist/territory-map-admin-linux/territory_admin"
+
+          # Renamed before archiving so the archive holds one folder named
+          # after the release, instead of scattering files on extraction.
+          mv "dist/territory-map-admin-windows" "territory-map-admin-$tag-windows"
+          mv "dist/territory-map-admin-linux" "territory-map-admin-$tag-linux"
+
+          zip -qr "territory-map-admin-$tag-windows.zip" "territory-map-admin-$tag-windows"
+          tar -czf "territory-map-admin-$tag-linux.tar.gz" "territory-map-admin-$tag-linux"
+
+          ls -lh territory-map-admin-*.zip territory-map-admin-*.tar.gz
+
+      # The gh CLI is already on the runner, so no third-party action is
+      # involved in handling the token. `--generate-notes` appends the commit
+      # log after the body written here.
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+
+          cat > release-notes.md <<EOF
+          ## Como instalar
+
+          - **Windows**: baixe territory-map-admin-$tag-windows.zip, extraia a pasta
+            inteira e execute territory_admin.exe de dentro dela.
+          - **Linux**: baixe territory-map-admin-$tag-linux.tar.gz, extraia e execute
+            ./territory_admin de dentro da pasta.
+
+          ## O Windows vai avisar que o programa não é confiável
+
+          Os binários **não são assinados** — um certificado de assinatura de código é
+          pago. Na primeira execução o SmartScreen mostra "O Windows protegeu o seu
+          computador"; clique em **Mais informações** e depois em **Executar assim
+          mesmo**. No Linux não há aviso equivalente, mas o arquivo pode precisar de
+          permissão de execução (chmod +x territory_admin).
+
+          O passo a passo completo está em admin/README.md:
+          https://github.com/$GITHUB_REPOSITORY/blob/$tag/admin/README.md
+          EOF
+
+          gh release create "$tag" \
+            --title "Admin $tag" \
+            --notes-file release-notes.md \
+            --generate-notes \
+            "territory-map-admin-$tag-windows.zip" \
+            "territory-map-admin-$tag-linux.tar.gz"

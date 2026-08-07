@@ -6,8 +6,12 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:territory_admin/config.dart';
+import 'package:territory_admin/data/block_repository.dart';
 import 'package:territory_admin/data/credentials_store.dart';
+import 'package:territory_admin/data/publisher_repository.dart';
 import 'package:territory_admin/data/session.dart';
+import 'package:territory_admin/data/territory_repository.dart';
+import 'package:territory_admin/data/work_log_repository.dart';
 import 'package:territory_core/territory_core.dart';
 
 final apiProvider = Provider<TerritoryMapApi>((ref) {
@@ -33,18 +37,52 @@ final isConfiguredProvider = FutureProvider<bool>(
   (ref) => ref.watch(sessionProvider).isConfigured,
 );
 
+// The repositories, all over the same api and the same session: one sign-in
+// serves every screen, and a test replaces any of them with a fake without a
+// server in sight.
+
+final territoryRepositoryProvider = Provider<TerritoryRepository>(
+  (ref) => ApiTerritoryRepository(
+    api: ref.watch(apiProvider),
+    session: ref.watch(sessionProvider),
+  ),
+);
+
+final blockRepositoryProvider = Provider<BlockRepository>(
+  (ref) => ApiBlockRepository(
+    api: ref.watch(apiProvider),
+    session: ref.watch(sessionProvider),
+  ),
+);
+
+final publisherRepositoryProvider = Provider<PublisherRepository>(
+  (ref) => ApiPublisherRepository(
+    api: ref.watch(apiProvider),
+    session: ref.watch(sessionProvider),
+  ),
+);
+
+final workLogRepositoryProvider = Provider<WorkLogRepository>(
+  (ref) => ApiWorkLogRepository(
+    api: ref.watch(apiProvider),
+    session: ref.watch(sessionProvider),
+  ),
+);
+
+// The read models the screens watch. They live here, and not next to the
+// screen that first needed them, so that a test can override the repository
+// underneath and every screen watching the same data sees the same fake.
+
 /// The territories, with their blocks.
-///
-/// The listing endpoint returns areas without blocks, so this fetches the list
-/// and then each detail. The volume is dozens of territories, which is what
-/// makes that acceptable; if it ever stops being, the fix is on the server.
-final territoriesProvider = FutureProvider<List<Territory>>((ref) async {
-  final session = ref.watch(sessionProvider);
-  final api = ref.watch(apiProvider);
-  return session.run(() async {
-    final summaries = await api.listTerritories();
-    return Future.wait(
-      summaries.map((territory) => api.getTerritory(territory.id)),
-    );
-  });
-});
+final territoriesProvider = FutureProvider<List<Territory>>(
+  (ref) => ref.watch(territoryRepositoryProvider).listWithBlocks(),
+);
+
+final publishersProvider = FutureProvider<List<Publisher>>(
+  (ref) => ref.watch(publisherRepositoryProvider).list(),
+);
+
+/// The work history of one block, keyed by block id.
+final workLogsProvider = FutureProvider.family<List<WorkLog>, String>(
+  (ref, blockId) => ref.watch(workLogRepositoryProvider).listFor(blockId),
+);

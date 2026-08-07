@@ -12,11 +12,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:territory_admin/data/providers.dart';
 import 'package:territory_core/territory_core.dart';
 
-final publishersProvider = FutureProvider<List<Publisher>>((ref) {
-  final api = ref.watch(apiProvider);
-  return ref.watch(sessionProvider).run(api.listPublishers);
-});
-
 class PublishersScreen extends ConsumerWidget {
   const PublishersScreen({super.key, this.now});
 
@@ -67,11 +62,10 @@ class PublishersScreen extends ConsumerWidget {
     );
     if (name == null || !context.mounted) return;
 
-    final api = ref.read(apiProvider);
     try {
       final publisher = await ref
-          .read(sessionProvider)
-          .run(() => api.createPublisher(name));
+          .read(publisherRepositoryProvider)
+          .create(name);
       ref.invalidate(publishersProvider);
       if (context.mounted) await _showCode(context, publisher);
     } on ApiException catch (error) {
@@ -171,22 +165,19 @@ class _PublisherTile extends ConsumerWidget {
   }
 
   Future<void> _act(BuildContext context, WidgetRef ref, String action) async {
-    final api = ref.read(apiProvider);
-    final session = ref.read(sessionProvider);
+    final publishers = ref.read(publisherRepositoryProvider);
     try {
       switch (action) {
         case 'show':
           await _showCode(context, publisher);
         case 'code':
-          final updated = await session.run(
-            () => api.regenerateAccessCode(publisher.id),
-          );
+          final updated = await publishers.regenerateCode(publisher.id);
           ref.invalidate(publishersProvider);
           if (context.mounted) await _showCode(context, updated);
         case 'toggle':
-          await session.run(
-            () => api.setPublisherActive(publisher.id, !publisher.isActive),
-          );
+          // The repository takes the state wanted, so the inversion is made
+          // here, once, where the current state is known.
+          await publishers.setActive(publisher.id, !publisher.isActive);
           ref.invalidate(publishersProvider);
       }
     } on ApiException catch (error) {

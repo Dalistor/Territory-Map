@@ -10,14 +10,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:territory_admin/data/providers.dart';
 import 'package:territory_core/territory_core.dart';
 
-final workLogsProvider = FutureProvider.family<List<WorkLog>, String>((
-  ref,
-  blockId,
-) {
-  final api = ref.watch(apiProvider);
-  return ref.watch(sessionProvider).run(() => api.listWorkLogs(blockId));
-});
-
 Future<void> showBlockHistory(
   BuildContext context,
   Territory territory,
@@ -132,9 +124,8 @@ class _LogTile extends ConsumerWidget {
     );
     if (confirmed != true) return;
 
-    final api = ref.read(apiProvider);
     try {
-      await ref.read(sessionProvider).run(() => api.deleteWorkLog(log.id));
+      await ref.read(workLogRepositoryProvider).delete(log.id);
       ref
         ..invalidate(workLogsProvider(blockId))
         // last_worked_at just changed, so the colour on the map has to follow.
