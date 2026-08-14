@@ -1,0 +1,271 @@
+/* Global styling for the admin renderer.
+ *
+ * No component imports this by class name -- every rule below targets plain
+ * tags, roles, and ARIA attributes that the screens already render, so this
+ * file is the only thing that had to be added to stop the app looking like
+ * unstyled HTML. `main.tsx` is the single place that imports it.
+ *
+ * `.leaflet-container` gets an explicit `min-height` rather than relying on
+ * `height: 100%` reaching all the way up through `#root`/`main`: a
+ * percentage height resolves to `auto` against an indeterminate ancestor, so
+ * without this floor the map collapses to zero height in more than one
+ * screen (`HomeScreen`, `TerritoryEditorScreen`).
+ */
+
+:root {
+  --color-primary: #2e7d32;
+  --color-primary-dark: #1b5e20;
+  --color-danger: #c62828;
+  --color-text: #1a1a1a;
+  --color-text-muted: #5f6368;
+  --color-border: #d7dbe0;
+  --color-surface: #ffffff;
+  --color-background: #f4f6f5;
+  --radius: 6px;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  color: var(--color-text);
+  background: var(--color-background);
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0 0 0.5em;
+  line-height: 1.2;
+}
+
+p {
+  line-height: 1.5;
+}
+
+a {
+  color: var(--color-primary-dark);
+}
+
+/* Root screen shells (App.tsx's own loading state, SetupScreen, HomeScreen,
+   editors) are all a single top-level <div> or <p> -- giving that shell
+   flex/height here is what lets a map or a scrollable list fill the window
+   instead of collapsing to its content size. */
+#root > div,
+#root > p {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+header h1 {
+  flex: 1;
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 20px;
+  gap: 12px;
+  overflow: auto;
+}
+
+/* The territory list and the map are siblings inside <main> on HomeScreen;
+   letting the map's own wrapper grow is what gives it real pixels to fill. */
+main > .leaflet-container,
+main > div:has(> .leaflet-container) {
+  flex: 1;
+  min-height: 0;
+}
+
+.leaflet-container {
+  min-height: 420px;
+  width: 100%;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+}
+
+ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+li > span:first-child {
+  font-weight: 600;
+  margin-right: auto;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+input[aria-invalid='true'] {
+  border-color: var(--color-danger);
+}
+
+button {
+  font: inherit;
+  padding: 8px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: var(--color-background);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* The one primary action per form/toolbar is always the last submit-style
+   button rendered ("Entrar", "Salvar", "Gerar código", "Cadastrar") -- typing
+   a shared selector for all of them without touching every screen. */
+form button[type='submit'],
+button[type='submit'] {
+  background: var(--color-primary);
+  border-color: var(--color-primary-dark);
+  color: #fff;
+}
+
+form button[type='submit']:hover:not(:disabled),
+button[type='submit']:hover:not(:disabled) {
+  background: var(--color-primary-dark);
+}
+
+[role='alert'] {
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: #fdecea;
+  border: 1px solid var(--color-danger);
+  color: #7f1d1d;
+}
+
+[role='note'] {
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: #e8f0fe;
+  border: 1px solid #90b4f5;
+  color: #1a3a6b;
+}
+
+[role='dialog'] {
+  max-width: 420px;
+  padding: 20px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+[role='menu'] {
+  padding: 6px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+[role='menu'] button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+}
+
+[role='menu'] button:hover:not(:disabled) {
+  background: var(--color-background);
+}
+
+[role='toolbar'] {
+  display: flex;
+  gap: 8px;
+}
+
+[role='progressbar'],
+[role='status'] {
+  color: var(--color-text-muted);
+}

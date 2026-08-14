@@ -13,7 +13,7 @@ São três partes:
 |-------|---------|-----------|
 | **Servidor** | — | API REST, dono das regras de negócio e da validação geométrica |
 | **App Android** (Flutter) | Publicadores em campo | Abre e já mostra a posição do usuário no mapa, com os territórios e quadras da congregação desenhados por cima. Permite **marcar uma quadra como trabalhada**. |
-| **Admin** (Flutter desktop) | Responsável pelos territórios na congregação | Desenha as demarcações dos territórios, marca, numera e **apaga** as quadras, cadastra os publicadores e acompanha o que já foi trabalhado. Fala direto com o servidor. Roda em Windows e Linux. |
+| **Admin** (Electron desktop) | Responsável pelos territórios na congregação | Desenha as demarcações dos territórios, marca, numera e **apaga** as quadras, cadastra os publicadores e acompanha o que já foi trabalhado. Fala direto com o servidor. Roda em Windows, Linux e macOS. |
 
 Duas ações do admin merecem destaque porque destroem dado:
 
@@ -27,9 +27,10 @@ Duas ações do admin merecem destaque porque destroem dado:
   o acesso.
 
 **Uso pessoal: o admin não tem tela de login no dia a dia.** É uma instalação de uma congregação
-só. Na primeira abertura o app pede nome, cidade e senha **uma única vez**, guarda os três no
-`flutter_secure_storage` e autentica sozinho dali em diante; ao receber 401 (o JWT dura 12h), ele
-refaz o login em silêncio e repete a requisição. Quem usa nunca mais vê a tela.
+só. Na primeira abertura o app pede nome, cidade e senha **uma única vez**, guarda os três
+criptografados em disco via `safeStorage` do Electron e autentica sozinho dali em diante; ao receber
+401 (o JWT dura 12h), ele refaz o login em silêncio e repete a requisição. Quem usa nunca mais vê a
+tela.
 
 **A congregação continua existindo no servidor, e isso é de propósito.** Ela é a única barreira de
 escopo da API: todo dado é filtrado por `congregation_id` derivado do token, e as rotas de escrita
@@ -51,20 +52,26 @@ usuário e quem trabalhou cada quadra. Só o admin tem senha.
 | Banco | PostgreSQL 16 + **PostGIS** |
 | Geometria (Python) | Shapely / GeoAlchemy2 |
 | Auth | JWT (`python-jose`) + hash de senha com **bcrypt** (`passlib`) |
-| Mapas | **OpenStreetMap** via `flutter_map` nos dois clientes. Sem chave de API, sem billing. |
+| Mapas | **OpenStreetMap** — `flutter_map` no app; `react-leaflet`/Leaflet no admin. Sem chave de API, sem billing. |
 | App (Android) | Flutter (Dart), Riverpod para estado, Drift/SQLite para cache offline |
-| Admin (desktop) | **Flutter desktop** (Windows/Linux), Riverpod, `flutter_secure_storage` para as credenciais |
-| Edição de polígono | `flutter_map_line_editor` + `flutter_map_dragmarker` (exigem `flutter_map ^8`) |
-| Código compartilhado | Pacote Dart local `packages/core` — modelos, cliente da API, conversões geométricas |
+| Admin (desktop) | **Electron + React + TypeScript**, Leaflet + **Leaflet-Geoman** para desenhar/editar polígono, `safeStorage` (Electron) para as credenciais |
+| Código compartilhado (Dart) | Pacote Dart local `packages/core`, usado hoje só pelo `app/` — modelos, cliente da API, conversões geométricas |
 | Infra | Docker + Docker Compose em um Ubuntu |
-| CI/CD | GitHub Actions → deploy do servidor por SSH; build do admin (Windows e Linux) por tag, publicado numa GitHub Release |
+| CI/CD | GitHub Actions → deploy do servidor por SSH. O admin não tem CI: o build (`electron-builder`) é sempre local |
+
+> O admin trocou de Flutter para Electron em 2026-08-08 porque esta máquina não compila
+> `flutter build macos` sem o Xcode completo, e o build local em Electron já era um caminho
+> validado em outro projeto do autor. **Arquitetura de processo do admin:** o processo **main**
+> é o único que fala com a API e guarda credenciais; o **renderer** (React) nunca vê senha nem
+> token — só chama `window.api.*`, exposto pelo **preload** via `contextBridge`, com
+> `contextIsolation: true`, `nodeIntegration: false` e `sandbox: true`.
 
 ## Estrutura do Projeto
 
 Monorepo. O servidor e `packages/core` estão completos. O `admin/` está implementado — configuração
 inicial, mapa, editor de polígono, quadras (criar, editar e apagar), publicadores, histórico e saída
-da congregação —, com as seis telas cobertas por teste de widget. O `app/` Android ainda não
-existe. No servidor existem o scaffold (config,
+da congregação —, com as seis telas cobertas por teste (Vitest + React Testing Library). O `app/`
+Android ainda não existe. No servidor existem o scaffold (config,
 `/health`, Docker e Compose), a base ORM com a sessão do banco, as exceções de domínio e o Alembic
 — o resto abaixo é a estrutura alvo.
 
@@ -97,7 +104,7 @@ Territory map/
 │   ├── pyproject.toml
 │   └── Dockerfile
 ├── packages/
-│   └── core/                   # pacote Dart compartilhado app ↔ admin
+│   └── core/                   # pacote Dart compartilhado, hoje usado só pelo app/
 │       ├── lib/
 │       │   ├── models/         # Territory, Block, User, LatLng…
 │       │   ├── api/            # cliente HTTP da API, DTOs, erros
@@ -110,19 +117,26 @@ Territory map/
 │   │   ├── domain/             # casos de uso
 │   │   └── presentation/       # telas, widgets, providers
 │   └── test/
-└── admin/                      # Flutter — desktop (sem domain/; veja Arquitetura de Camadas)
-    ├── README.md               # como rodar, o build por tag e o aviso do SmartScreen
-    ├── lib/
-    │   ├── main.dart
-    │   ├── config.dart         # APP_KEY e API_BASE_URL, injetados por --dart-define
-    │   ├── data/               # territory/block/publisher/work_log_repository.dart,
-    │   │                       # credentials_store.dart, session.dart, providers.dart
-    │   └── presentation/       # telas, mapa editável, providers
-    └── test/
+└── admin/                      # Electron + React + TypeScript — desktop (sem domain/; veja Arquitetura de Camadas)
+    ├── README.md               # como rodar, como configurar o .env e o aviso do SmartScreen/Gatekeeper
+    ├── electron-builder.yml    # empacotamento local: dmg/zip (mac), nsis (Windows), AppImage/tar.gz (Linux)
+    ├── .env.example             # API_BASE_URL e APP_KEY, lidos pelo main process via dotenv
+    └── src/
+        ├── main/                # processo principal: fala com a API (api-client.ts), guarda as
+        │                        # credenciais com safeStorage (credentials-store.ts), sessão com
+        │                        # reautenticação silenciosa (session.ts) e os handlers de IPC
+        ├── preload/             # ponte contextBridge — único lugar que expõe window.api ao renderer
+        ├── renderer/            # React: telas (screens/), mapa editável (map/, com Leaflet-Geoman
+        │                        # confinado a um único arquivo), providers
+        └── shared/              # tipos e regras puras usados por main e renderer: modelos, geometria,
+                                  # erros de API, contrato de IPC (ipc-contract.ts)
 ```
+Testes ficam co-localizados dentro de `src/` (`*.test.ts`/`*.test.tsx`), não numa pasta `test/` à
+parte — ver "Testes" mais abaixo para o porquê.
 
-`app/` e `admin/` dependem de `packages/core` por `path:` no `pubspec.yaml`. Nada de duplicar
-modelo ou cliente da API entre os dois.
+`app/` depende de `packages/core` por `path:` no `pubspec.yaml`; nada de duplicar modelo ou cliente
+da API dentro do próprio Dart. O `admin/` não depende de `packages/core` — é outra linguagem
+(TypeScript) — e tem sua própria pasta `admin/src/shared/` para o equivalente.
 
 ## Modelo de Dados
 
@@ -340,25 +354,25 @@ Registro de que uma quadra foi trabalhada. Append-only pelo app.
   definir um User-Agent identificando o app e não fazer *bulk download*.
 - **Monorepo.** Os três projetos compartilham o contrato da API; versionar junto evita que o app e
   o admin fiquem fora de sincronia com o servidor.
-- **Flutter também no admin, em vez de Electron.** Uma linguagem só do lado cliente, e o que antes
-  seria escrito duas vezes em linguagens diferentes — modelos, cliente da API, conversão de
-  coordenadas — vira um pacote Dart compartilhado, testado uma vez. Some também toda a superfície de
-  segurança do Electron (`contextIsolation`, preload, IPC) e o runtime Chromium de ~150 MB.
-  O desenho do polígono, que seria o argumento a favor do Leaflet, é coberto por
-  [`flutter_map_line_editor`](https://pub.dev/packages/flutter_map_line_editor) sobre
-  [`flutter_map_dragmarker`](https://pub.dev/packages/flutter_map_dragmarker): tocar para adicionar
-  vértice, arrastar vértice, arrastar ponto intermediário para inserir, long-press para remover e
-  `addClosePathMarker` para fechar o polígono. Ambos pedem `flutter_map ^8.0.0`, que é a major
-  corrente.
-- **Risco assumido nas libs de edição de mapa.** São pacotes pequenos (~5k downloads, 32 likes) e
-  sem release recente — não porque estejam abandonados, mas porque o `flutter_map` não quebrou API
-  desde a v8. Se pararem, são MIT e pequenos o bastante para *vendorizar*. O editor está confinado
-  em `admin/lib/presentation/map/polygon_editor.dart`, que é o único arquivo que os importa.
-- **O undo do editor precisou envolver a biblioteca.** O `PolyEditor` não expõe gancho para início
-  de arraste nem para remoção, então cada `DragMarker` que ele produz é reconstruído com o snapshot
-  encadeado antes do callback original. Sem isso, desfazer depois de arrastar pulava para antes do
-  último ponto *adicionado*, perdendo o arraste e um vértice junto. Não mexa nisso sem rodar
-  `test/polygon_editor_test.dart`. *Snapping* continua não existindo.
+- **Electron no admin, não mais Flutter.** Decisão revertida em 2026-08-08 (ver a nota no início da
+  Stack Técnica): esta máquina de desenvolvimento não compila `flutter build macos` sem o Xcode
+  completo, e o dono do projeto já tinha um caminho de build local em Electron validado em outro
+  projeto próprio. O argumento original a favor do Flutter (uma linguagem só, pacote compartilhado,
+  sem a superfície de segurança do Electron) parou de valer quando o build passou a ser local e sem
+  CI — o preço do `contextIsolation`/preload/IPC deixou de ser opcional. O admin em TypeScript não
+  compartilha código com `packages/core` (Dart); tem sua própria pasta `admin/src/shared/`.
+- **Risco assumido na lib de edição de mapa.** Leaflet-Geoman é a lib de terceiro para
+  desenhar/editar o polígono (arrastar vértice, arrastar ponto intermediário para inserir, remover
+  vértice). O editor está confinado a `admin/src/renderer/map/PolygonEditorLayers.tsx`, o único
+  arquivo do projeto que a importa — mesmo princípio de isolamento que o Flutter antigo aplicava a
+  `flutter_map_line_editor`/`flutter_map_dragmarker`, para o caso de precisar trocar a lib depois.
+- **O undo do editor não depende da biblioteca de mapa.** `admin/src/renderer/map/usePolygonEditor.ts`
+  é um controller puro (sem Leaflet/Geoman) que tira um snapshot **antes** de cada mutação —
+  adicionar ponto, mover ponto, remover ponto, limpar —, não só ao adicionar; é o que faz desfazer
+  depois de um arraste restaurar o estado de antes do arraste, e não de antes do último ponto
+  adicionado. A camada visual (`PolygonEditorLayers.tsx`) só traduz eventos do Geoman em chamadas ao
+  controller, nunca muta o estado direto. Não mexa nisso sem rodar
+  `admin/src/renderer/map/usePolygonEditor.test.ts`. *Snapping* continua não existindo.
 - **Multi-tenant por congregação.** Todo dado é escopado por `congregation_id`, sempre derivado do
   token — nunca aceito como parâmetro vindo do cliente.
 - **Dois tipos de token, com poderes bem diferentes.** O JWT do admin expira rápido e pode tudo
@@ -407,25 +421,33 @@ Serviço não conhece HTTP: sinaliza erro com exceção de domínio, e o router 
 
 **Direção:** `presentation → domain ← data`. O domínio não depende de ninguém.
 
-### Admin (Flutter desktop)
+### Admin (Electron)
 
-Duas camadas, não três — o admin **não tem `domain/`**, e isso é decisão tomada, não débito.
+Quatro camadas, ainda sem `domain/` — é a mesma decisão de antes, adaptada ao processo duplo do
+Electron em vez de reaberta.
 
 | Camada | Pasta | Responsabilidade | Proibido |
 |--------|-------|------------------|----------|
-| Presentation | `admin/lib/presentation/` | Telas, mapa editável, providers Riverpod | Chamada HTTP direta, conhecer `TerritoryMapApi` ou `Session` |
-| Data | `admin/lib/data/` | Um repositório por entidade (território, quadra, publicador, registro de trabalho) sobre o cliente da API, mais as credenciais no `flutter_secure_storage` e a `Session` com reautenticação silenciosa no 401 | Widget, lógica de apresentação |
+| Main | `admin/src/main/` | Fala com a API (`api-client.ts`), guarda as credenciais com `safeStorage` (`credentials-store.ts`), a `session` com reautenticação silenciosa no 401 (`session.ts`), registra os handlers de IPC | JSX/React, conhecer o DOM |
+| Preload | `admin/src/preload/` | Expõe `window.api` via `contextBridge`, um método por canal, 1:1 com `shared/ipc-contract.ts` | Qualquer lógica além de repassar para `ipcRenderer.invoke` |
+| Renderer | `admin/src/renderer/` | Telas, mapa editável (Leaflet-Geoman confinado a um arquivo), providers/estado React | Chamada HTTP direta, `ipcRenderer` direto, conhecer `api-client`, `session` ou `safeStorage` — só fala com `window.api` |
+| Shared | `admin/src/shared/` | Tipos e regras puras usados por Main e Renderer: modelos, geometria (`geo.ts`), erros de API, contrato de IPC | Módulo `electron`, DOM, chamada de rede |
 
-**Por que não existe `domain/` aqui.** Toda a regra de negócio vive no servidor — validação
-geométrica, sobreposição, numeração de quadra, geração de código. Um caso de uso no admin seria um
-repasse de uma linha sobre o cliente da API, uma camada que só custa arquivo. A camada que paga o
-próprio custo é a de **repositórios em `data/`**: é a interface que os testes de widget substituem
-por um fake, sem simular HTTP. É por isso que ela existe e a outra não. Se algum dia aparecer regra
-que seja de fato do cliente, aí sim cabe reabrir.
+**Por que não existe `domain/` aqui.** Toda a regra de negócio continua vivendo no servidor —
+validação geométrica, sobreposição, numeração de quadra, geração de código — isso não mudou com a
+troca de stack. O que mudou é quem desempenha o papel do antigo `data/`: é o **Main**, que fala com
+a API e só repassa o resultado pelo IPC, sem decidir nada de negócio no caminho. O **Renderer** é
+Presentation pura — não sabe que existe HTTP, token ou arquivo de credenciais, só conhece
+`window.api`. Um caso de uso no admin ainda seria um repasse de uma linha sobre o cliente da API,
+uma camada que só custaria arquivo; a camada que paga o próprio custo continua sendo a que fala com
+a API de verdade (agora Main, antes `data/`), porque é a interface que os testes substituem por um
+fake, sem HTTP nem uma janela Electron real. Se algum dia aparecer regra que seja de fato do
+cliente, aí sim cabe reabrir `domain/`.
 
-A reautenticação vive em `data/`, não na tela: nenhuma tela deve saber que o token expira.
-O caminho é `ApiErrorException.isUnauthorized` → refaz o login com as credenciais guardadas →
-repete a requisição **uma vez**. Falhando de novo, aí sim volta à tela de configuração inicial —
+A reautenticação vive em `main/session.ts`, não na tela: nenhuma tela deve saber que o token
+expira. O caminho é `ApiErrorException.isUnauthorized` → refaz o login com as credenciais guardadas
+→ repete a ação **uma vez**. Falhando de novo, lança `CredentialsRejectedException`, que o IPC
+serializa para o renderer poder distinguir do resto e voltar à tela de configuração inicial —
 provavelmente a senha mudou no servidor.
 
 ### Pacote compartilhado (`packages/core`)
@@ -437,19 +459,26 @@ provavelmente a senha mudou no servidor.
 | `lib/geo/` | Conversão `LatLng` ↔ GeoJSON, pré-validação de polígono | Rede, banco |
 
 `packages/core` **não depende de `flutter`**, só de `dart:core` e do pacote HTTP — assim roda em
-teste puro (`dart test`), rápido e sem emulador. Nem `app/` nem `admin/` podem importar código um
-do outro; o que for comum sobe para `core`.
+teste puro (`dart test`), rápido e sem emulador. É usado hoje só pelo `app/`: o `admin/` é
+TypeScript e não importa Dart, então tem a sua própria pasta `admin/src/shared/` para o que aqui é
+`geo/`, `models/` e `api/`. Se um dia existir um segundo cliente Dart, o que for comum a ele e ao
+`app/` sobe para `core`.
 
 ## Testes
 
-| Item | Servidor | `packages/core` | App e Admin (Flutter) |
-|------|----------|-----------------|-----------------------|
-| Framework | pytest | `package:test` (Dart puro) | `flutter_test` |
-| Rodar tudo | `cd server && pytest` | `cd packages/core && dart test` | `cd app && flutter test` |
-| Rodar um arquivo | `pytest tests/services/test_territory_service.py` | `dart test test/geo/latlng_test.dart` | `flutter test test/home_screen_test.dart` |
-| Cobertura | `pytest --cov=app --cov-report=term-missing` | `dart test --coverage=coverage` | `flutter test --coverage` |
-| Local e nome | `server/tests/**/test_*.py` | `packages/core/test/**/*_test.dart` | `<projeto>/test/**/*_test.dart` |
-| Meta | **100% nos services** (regras de negócio), 80% geral | **100%** em `geo/` | uma tela, um teste de widget; repositórios cobertos por fake de HTTP |
+| Item | Servidor | `packages/core` | App (Flutter) | Admin (Electron) |
+|------|----------|-----------------|----------------|-------------------|
+| Framework | pytest | `package:test` (Dart puro) | `flutter_test` | Vitest + React Testing Library |
+| Rodar tudo | `cd server && pytest` | `cd packages/core && dart test` | `cd app && flutter test` | `cd admin && npm test` |
+| Rodar um arquivo | `pytest tests/services/test_territory_service.py` | `dart test test/geo/latlng_test.dart` | `flutter test test/home_screen_test.dart` | `npx vitest run src/renderer/screens/HomeScreen.test.tsx` |
+| Cobertura | `pytest --cov=app --cov-report=term-missing` | `dart test --coverage=coverage` | `flutter test --coverage` | `npx vitest run --coverage` |
+| Local e nome | `server/tests/**/test_*.py` | `packages/core/test/**/*_test.dart` | `<projeto>/test/**/*_test.dart` | `admin/src/**/*.test.ts(x)`, co-localizado |
+| Meta | **100% nos services** (regras de negócio), 80% geral | **100%** em `geo/` | uma tela, um teste de widget; repositórios cobertos por fake de HTTP | uma tela, um teste de componente; `main/` coberto por fake das dependências do Electron (`safeStorage`, `fetch`, `ipcMain`) |
+
+**Por que o admin foge do `test/` espelhado que o resto do projeto usa.** Arquivo `*.test.ts(x)` ao
+lado do código, não numa pasta paralela, é a convenção do próprio ecossistema Vitest/Vite — seguir
+o padrão da ferramenta em vez de forçar o espelhamento do servidor/Dart economiza atrito com
+qualquer gerador ou plugin que espere esse layout.
 
 **TDD é obrigatório em toda regra de negócio do servidor** — validação geométrica, login,
 numeração de quadras. Espelhe a estrutura de `app/` dentro de `tests/`.
@@ -483,8 +512,11 @@ janela. É onde o TDD do lado cliente vale a pena.
 - **Repositórios**: em teste de service que *não* seja geométrico, use fake in-memory implementando
   a mesma interface — não `MagicMock` solto.
 - **Relógio**: injete um provider de tempo; nunca chame `datetime.now()` direto no service.
-- **HTTP no app/admin**: cliente da API por trás de interface, com implementação fake nos testes.
-  Como o cliente vive em `core`, o mesmo fake serve aos dois projetos.
+- **HTTP no app e no admin**: cliente da API por trás de interface, com implementação fake nos
+  testes — nunca uma janela Electron ou um emulador real. No `app/`, o cliente vive em
+  `packages/core` e o mesmo fake serve a qualquer futuro cliente Dart. No admin, o cliente
+  (`main/api-client.ts`) é local ao projeto, e os testes de `session.ts`/`ipc-handlers.ts` recebem
+  um fake dele por injeção.
 
 ## Como Rodar
 
@@ -524,12 +556,12 @@ cd app && flutter pub get && flutter run
 
 **Admin (desktop):**
 ```bash
-cd admin && flutter pub get && flutter run -d chrome
+cd admin && npm install && npm run dev
 ```
-O alvo entregue é Windows/Linux, mas o desenvolvimento roda no **Chrome**: esta máquina não tem o
-Xcode completo, e `flutter run -d macos` não funcionaria. O Chrome dá verificação visual de
-verdade; os binários saem do CI por tag. Em máquina com o SO alvo, trocar por `-d windows` ou
-`-d linux`.
+Sobe uma janela Electron de verdade com hot reload: `main`/`preload` recompilam e a janela reinicia
+quando esse código muda, e o `renderer` (React) atualiza por HMR do Vite. Antes da primeira vez,
+copie `admin/.env.example` para `admin/.env` e preencha `API_BASE_URL` e `APP_KEY` — ver "Chave de
+aplicação" mais abaixo para o que `APP_KEY` precisa valer.
 
 **Pacote compartilhado:**
 ```bash
@@ -592,44 +624,42 @@ claro. Antes de uso real, colocar proxy reverso com TLS na frente, fechar a 8000
 apontar `FORWARDED_ALLOW_IPS` para o IP do proxy — senão o rate limit por IP passa a ver sempre o
 mesmo endereço. Também não há backup do volume `postgis_data`.
 
-**Admin** — build no GitHub Actions (`.github/workflows/admin-release.yml`), disparado por **git tag**
-(`v*`). Flutter não faz cross-compile, então é um job por SO, cada um no seu runner:
+**Admin** — sem CI. `.github/workflows/admin-release.yml` foi removido junto com o admin em Flutter
+que ele compilava, e não ganhou substituto: o build é sempre **local**, com
+[`electron-builder`](https://www.electron.build/) (configurado em `admin/electron-builder.yml`),
+documentado em `admin/README.md`:
 
-| Alvo | Runner | Comando | Artefato |
-|------|--------|---------|----------|
-| Windows | `windows-latest` | `flutter build windows` | `build/windows/x64/runner/Release` |
-| Linux | `ubuntu-latest` | `flutter build linux` | `build/linux/x64/release/bundle` |
+```bash
+npm run build:mac    # gera .dmg e .zip em admin/dist/
+npm run build:win    # gera o instalador NSIS em admin/dist/
+npm run build:linux  # gera .AppImage e .tar.gz em admin/dist/
+```
 
-**A configuração é compilada junto com o binário.** As duas constantes de `admin/lib/config.dart`
-são `String.fromEnvironment`, então o build injeta o secret `APP_KEY` (o mesmo valor do `APP_SECRET`
-do servidor, que vira o header `X-App-Key`) e a variable `API_BASE_URL` por `--dart-define`. Um
-passo anterior ao `flutter build` **falha de propósito** se qualquer um dos dois estiver vazio,
-dizendo qual cadastrar e onde: um binário sem `APP_KEY` compila normalmente e toma 401 em toda
-requisição, e publicar isso é pior do que não publicar. Cadastrar os valores é passo manual
-(`gh secret set APP_KEY`, `gh variable set API_BASE_URL`), documentado em `admin/README.md`.
+Cada comando roda o build do `electron-vite` (que inclui `tsc --noEmit`) e depois empacota para o
+alvo.
 
-**Os binários saem numa GitHub Release, não como artefato de Actions.** Artefato expira em 90 dias e
-exige estar logado no GitHub — não serve para entregar programa a quem vai usar. O job `release`
-roda depois do build, só quando o ref é uma tag, compacta cada alvo (`.zip` no Windows, `.tar.gz` no
-Linux, restaurando o bit de execução que o `upload-artifact` perde) e cria a Release com o `gh` CLI
-já presente no runner — sem action de terceiro tocando o token. O corpo traz como instalar e o aviso
-do SmartScreen. Um `workflow_dispatch` continua parando nos artefatos: não há tag para anexar.
+**A configuração não é mais compilada junto com o binário.** `API_BASE_URL` e `APP_KEY` (mesmo
+propósito dos antigos `--dart-define`) chegam pelo `admin/.env`, lido em tempo de execução pelo
+main process via `dotenv` — preencher os dois em `admin/.env` (a partir de `admin/.env.example`) é
+passo manual antes de rodar ou empacotar. Um app sem `APP_KEY` sobe normalmente e toma 401 em toda
+requisição, o mesmo risco que o passo de build do Flutter falhava de propósito para evitar; aqui
+quem evita é o operador, na hora de preencher o `.env`.
 
-**macOS ficou de fora.** A máquina de desenvolvimento tem só as Command Line Tools, não o Xcode
-completo, então não há como construir nem verificar o resultado aqui — e o admin roda em Windows na
-prática. Voltar depois é uma entrada na matriz mais um runner `macos-latest`.
+**Compilar Windows/Linux a partir do macOS pode não funcionar sem ferramentas extra.** O
+`electron-builder` cross-compila a maioria dos alvos a partir de qualquer SO, mas o instalador NSIS
+do Windows depende do Wine para rodar fora do Windows. Se `build:win`/`build:linux` falharem por
+isso, o caminho é compilar Windows num Windows e Linux num Linux — não há CI cobrindo isso, então é
+`npm install` e o comando de build correspondente na máquina de destino. `build:mac` só funciona
+num macOS de qualquer forma.
 
-Sem assinatura de código — os binários não são assinados, então o Windows SmartScreen vai exibir
-aviso de desenvolvedor não identificado na primeira execução. Documentar o "abrir mesmo assim" para
-o admin. Assinar exige certificado pago.
+Sem assinatura de código — os binários não são assinados, então o Windows SmartScreen e o
+Gatekeeper do macOS vão exibir aviso de desenvolvedor não identificado na primeira execução.
+Documentar o "abrir mesmo assim" para o admin. Assinar exige certificado pago.
 
-O Linux precisa das dependências GTK no runner (`libgtk-3-dev`, `ninja-build`).
-
-Build verde só prova que compila — ninguém clica num binário dentro do CI. Quem valida comportamento
-são os testes de widget, que existem e cobrem as seis telas (configuração inicial, roteamento,
-`HomeScreen` e as cores do mapa, publicadores, os dois editores e o histórico), mais o que se abre
-no Chrome durante o desenvolvimento. Eles rodam no job de build antes de qualquer compilação, então
-uma tag com teste vermelho não vira Release.
+Build verde só prova que compila — ninguém clica num binário. Quem valida comportamento são os
+testes (Vitest + React Testing Library), que existem e cobrem as seis telas (configuração inicial,
+roteamento, `HomeScreen` e as cores do mapa, publicadores, os dois editores e o histórico), mais o
+que se abre com `npm run dev` durante o desenvolvimento.
 
 **App Android** — build de APK/AAB também por tag, distribuído fora da Play Store no começo.
 
@@ -638,13 +668,18 @@ uma tag com teste vermelho não vira Release.
 - **Idioma**: código, nomes de arquivo, commits e comentários em **inglês**. Documentação em
   `.claude/` e conversa em **português**.
 - **Naming**: Python `snake_case` (classes `PascalCase`); Dart `lowerCamelCase` com arquivos
-  `snake_case.dart` e classes `PascalCase`.
+  `snake_case.dart` e classes `PascalCase`; TypeScript (admin) `lowerCamelCase` para
+  variáveis/funções e `PascalCase` para classes/componentes React, arquivos `kebab-case.ts` em
+  `main/`/`preload/`/`shared/` e `PascalCase.tsx` para componentes de tela em `renderer/`.
 - **Um arquivo por entidade** em cada camada — `models/territory.py`, `services/territory_service.py`.
-- **Nada de coordenada como float solto**: use o tipo `LatLng` de `packages/core` para não trocar
-  latitude com longitude. Ele é a única fonte da conversão para GeoJSON.
-- **Lógica que serve aos dois clientes vive em `packages/core`.** Se você está prestes a copiar um
-  arquivo de `app/` para `admin/`, ele deveria estar em `core`.
-- **Lint**: `flutter_lints` nos dois apps e `lints/recommended` em `core`, sem warning ignorado.
+- **Nada de coordenada como float solto**: use o tipo `LatLng` — `packages/core/lib/geo/lat_lng.dart`
+  no lado Dart (`app/`), `admin/src/shared/geo.ts` no admin — para não trocar latitude com
+  longitude. Cada um é a única fonte da conversão para GeoJSON do seu lado.
+- **Lógica que serve a mais de um cliente Dart vive em `packages/core`.** Hoje é só o `app/`; se
+  isso mudar, evite copiar um arquivo entre eles — suba para `core`. O admin (TypeScript) não entra
+  nessa regra: sua lógica compartilhada entre `main/` e `renderer/` vive em `admin/src/shared/`.
+- **Lint**: `flutter_lints` no `app/` e `lints/recommended` em `core`; ESLint com
+  `typescript-eslint` recomendado no admin. Sem warning ignorado em nenhum dos três.
 - **Migrações sempre via Alembic**, nunca DDL manual no banco.
 - **Erros de domínio** são exceções próprias (`TerritoryOverlapError`, `BlockOutsideTerritoryError`),
   traduzidas para HTTP só no router.
@@ -673,13 +708,14 @@ uma tag com teste vermelho não vira Release.
 - **O log de trabalho identifica pessoas.** Guarda quem esteve em qual quadra e quando. Guardar só
   isso — nada de posição GPS, rota ou horário de deslocamento no `BlockWorkLog`.
 - **Ordem das coordenadas** é a fonte clássica de bug aqui: PostGIS/GeoJSON usam `(lon, lat)` e o
-  `flutter_map` usa `(lat, lon)`. A conversão mora numa única função em `packages/core/lib/geo/`,
-  com teste. Não converter à mão em nenhum outro lugar.
+  `flutter_map`/Leaflet usam `(lat, lon)`. A conversão mora numa única função por lado —
+  `packages/core/lib/geo/` no Dart, `admin/src/shared/geo.ts` no admin —, cada uma com teste. Não
+  converter à mão em nenhum outro lugar.
 - **O admin guarda a senha da congregação no desktop**, não só o token — é o preço do login
-  automático. Usar `flutter_secure_storage` (DPAPI no Windows, libsecret no Linux) e nunca
-  `SharedPreferences`, que é texto puro em disco. Nunca logar essas credenciais, nem em modo debug.
-- **Binários do admin não são assinados.** Windows SmartScreen e Gatekeeper vão reclamar na primeira
-  execução. É esperado; instruir o admin em vez de tentar contornar.
+  automático. Usar o `safeStorage` do Electron (criptografa com o keychain do sistema operacional) e
+  nunca gravar as credenciais em texto puro. Nunca logar essas credenciais, nem em modo debug.
+- **Binários do admin não são assinados.** Windows SmartScreen e Gatekeeper (macOS) vão reclamar na
+  primeira execução. É esperado; instruir o admin em vez de tentar contornar.
 - **Uso dos tiles do OSM** tem política própria: sem *bulk download*, com User-Agent identificado.
   Se o volume crescer, migrar para um provedor de tiles ou hospedar os próprios.
 - **Localização é dado sensível.** A posição do publicador fica no dispositivo — não enviar ao
@@ -713,9 +749,10 @@ uma tag com teste vermelho não vira Release.
   mais provável de aparecer assim que houver histórico, e o índice já está preparado para ele. O
   mapa já destaca por cor (nunca trabalhada, acima de 120 dias, recente), mas não existe listagem.
 
-**Resolvidos, para não voltarem à mesa:** o desfazer do editor de polígono existe — é pilha própria
-(`PolygonEditorController`) envolvendo o `PolyEditor`, não o long-press —, e o admin já apaga quadra
-e sai da congregação pela interface.
+**Resolvidos, para não voltarem à mesa:** o desfazer do editor de polígono existe — é o controller
+próprio `usePolygonEditor` (`admin/src/renderer/map/usePolygonEditor.ts`), com o Leaflet-Geoman só
+traduzindo eventos para ele, não mutando estado direto —, e o admin já apaga quadra e sai da
+congregação pela interface.
 
 ## Implementações
 

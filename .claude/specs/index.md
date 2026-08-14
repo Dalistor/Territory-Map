@@ -6,6 +6,7 @@ Planejamentos de implementações complexas, decompostos em tasks para subagente
 |---|--------|------|--------|-------|
 | [0001](0001/README.md) | Servidor FastAPI + PostGIS completo, em Docker, com CI/CD | 2026-08-02 | Concluída | 22 tasks |
 | [0002](0002/README.md) | Fechar as divergências do admin desktop | 2026-08-05 | Concluída | 12 tasks |
+| [0003](0003/README.md) | Migrar o admin de Flutter desktop para Electron + React + TypeScript + Leaflet | 2026-08-08 | Concluída | 20 tasks |
 
 ---
 

@@ -42,6 +42,26 @@ Histórico de todas as implementações realizadas neste projeto.
 | [0036](0036/README.md) | Testes de widget: publicadores e código de acesso | 2026-08-07 | Concluído | `admin/test/publishers_screen_test.dart` |
 | [0037](0037/README.md) | Testes de widget: editores de território e quadra, e o histórico de trabalho | 2026-08-07 | Concluído | `admin/test/territory_editor_test.dart`, `admin/test/block_editor_test.dart`, `admin/test/block_history_test.dart` |
 | [0038](0038/README.md) | Alinhar o `CLAUDE.md` ao admin que passou a existir | 2026-08-07 | Concluído | `CLAUDE.md` |
+| [0039](0039/README.md) | Scaffold do projeto Electron e remoção do admin Flutter | 2026-08-08 | Concluído | `admin/**` (removido: Flutter; criado: Electron + Vite + React + TS + Vitest), `.github/workflows/admin-release.yml` (removido) |
+| [0058](0058/README.md) | Atualizar CLAUDE.md para a nova stack do admin (Electron) | 2026-08-08 | Concluído | `CLAUDE.md` |
+| [0040](0040/README.md) | Domínio compartilhado do admin: modelos e exceções de API | 2026-08-08 | Concluído | `admin/src/shared/models.ts`, `admin/src/shared/models.test.ts`, `admin/src/shared/api-errors.ts`, `admin/src/shared/api-errors.test.ts` |
+| [0041](0041/README.md) | Domínio compartilhado do admin: geometria (`shared/geo.ts`) | 2026-08-08 | Concluído | `admin/src/shared/geo.ts`, `admin/src/shared/geo.test.ts` |
+| [0042](0042/README.md) | Armazenamento seguro de credenciais do admin Electron (`main/credentials-store.ts`) | 2026-08-08 | Concluído | `admin/src/main/credentials-store.ts`, `admin/src/main/credentials-store.test.ts` |
+| [0045](0045/README.md) | Controller de edição de polígono do admin Electron (`renderer/map/usePolygonEditor.ts`) | 2026-08-08 | Concluído | `admin/src/renderer/map/usePolygonEditor.ts`, `admin/src/renderer/map/usePolygonEditor.test.ts` |
+| [0043](0043/README.md) | Cor da quadra por tempo sem trabalho (`renderer/map/blockColor.ts`) | 2026-08-08 | Concluído | `admin/src/renderer/map/blockColor.ts`, `admin/src/renderer/map/blockColor.test.ts` |
+| [0044](0044/README.md) | Cliente HTTP da API do admin (`main/api-client.ts`) | 2026-08-08 | Concluído | `admin/src/main/api-client.ts`, `admin/src/main/api-client.test.ts` |
+| [0046](0046/README.md) | Componente de mapa do admin Electron: `TerritoryMap` | 2026-08-08 | Concluído | `admin/src/renderer/map/TerritoryMap.tsx`, `admin/package.json` |
+| [0047](0047/README.md) | Sessão do admin: login e reautenticação silenciosa (`main/session.ts`) | 2026-08-08 | Concluído | `admin/src/main/session.ts`, `admin/src/main/session.test.ts` |
+| [0048](0048/README.md) | Camada visual do editor de polígono do admin Electron com Leaflet-Geoman | 2026-08-08 | Concluído | `admin/src/renderer/map/PolygonEditorLayers.tsx`, `admin/package.json` |
+| [0049](0049/README.md) | IPC do admin Electron: handlers, preload e janela principal | 2026-08-08 | Concluído | `admin/src/shared/ipc-contract.ts`, `admin/src/main/ipc-handlers.ts`, `admin/src/main/index.ts`, `admin/src/preload/index.ts`, `admin/src/preload/index.d.ts`, `admin/package.json`, `admin/package-lock.json` |
+| [0050](0050/README.md) | Tela de configuração inicial do admin Electron (`SetupScreen`) | 2026-08-08 | Concluído | `admin/src/renderer/screens/SetupScreen.tsx`, `admin/src/renderer/screens/SetupScreen.test.tsx` |
+| [0051](0051/README.md) | `TerritoryEditorScreen`: drawing e reshaping de território do admin Electron | 2026-08-08 | Concluído | `admin/src/renderer/screens/TerritoryEditorScreen.tsx`, `admin/src/renderer/screens/TerritoryEditorScreen.test.tsx` |
+| [0052](0052/README.md) | `BlockEditorScreen`: drawing and numbering a block inside a territory | 2026-08-08 | Concluído | `admin/src/renderer/screens/BlockEditorScreen.tsx`, `admin/src/renderer/screens/BlockEditorScreen.test.tsx` |
+| [0053](0053/README.md) | `HomeScreen` do admin Electron: mapa, lista de territórios, apagar, sair | 2026-08-08 | Concluído | `admin/src/renderer/screens/HomeScreen.tsx`, `admin/src/renderer/screens/HomeScreen.test.tsx` |
+| [0054](0054/README.md) | `PublishersScreen` do admin Electron | 2026-08-08 | Concluído | `admin/src/renderer/screens/PublishersScreen.tsx`, `admin/src/renderer/screens/PublishersScreen.test.tsx` |
+| [0055](0055/README.md) | `BlockHistorySheet` do admin Electron | 2026-08-08 | Concluído | `admin/src/renderer/screens/BlockHistorySheet.tsx`, `admin/src/renderer/screens/BlockHistorySheet.test.tsx` |
+| [0056](0056/README.md) | Roteamento raiz do admin Electron (`App.tsx`) e canal IPC `session:getCongregation` | 2026-08-08 | Concluído | `admin/src/renderer/App.tsx`, `admin/src/renderer/App.test.tsx`, `admin/src/shared/ipc-contract.ts`, `admin/src/main/ipc-handlers.ts`, `admin/src/preload/index.ts`, `admin/src/renderer/screens/SetupScreen.test.tsx`, `admin/src/renderer/screens/HomeScreen.test.tsx`, `admin/src/renderer/screens/TerritoryEditorScreen.test.tsx`, `admin/src/renderer/screens/BlockEditorScreen.test.tsx` |
+| [0057](0057/README.md) | Empacotamento local do admin com `electron-builder` e README novo | 2026-08-08 | Concluído | `admin/electron-builder.yml`, `admin/package.json`, `admin/README.md` |
 
 > As entradas 0025–0027 foram registradas **retroativamente** pela Task 01 da spec 0002: o código
 > entrou em `e4af19a`, `0b693aa`, `d1153bd`, `38eccd6`, `12c95fe` e `9165f19` sem passar por uma
