@@ -138,6 +138,14 @@ function AuthenticatedApp({ congregation, onSignedOut }: AuthenticatedAppProps):
   const [route, setRoute] = useState<Route>({ kind: 'home' })
   const goHome = (): void => setRoute({ kind: 'home' })
 
+  // Lives here, one level above `HomeScreen`, because `HomeScreen` remounts
+  // from scratch every time the admin leaves and comes back (on purpose --
+  // see the comment above `AuthenticatedApp`, it forces a fresh territories
+  // fetch). `TerritoryMap`'s own `MapContainer` only reads its `center`/
+  // `zoom` props on mount, so without this the pan/zoom the admin left the
+  // map at would reset on every round trip through another screen.
+  const [mapView, setMapView] = useState<{ center: LatLngTuple; zoom: number } | null>(null)
+
   // A one-time, best-effort lookup of the congregation's own city, so the
   // map opens somewhere useful instead of the middle of Brazil when there
   // is no territory yet to anchor on (`TerritoryMap`/`TerritoryEditorScreen`
@@ -207,6 +215,8 @@ function AuthenticatedApp({ congregation, onSignedOut }: AuthenticatedAppProps):
           onOpenPublishers={() => setRoute({ kind: 'publishers' })}
           onSignedOut={onSignedOut}
           fallbackCenter={fallbackCenter}
+          mapView={mapView ?? undefined}
+          onMapViewChange={setMapView}
         />
       )
   }

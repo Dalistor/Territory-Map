@@ -5,7 +5,7 @@
 // screen it opens (territory editor, block editor, publishers, history) is
 // reached through callback props instead of an import, so this file does not
 // need to know those screens exist yet.
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { LatLngTuple } from 'leaflet'
 import type { Block, Congregation, Territory } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
@@ -38,6 +38,14 @@ export interface HomeScreenProps {
   readonly now?: Date
   /** Where the map centres when there are no territories yet -- the congregation's own city. */
   readonly fallbackCenter?: LatLngTuple
+  /**
+   * The pan/zoom the admin last left the map at, held by `AuthenticatedApp`
+   * (which does not remount on navigation) so it survives this screen being
+   * torn down and rebuilt. `undefined` the first time the app ever opens.
+   */
+  readonly mapView?: { center: LatLngTuple; zoom: number }
+  /** Reports every pan/zoom so the caller can remember it across navigations. */
+  readonly onMapViewChange?: (view: { center: LatLngTuple; zoom: number }) => void
 }
 
 function errorMessage(error: unknown): string {
@@ -77,9 +85,24 @@ export function HomeScreen({
   onOpenPublishers,
   onSignedOut,
   now,
-  fallbackCenter
+  fallbackCenter,
+  mapView,
+  onMapViewChange
 }: HomeScreenProps): React.JSX.Element {
   const [territories, setTerritories] = useState<Territory[]>([])
+  // Sorted once here, and used everywhere below (the list, the map, and the
+  // territories handed to onNewTerritory/onEditTerritory) -- so every
+  // consumer of "the territories" sees the same alphabetical order, not just
+  // the <ul>. `sensitivity: 'base'` ignores case and diacritics ("Árvore"
+  // and "arvore" land next to each other), matching how a Portuguese-speaking
+  // admin expects a name list to read.
+  const sortedTerritories = useMemo(
+    () =>
+      [...territories].sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+      ),
+    [territories]
+  )
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -87,6 +110,7 @@ export function HomeScreen({
   const [activeBlock, setActiveBlock] = useState<{ territory: Territory; block: Block } | null>(
     null
   )
+  const [openTerritoryMenuId, setOpenTerritoryMenuId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setIsLoading(true)
@@ -199,42 +223,103 @@ export function HomeScreen({
         {!isLoading && loadError !== null && <p role="alert">{loadError}</p>}
         {!isLoading && loadError === null && (
           <>
-            <button onClick={() => onNewTerritory?.(territories)}>Novo território</button>
-            {territories.length === 0 ? (
+            <button onClick={() => onNewTerritory?.(sortedTerritories)}>Novo território</button>
+            {sortedTerritories.length === 0 ? (
               <p>Nenhum território cadastrado ainda.</p>
             ) : (
-              <ul>
-                {territories.map((territory) => (
-                  <li key={territory.id}>
-                    <span>{territory.name}</span>
-                    <button onClick={() => onAddBlock?.(territory)}>
-                      {`Adicionar quadra em ${territory.name}`}
-                    </button>
-                    <button onClick={() => onEditTerritory?.(territory, territories)}>
-                      {`Editar demarcação de ${territory.name}`}
-                    </button>
-                    <button onClick={() => void handleDeleteTerritory(territory)}>
-                      {`Apagar território ${territory.name}`}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <div className="territory-list">
+                <ul>
+                  {sortedTerritories.map((territory) => (
+                    <li key={territory.id} className="territory-row">
+                      <span>{territory.name}</span>
+                      <button
+                        type="button"
+                        className="icon-button"
+                        aria-label={`Opções de ${territory.name}`}
+                        aria-expanded={openTerritoryMenuId === territory.id}
+                        onClick={() =>
+                          setOpenTerritoryMenuId(
+                            openTerritoryMenuId === territory.id ? null : territory.id
+                          )
+                        }
+                      >
+                        ⋮
+                      </button>
+                      {openTerritoryMenuId === territory.id && (
+                        <ul role="menu" aria-label={`Opções de ${territory.name}`}>
+                          <li>
+                            <button
+                              role="menuitem"
+                              onClick={() => {
+                                setOpenTerritoryMenuId(null)
+                                onAddBlock?.(territory)
+                              }}
+                            >
+                              {`Adicionar quadra em ${territory.name}`}
+                            </button>
+                          </li>
+                          <li>
+                            <button
+                              role="menuitem"
+                              onClick={() => {
+                                setOpenTerritoryMenuId(null)
+                                onEditTerritory?.(territory, sortedTerritories)
+                              }}
+                            >
+                              {`Editar demarcação de ${territory.name}`}
+                            </button>
+                          </li>
+                          <li>
+                            <button
+                              role="menuitem"
+                              className="block-action-danger"
+                              onClick={() => {
+                                setOpenTerritoryMenuId(null)
+                                void handleDeleteTerritory(territory)
+                              }}
+                            >
+                              {`Apagar território ${territory.name}`}
+                            </button>
+                          </li>
+                        </ul>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
             <TerritoryMap
-              territories={territories}
+              territories={sortedTerritories}
               now={now ?? new Date()}
               onBlockTap={(territory, block) => setActiveBlock({ territory, block })}
               fallbackCenter={fallbackCenter}
+              initialView={mapView}
+              onViewChange={onMapViewChange}
             />
           </>
         )}
         {activeBlock !== null && (
           <div
             role="menu"
+            className="block-actions-modal"
             aria-label={`Quadra ${activeBlock.block.number} — ${activeBlock.territory.name}`}
           >
+            <div className="block-actions-modal-header">
+              <p>
+                Quadra {activeBlock.block.number} — {activeBlock.territory.name}
+              </p>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Fechar"
+                onClick={() => setActiveBlock(null)}
+              >
+                ×
+              </button>
+            </div>
             <button
               role="menuitem"
+              className="block-action"
               onClick={() => {
                 onShowHistory?.(activeBlock.territory, activeBlock.block)
                 setActiveBlock(null)
@@ -244,6 +329,7 @@ export function HomeScreen({
             </button>
             <button
               role="menuitem"
+              className="block-action"
               onClick={() => {
                 onEditBlock?.(activeBlock.territory, activeBlock.block)
                 setActiveBlock(null)
@@ -253,11 +339,11 @@ export function HomeScreen({
             </button>
             <button
               role="menuitem"
+              className="block-action block-action-danger"
               onClick={() => void handleDeleteBlock(activeBlock.territory, activeBlock.block)}
             >
               Apagar quadra
             </button>
-            <button onClick={() => setActiveBlock(null)}>Fechar</button>
           </div>
         )}
       </main>

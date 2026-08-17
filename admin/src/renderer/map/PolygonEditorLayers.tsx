@@ -17,7 +17,9 @@
 //     vertex, a line trails the cursor, and the ring is only ever considered
 //     finished once the admin closes it by clicking back on the first vertex
 //     (Geoman's own gesture) or double-clicking. That `pm:create` result is
-//     handed to the controller in one `setPoints` call.
+//     handed to the controller one vertex at a time (`addPoint` per point),
+//     not as a single `setPoints` call, so "Undo" right after closing the
+//     ring still removes one vertex, not the whole ring.
 //   - **Non-empty ring** (freshly closed, or an existing territory/block
 //     being reshaped): a react-leaflet `<Polygon>` renders the ring for
 //     real, with Geoman's edit mode enabled on it -- dragging a vertex moves
@@ -134,7 +136,13 @@ export function PolygonEditorLayers({
   controller,
   context
 }: PolygonEditorLayersProps): React.JSX.Element {
-  const { points, state, movePoint, removePoint, setPoints } = controller
+  const { points, state, addPoint, movePoint, removePoint, setPoints } = controller
+  // Not called from this file anymore (see `handleCreate` below), but kept
+  // in the destructuring on purpose -- it is still part of the controller's
+  // public, tested API and a future caller may need it. `void` only silences
+  // `noUnusedLocals`; same idiom used elsewhere in this codebase for an
+  // intentionally-unused reference (e.g. `App.tsx`'s `void boot()`).
+  void setPoints
   const map = useMap()
   const layerRef = useRef<L.Polygon | null>(null)
 
@@ -151,7 +159,13 @@ export function PolygonEditorLayers({
 
     const handleCreate = (event: L.LeafletEvent): void => {
       const { layer } = event as L.LeafletEvent & { layer: L.Layer }
-      setPoints(ringFromDrawnLayer(layer))
+      // One `addPoint` per vertex, not a single `setPoints` for the whole
+      // ring -- each `addPoint` takes its own undo snapshot, so the first
+      // "Undo" right after closing a freshly-drawn ring removes just the
+      // last vertex, same as clicking through the ring by hand would have.
+      // A single `setPoints` call would instead undo the entire ring in one
+      // step.
+      ringFromDrawnLayer(layer).forEach((point) => addPoint(point))
       // The controller's own `points` is what re-renders as the editable
       // `<Polygon>` below -- Geoman's temporary drawn layer is not it, and
       // left on the map the two would sit on top of each other.
@@ -163,7 +177,7 @@ export function PolygonEditorLayers({
       map.off('pm:create', handleCreate)
       map.pm.disableDraw('Polygon')
     }
-  }, [points.length, map, setPoints])
+  }, [points.length, map, addPoint])
 
   const handleMarkerDragEnd = useCallback(
     (event: L.LeafletEvent) => {

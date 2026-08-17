@@ -119,6 +119,14 @@ main > div:has(> .leaflet-container) {
   border: 1px solid var(--color-border);
 }
 
+/* Wraps the territory <ul> on HomeScreen so a long list scrolls in its own
+   sidebar-sized box instead of growing the whole page -- 300px mirrors the
+   width the removed Flutter admin used for this same list. */
+.territory-list {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
 ul {
   list-style: none;
   margin: 0;
@@ -202,16 +210,20 @@ button:disabled {
 
 /* The one primary action per form/toolbar is always the last submit-style
    button rendered ("Entrar", "Salvar", "Gerar código", "Cadastrar") -- typing
-   a shared selector for all of them without touching every screen. */
+   a shared selector for all of them without touching every screen.
+   `.button-primary` is the same look for a `type="button"` CTA that isn't
+   inside a `<form>` (PublishersScreen's dialogs, none of which submit). */
 form button[type='submit'],
-button[type='submit'] {
+button[type='submit'],
+.button-primary {
   background: var(--color-primary);
   border-color: var(--color-primary-dark);
   color: #fff;
 }
 
 form button[type='submit']:hover:not(:disabled),
-button[type='submit']:hover:not(:disabled) {
+button[type='submit']:hover:not(:disabled),
+.button-primary:hover:not(:disabled) {
   background: var(--color-primary-dark);
 }
 
@@ -231,13 +243,30 @@ button[type='submit']:hover:not(:disabled) {
   color: #1a3a6b;
 }
 
+/* A true modal: centred in the viewport and dimmed behind, with no extra
+   backdrop element needed. `position: fixed` + `inset: 0` + `margin: auto`
+   centres the box itself (a block element sized to its content, `width`/
+   `height: fit-content`) without a flex wrapper; the oversized, blur-free
+   `box-shadow` paints the dimming layer, since a real sibling backdrop `div`
+   would mean editing every screen that renders one of these instead of
+   styling the role once. */
 [role='dialog'] {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: fit-content;
+  height: fit-content;
   max-width: 420px;
+  max-height: calc(100vh - 48px);
+  overflow: auto;
   padding: 20px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 9999px rgba(17, 24, 21, 0.45),
+    0 24px 48px rgba(0, 0, 0, 0.25);
+  z-index: 1000;
 }
 
 [role='menu'] {
@@ -258,6 +287,67 @@ button[type='submit']:hover:not(:disabled) {
 
 [role='menu'] button:hover:not(:disabled) {
   background: var(--color-background);
+}
+
+/* HomeScreen's block-tap action list -- the same centred-modal treatment as
+   `[role='dialog']` above (see that rule's comment for how the backdrop
+   works without an extra element), plus its own header/action styling. */
+.block-actions-modal {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: fit-content;
+  height: fit-content;
+  max-width: 360px;
+  min-width: 280px;
+  padding: 8px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 9999px rgba(17, 24, 21, 0.45),
+    0 24px 48px rgba(0, 0, 0, 0.25);
+  z-index: 1000;
+}
+
+.block-actions-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 6px;
+}
+
+.block-actions-modal-header p {
+  margin: 0;
+  font-weight: 600;
+}
+
+.icon-button {
+  padding: 2px 8px;
+  border: none;
+  background: transparent;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: var(--color-text-muted);
+  border-radius: 50%;
+}
+
+.icon-button:hover:not(:disabled) {
+  background: var(--color-background);
+  color: var(--color-text);
+}
+
+.block-action {
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 0.95rem;
+}
+
+.block-action-danger {
+  color: var(--color-danger);
 }
 
 [role='toolbar'] {
@@ -318,10 +408,13 @@ button[type='submit']:hover:not(:disabled) {
   text-align: left;
 }
 
-.setup-card .field {
+/* `.field` is generic -- SetupScreen's card and PublishersScreen's dialogs
+   both use it, not just the one it was written for originally. */
+.field {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  margin-bottom: 14px;
 }
 
 .setup-card label {
@@ -331,6 +424,22 @@ button[type='submit']:hover:not(:disabled) {
 .field-error {
   color: var(--color-danger);
   font-size: 0.8rem;
+}
+
+/* A dialog's own title, when it has one beyond its `aria-label` (which is
+   never visible on its own) -- PublishersScreen's two dialogs both add one. */
+[role='dialog'] h2 {
+  margin: 0 0 14px;
+  font-size: 1.15rem;
+}
+
+/* The row of buttons at the bottom of a dialog, right-aligned, cancel before
+   the primary action -- the layout every dialog in the app converges on. */
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
 }
 
 .setup-card button[type='submit'] {
@@ -359,4 +468,93 @@ button[type='submit']:hover:not(:disabled) {
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* PublishersScreen: each row gets an avatar and a coloured status pill
+   instead of a plain text line -- the text itself is unchanged (tests read
+   it), only how it is framed. */
+.publisher-row {
+  gap: 12px;
+}
+
+.avatar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #dcebe0;
+  color: var(--color-primary-dark);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.publisher-row .avatar.is-inactive {
+  background: #ececec;
+  color: var(--color-text-muted);
+}
+
+.publisher-name-block {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-right: auto;
+  min-width: 0;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  padding: 2px 10px 2px 8px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.status-badge::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-badge.status-active {
+  background: #e6f4ea;
+  color: #1e7d34;
+}
+
+.status-badge.status-live-code {
+  background: #e8f0fe;
+  color: #1a56c4;
+}
+
+.status-badge.status-pending {
+  background: #fff4e0;
+  color: #a15c00;
+}
+
+.status-badge.status-revoked {
+  background: #f1f1f1;
+  color: var(--color-text-muted);
+}
+
+/* The code-reveal dialog's headline number -- big, spaced out, impossible to
+   misread when it is being read aloud to someone. */
+.access-code-display {
+  margin: 4px 0 14px;
+  padding: 14px;
+  text-align: center;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 1.8rem;
+  font-weight: 700;
+  letter-spacing: 0.25em;
+  background: var(--color-background);
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+  color: var(--color-primary-dark);
 }

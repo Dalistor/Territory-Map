@@ -473,7 +473,10 @@ describe('AuthenticatedApp navigation', () => {
       })
     )
 
-    await user.click(screen.getByRole('button', { name: `Adicionar quadra em ${territory.name}` }))
+    await user.click(screen.getByRole('button', { name: `Opções de ${territory.name}` }))
+    await user.click(
+      screen.getByRole('menuitem', { name: `Adicionar quadra em ${territory.name}` })
+    )
 
     expect(
       await screen.findByRole('heading', { name: `Nova quadra em ${territory.name}` })

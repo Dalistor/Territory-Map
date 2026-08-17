@@ -8,7 +8,7 @@
 // while drawing. The server is still what decides -- `ST_Within` on the real
 // geometry -- so a refusal is shown exactly as its message says, not guessed
 // at here.
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { MapContainer, TileLayer } from 'react-leaflet'
 import type { LatLngTuple } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -21,6 +21,8 @@ import { PolygonEditorLayers } from '../map/PolygonEditorLayers'
 /** Only reached if a territory somehow has an empty boundary. */
 const FALLBACK_CENTER: LatLngTuple = [-15.78, -47.93]
 const MAP_ZOOM = 17
+/** How long the "saved" confirmation stays up before fading on its own. */
+const CONFIRMATION_TIMEOUT_MS = 4000
 
 export interface BlockEditorScreenProps {
   readonly territory: Territory
@@ -72,24 +74,48 @@ export function BlockEditorScreen({
   block,
   onSaved
 }: BlockEditorScreenProps): React.JSX.Element {
-  const isNew = block === undefined
+  // Which block this screen is currently working on -- starts out matching
+  // the `block` prop, but only that: after a successful save the screen
+  // returns to create mode on its own (Task 04, spec 0004) without waiting
+  // to be unmounted and reopened, because the prop itself never changes.
+  const [mode, setMode] = useState<'create' | 'edit'>(block === undefined ? 'create' : 'edit')
+  const isCreateMode = mode === 'create'
   const editor = usePolygonEditor(block?.polygon ?? [])
   const [numberText, setNumberText] = useState(block?.number.toString() ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [confirmation, setConfirmation] = useState<string | null>(null)
+  const confirmationTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(
+    () => () => {
+      if (confirmationTimeout.current !== null) clearTimeout(confirmationTimeout.current)
+    },
+    []
+  )
 
   const { value: chosenNumber, usable: numberIsUsable } = parseNumberField(numberText)
   const canSave = editor.state.problem === null && numberIsUsable && !saving
 
+  // The block actually being edited right now -- distinct from the `block`
+  // prop, which never changes: once a save returns the screen to create
+  // mode, nothing is "being edited" anymore, even though the prop itself is
+  // still set.
+  const editingBlock = mode === 'edit' ? block : undefined
+
   // Every other block in the territory is context; the one being edited is
   // excluded so it isn't drawn twice, once as the (invisible, mid-edit) live
-  // ring and once as its old, frozen shape underneath it.
+  // ring and once as its old, frozen shape underneath it. Once nothing is
+  // being edited, every block -- including the one just finished -- goes
+  // back to being plain context.
   const contextRings = useMemo<LatLng[][]>(
     () => [
       territory.boundary,
-      ...territory.blocks.filter((other) => other.id !== block?.id).map((other) => other.polygon)
+      ...territory.blocks
+        .filter((other) => other.id !== editingBlock?.id)
+        .map((other) => other.polygon)
     ],
-    [territory, block]
+    [territory, editingBlock]
   )
 
   const center =
@@ -100,17 +126,27 @@ export function BlockEditorScreen({
     setSaving(true)
     setError(null)
     try {
-      const saved = isNew
-        ? await window.api.blocks.create({
+      const saved = editingBlock
+        ? await window.api.blocks.update(editingBlock.id, {
+            polygon: editor.points,
+            number: chosenNumber
+          })
+        : await window.api.blocks.create({
             territoryId: territory.id,
             polygon: editor.points,
             number: chosenNumber
           })
-        : await window.api.blocks.update(block.id, {
-            polygon: editor.points,
-            number: chosenNumber
-          })
       onSaved?.(saved)
+
+      if (editor.points.length > 0) editor.clear()
+      setNumberText('')
+      setMode('create')
+
+      if (confirmationTimeout.current !== null) clearTimeout(confirmationTimeout.current)
+      setConfirmation(`Quadra ${saved.number} salva.`)
+      confirmationTimeout.current = setTimeout(() => {
+        setConfirmation(null)
+      }, CONFIRMATION_TIMEOUT_MS)
     } catch (caught) {
       setError(errorMessage(caught))
     } finally {
@@ -120,7 +156,10 @@ export function BlockEditorScreen({
 
   return (
     <div>
-      <h1>{isNew ? `Nova quadra em ${territory.name}` : `Editar quadra ${block.number}`}</h1>
+      <h1>
+        {editingBlock ? `Editar quadra ${editingBlock.number}` : `Nova quadra em ${territory.name}`}
+      </h1>
+      {confirmation !== null && <p role="status">{confirmation}</p>}
       <div role="toolbar">
         <button type="button" onClick={editor.undo} disabled={!editor.canUndo}>
           Desfazer
@@ -144,7 +183,7 @@ export function BlockEditorScreen({
         {/* The numbering usually already exists on paper, so leaving it
             blank is the normal path, not an omission -- but only worth
             explaining while there is no number to show yet. */}
-        {isNew && <p>Em branco, o servidor usa o menor número livre.</p>}
+        {isCreateMode && <p>Em branco, o servidor usa o menor número livre.</p>}
         {!numberIsUsable && <p role="alert">Use um número a partir de 1.</p>}
       </div>
       {error !== null && <p role="alert">{error}</p>}

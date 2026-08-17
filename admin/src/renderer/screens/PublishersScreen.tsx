@@ -33,6 +33,17 @@ function statusOf(publisher: Publisher, now: Date): string {
   return 'Ativo neste aparelho.'
 }
 
+/** Which colour the status badge takes -- purely visual, alongside {@link statusOf}'s text. */
+function statusCategory(
+  publisher: Publisher,
+  now: Date
+): 'revoked' | 'live-code' | 'pending' | 'active' {
+  if (!publisher.isActive) return 'revoked'
+  if (publisherHasLiveCode(publisher, now)) return 'live-code'
+  if (publisherIsPending(publisher)) return 'pending'
+  return 'active'
+}
+
 /** Reduces whatever a rejected `window.api` call threw to text the admin can read. */
 function errorMessage(error: unknown): string {
   return parseIpcError(error, GENERIC_ERROR_MESSAGE).message
@@ -164,7 +175,7 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
         </div>
       )}
 
-      <button type="button" onClick={openCreateForm}>
+      <button type="button" className="button-primary" onClick={openCreateForm}>
         Cadastrar
       </button>
 
@@ -177,16 +188,34 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
       {!loading && !loadError && publishers.length > 0 && (
         <ul>
           {publishers.map((publisher) => (
-            <li key={publisher.id} data-testid={`publisher-row-${publisher.name}`}>
-              <span>{publisher.name}</span>
-              <span data-testid="publisher-status">{statusOf(publisher, today)}</span>
+            <li
+              key={publisher.id}
+              className="publisher-row"
+              data-testid={`publisher-row-${publisher.name}`}
+            >
+              <span
+                className={`avatar${publisher.isActive ? '' : ' is-inactive'}`}
+                aria-hidden="true"
+              >
+                {publisher.name.charAt(0).toUpperCase()}
+              </span>
+              <span className="publisher-name-block">
+                <span>{publisher.name}</span>
+                <span
+                  className={`status-badge status-${statusCategory(publisher, today)}`}
+                  data-testid="publisher-status"
+                >
+                  {statusOf(publisher, today)}
+                </span>
+              </span>
               <button
                 type="button"
+                className="icon-button"
                 aria-label={`Ações de ${publisher.name}`}
                 aria-expanded={openMenuId === publisher.id}
                 onClick={() => setOpenMenuId(openMenuId === publisher.id ? null : publisher.id)}
               >
-                Ações
+                ⋮
               </button>
               {openMenuId === publisher.id && (
                 <ul role="menu" aria-label={`Ações de ${publisher.name}`}>
@@ -216,39 +245,57 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
 
       {showCreateForm && (
         <div role="dialog" aria-label="Cadastrar publicador">
-          <label htmlFor="publisher-name">Nome da pessoa</label>
-          <input
-            id="publisher-name"
-            value={newName}
-            onChange={(event) => setNewName(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') submitCreate()
-            }}
-            autoFocus
-          />
-          <button type="button" onClick={closeCreateForm}>
-            Cancelar
-          </button>
-          <button type="button" disabled={newName.trim().length === 0} onClick={submitCreate}>
-            Gerar código
-          </button>
+          <h2>Cadastrar publicador</h2>
+          <div className="field">
+            <label htmlFor="publisher-name">Nome da pessoa</label>
+            <input
+              id="publisher-name"
+              value={newName}
+              onChange={(event) => setNewName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') submitCreate()
+              }}
+              autoFocus
+            />
+          </div>
+          <div className="dialog-actions">
+            <button type="button" onClick={closeCreateForm}>
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="button-primary"
+              disabled={newName.trim().length === 0}
+              onClick={submitCreate}
+            >
+              Gerar código
+            </button>
+          </div>
         </div>
       )}
 
       {codeDialog && (
         <div role="dialog" aria-label={`Código de ${codeDialog.publisherName}`}>
-          <p>Código de {codeDialog.publisherName}</p>
-          <p data-testid="access-code">{codeDialog.code}</p>
+          <h2>Código de {codeDialog.publisherName}</h2>
+          <p className="access-code-display" data-testid="access-code">
+            {codeDialog.code}
+          </p>
           <p>
             Entregue este código à pessoa. Ele vale 24 horas, serve uma única vez e não poderá ser
             consultado depois de usado.
           </p>
-          <button type="button" onClick={() => copyCode(codeDialog.code)}>
-            Copiar
-          </button>
-          <button type="button" onClick={() => setCodeDialog(null)}>
-            Fechar
-          </button>
+          <div className="dialog-actions">
+            <button type="button" onClick={() => setCodeDialog(null)}>
+              Fechar
+            </button>
+            <button
+              type="button"
+              className="button-primary"
+              onClick={() => copyCode(codeDialog.code)}
+            >
+              Copiar
+            </button>
+          </div>
         </div>
       )}
     </div>

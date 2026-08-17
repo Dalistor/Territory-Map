@@ -12,7 +12,7 @@
 // browser's own User-Agent; the on-screen attribution below is the other
 // half the policy asks for.
 import { useMemo } from 'react'
-import { MapContainer, TileLayer, Polygon, Marker } from 'react-leaflet'
+import { MapContainer, TileLayer, Polygon, Marker, useMapEvents } from 'react-leaflet'
 import { DivIcon, type LatLngTuple } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { Block, Territory } from '../../shared/models'
@@ -39,6 +39,39 @@ export interface TerritoryMapProps {
   readonly onBlockTap?: (territory: Territory, block: Block) => void
   /** Where to centre the map when there are no territories yet -- see {@link initialCenter}. */
   readonly fallbackCenter?: LatLngTuple
+  /**
+   * A previously-saved pan/zoom, taking priority over every other source of
+   * the initial view (the territories' own average, `fallbackCenter`, and
+   * the hardcoded Brasília fallback) when present. `MapContainer` only reads
+   * `center`/`zoom` on mount, so this is the caller's way of restoring where
+   * the admin left the map after this component remounts.
+   */
+  readonly initialView?: { center: LatLngTuple; zoom: number }
+  /** Reports every pan/zoom so the caller can remember it (e.g. across a remount). */
+  readonly onViewChange?: (view: { center: LatLngTuple; zoom: number }) => void
+}
+
+/**
+ * Reports every pan/zoom to the caller. Must be rendered as a child of
+ * `MapContainer` -- `useMapEvents` only works inside one -- which is why this
+ * is its own component instead of a hook call inline in `TerritoryMap`.
+ */
+function ViewTracker({
+  onViewChange
+}: {
+  onViewChange?: (view: { center: LatLngTuple; zoom: number }) => void
+}): null {
+  useMapEvents({
+    moveend: (event) => {
+      const map = event.target
+      onViewChange?.({ center: [map.getCenter().lat, map.getCenter().lng], zoom: map.getZoom() })
+    },
+    zoomend: (event) => {
+      const map = event.target
+      onViewChange?.({ center: [map.getCenter().lat, map.getCenter().lng], zoom: map.getZoom() })
+    }
+  })
+  return null
 }
 
 function toLatLngTuple(point: LatLng): LatLngTuple {
@@ -106,16 +139,19 @@ export function TerritoryMap({
   territories,
   now,
   onBlockTap,
-  fallbackCenter
+  fallbackCenter,
+  initialView,
+  onViewChange
 }: TerritoryMapProps): React.JSX.Element {
   const center = useMemo(
-    () => initialCenter(territories, fallbackCenter),
-    [territories, fallbackCenter]
+    () => initialView?.center ?? initialCenter(territories, fallbackCenter),
+    [initialView, territories, fallbackCenter]
   )
-  const zoom = territories.length === 0 ? FALLBACK_ZOOM : TERRITORY_ZOOM
+  const zoom = initialView?.zoom ?? (territories.length === 0 ? FALLBACK_ZOOM : TERRITORY_ZOOM)
 
   return (
     <MapContainer center={center} zoom={zoom} style={{ height: '100%', width: '100%' }}>
+      {onViewChange !== undefined && <ViewTracker onViewChange={onViewChange} />}
       <TileLayer
         url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
         attribution="&copy; OpenStreetMap contributors"

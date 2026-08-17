@@ -7,7 +7,7 @@
 // `usePolygonEditor` controller it is handed -- so these tests exercise the
 // actual ring/undo state machine (already covered in isolation by
 // `usePolygonEditor.test.ts`), just without a real map underneath it.
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import type { ReactNode } from 'react'
@@ -421,6 +421,158 @@ describe('BlockEditorScreen', () => {
     expect(await screen.findByText('Não foi possível completar a operação.')).toBeTruthy()
   })
 
+  it('shows a temporary confirmation naming the block number after a successful create', async () => {
+    const user = userEvent.setup()
+    const created: Block = { id: 'new-block', number: 9, polygon: [] }
+    const create = vi.fn().mockResolvedValue(created)
+    window.api = makeApi({ create })
+    render(<BlockEditorScreen territory={makeTerritory()} onSaved={vi.fn()} />)
+
+    await drawValidRing(user)
+    await user.type(numberField(), '9')
+    await user.click(saveButton())
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Quadra 9 salva.')
+  })
+
+  it('resets the ring to empty after a successful create, ready for the next block', async () => {
+    const user = userEvent.setup()
+    const created: Block = { id: 'new-block', number: 9, polygon: [] }
+    const create = vi.fn().mockResolvedValue(created)
+    window.api = makeApi({ create })
+    render(<BlockEditorScreen territory={makeTerritory()} onSaved={vi.fn()} />)
+
+    await drawValidRing(user)
+    await user.type(numberField(), '9')
+    await user.click(saveButton())
+
+    await screen.findByRole('status')
+    expect(clearButton().disabled).toBe(true)
+    expect(screen.getByText('Toque no mapa para marcar ao menos 3 pontos.')).toBeTruthy()
+  })
+
+  it('resets the number field to empty after a successful create', async () => {
+    const user = userEvent.setup()
+    const created: Block = { id: 'new-block', number: 9, polygon: [] }
+    const create = vi.fn().mockResolvedValue(created)
+    window.api = makeApi({ create })
+    render(<BlockEditorScreen territory={makeTerritory()} onSaved={vi.fn()} />)
+
+    await drawValidRing(user)
+    await user.type(numberField(), '9')
+    await user.click(saveButton())
+
+    await screen.findByRole('status')
+    expect(numberField().value).toBe('')
+  })
+
+  it('returns to create mode after successfully saving an edit to an existing block', async () => {
+    const user = userEvent.setup()
+    const updated: Block = { ...EXISTING_BLOCK, number: 8 }
+    const update = vi.fn().mockResolvedValue(updated)
+    window.api = makeApi({ update })
+    render(
+      <BlockEditorScreen
+        territory={makeTerritory([EXISTING_BLOCK])}
+        block={EXISTING_BLOCK}
+        onSaved={vi.fn()}
+      />
+    )
+
+    await user.clear(numberField())
+    await user.type(numberField(), '8')
+    await user.click(saveButton())
+
+    await screen.findByRole('status')
+    expect(screen.getByText('Nova quadra em Bairro Norte')).toBeTruthy()
+    expect(screen.queryByText(/^Editar quadra/)).toBeNull()
+    expect(numberField().value).toBe('')
+  })
+
+  it('hides the confirmation after a few seconds', async () => {
+    // Drawing and typing happen under real timers -- userEvent's pointer
+    // machinery doesn't play well with fake ones -- and only the click that
+    // triggers the save (via the lower-level `fireEvent`, which dispatches
+    // synchronously with no timer-driven waiting of its own) runs under fake
+    // timers, so the confirmation's own `setTimeout` can be fast-forwarded.
+    const user = userEvent.setup()
+    const created: Block = { id: 'new-block', number: 9, polygon: [] }
+    const create = vi.fn().mockResolvedValue(created)
+    window.api = makeApi({ create })
+    render(<BlockEditorScreen territory={makeTerritory()} onSaved={vi.fn()} />)
+
+    await drawValidRing(user)
+    await user.type(numberField(), '9')
+
+    vi.useFakeTimers()
+    try {
+      fireEvent.click(saveButton())
+      await vi.waitFor(() => expect(screen.getByRole('status')).toBeTruthy())
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000)
+      })
+
+      expect(screen.queryByRole('status')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('clears a still-pending confirmation timeout before scheduling a new one, so back-to-back saves do not hide each other early', async () => {
+    const user = userEvent.setup()
+    const create = vi
+      .fn()
+      .mockResolvedValueOnce({ id: 'block-a', number: 9, polygon: [] })
+      .mockResolvedValueOnce({ id: 'block-b', number: 10, polygon: [] })
+    window.api = makeApi({ create })
+    render(<BlockEditorScreen territory={makeTerritory()} onSaved={vi.fn()} />)
+
+    await drawValidRing(user)
+    await user.type(numberField(), '9')
+
+    vi.useFakeTimers()
+    try {
+      fireEvent.click(saveButton())
+      await vi.waitFor(() =>
+        expect(screen.getByRole('status')).toHaveTextContent('Quadra 9 salva.')
+      )
+
+      // Three seconds into the first confirmation's four-second lifetime,
+      // draw and save a second block -- if the first timeout were left
+      // running instead of cleared, it would fire partway through the
+      // second confirmation's own window and hide it early.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000)
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: 'add-a' }))
+      fireEvent.click(screen.getByRole('button', { name: 'add-b' }))
+      fireEvent.click(screen.getByRole('button', { name: 'add-c' }))
+      fireEvent.change(numberField(), { target: { value: '10' } })
+      fireEvent.click(saveButton())
+
+      await vi.waitFor(() =>
+        expect(screen.getByRole('status')).toHaveTextContent('Quadra 10 salva.')
+      )
+
+      // 1.5s later -- past when the stale first timeout would have fired
+      // (it was due at the 4s mark, i.e. 1s from here) -- the second
+      // confirmation must still be up.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500)
+      })
+      expect(screen.getByRole('status')).toHaveTextContent('Quadra 10 salva.')
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000)
+      })
+      expect(screen.queryByRole('status')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('disables Save and shows a saving indicator while the request is in flight', async () => {
     const user = userEvent.setup()
     let resolveCreate: (block: Block) => void = () => {}
@@ -440,6 +592,10 @@ describe('BlockEditorScreen', () => {
     expect(screen.getByText('Salvando…')).toBeTruthy()
 
     resolveCreate({ id: 'new-block', number: 1, polygon: [] })
-    await waitFor(() => expect(saveButton().disabled).toBe(false))
+    // The in-flight indicator clears -- but Save stays disabled, because a
+    // successful save now resets the ring for the next block (Task 04, spec
+    // 0004) rather than leaving the just-saved shape re-savable.
+    await waitFor(() => expect(screen.queryByText('Salvando…')).toBeNull())
+    expect(saveButton().disabled).toBe(true)
   })
 })

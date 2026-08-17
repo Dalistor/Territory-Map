@@ -183,6 +183,16 @@ describe('HomeScreen loading and header', () => {
   })
 })
 
+/** Opens a territory row's "⋮" options menu -- its three actions only render once it is open. */
+async function openTerritoryMenu(
+  user: ReturnType<typeof userEvent.setup>,
+  territoryName: string
+): Promise<void> {
+  await user.click(
+    await screen.findByRole('button', { name: new RegExp(`opções de ${territoryName}`, 'i') })
+  )
+}
+
 describe('HomeScreen territory actions', () => {
   it('"Novo território" signals the intent to create one, handing over the loaded territories', async () => {
     const territory = makeTerritory()
@@ -219,7 +229,8 @@ describe('HomeScreen territory actions', () => {
     const user = userEvent.setup()
 
     render(<HomeScreen onAddBlock={onAddBlock} />)
-    await user.click(await screen.findByRole('button', { name: /adicionar quadra.*bairro sul/i }))
+    await openTerritoryMenu(user, 'Bairro Sul')
+    await user.click(await screen.findByRole('menuitem', { name: /adicionar quadra.*bairro sul/i }))
 
     expect(onAddBlock).toHaveBeenCalledWith(territory)
   })
@@ -240,9 +251,143 @@ describe('HomeScreen territory actions', () => {
     const user = userEvent.setup()
 
     render(<HomeScreen onEditTerritory={onEditTerritory} />)
-    await user.click(await screen.findByRole('button', { name: /editar demarcação.*bairro sul/i }))
+    await openTerritoryMenu(user, 'Bairro Sul')
+    await user.click(
+      await screen.findByRole('menuitem', { name: /editar demarcação.*bairro sul/i })
+    )
 
-    expect(onEditTerritory).toHaveBeenCalledWith(territory, [territory, other])
+    // The list HomeScreen now hands over is alphabetically sorted (Task 02,
+    // spec 0004), not the raw API order -- "Bairro Norte" sorts before
+    // "Bairro Sul", even though the API resolved them the other way round.
+    expect(onEditTerritory).toHaveBeenCalledWith(territory, [other, territory])
+  })
+})
+
+describe('HomeScreen territory list ordering', () => {
+  /** Reads the territory names in the order the `<li>` rows render them. */
+  async function findRenderedTerritoryNames(): Promise<string[]> {
+    const items = await screen.findAllByRole('listitem')
+    return items.map((item) => item.querySelector('span')?.textContent ?? '')
+  }
+
+  it('renders territories in alphabetical order by name, regardless of the order the API returned', async () => {
+    const territories = [
+      makeTerritory({ id: 't-zona', name: 'Zona Sul' }),
+      makeTerritory({ id: 't-bairro', name: 'Bairro Norte' }),
+      makeTerritory({ id: 't-centro', name: 'Centro' })
+    ]
+    const api = makeApi({
+      territories: {
+        listWithBlocks: vi.fn().mockResolvedValue(territories),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn()
+      }
+    })
+    vi.stubGlobal('api', api)
+
+    render(<HomeScreen />)
+
+    expect(await findRenderedTerritoryNames()).toEqual(['Bairro Norte', 'Centro', 'Zona Sul'])
+  })
+
+  it('sorts ignoring case and accents, so accented and plain variants of a name land next to each other', async () => {
+    const territories = [
+      makeTerritory({ id: 't-arvore-plain', name: 'arvore' }),
+      makeTerritory({ id: 't-banana', name: 'Banana' }),
+      makeTerritory({ id: 't-arvore-accent', name: 'Árvore' })
+    ]
+    const api = makeApi({
+      territories: {
+        listWithBlocks: vi.fn().mockResolvedValue(territories),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn()
+      }
+    })
+    vi.stubGlobal('api', api)
+
+    render(<HomeScreen />)
+
+    const names = await findRenderedTerritoryNames()
+    expect(names[2]).toBe('Banana')
+    expect(names.slice(0, 2).sort()).toEqual(['arvore', 'Árvore'].sort())
+  })
+
+  it('passes the map the territories in sorted order too', async () => {
+    const zona = makeTerritory({
+      id: 't-zona',
+      name: 'Zona Sul',
+      blocks: [makeBlock({ id: 'block-zona', number: 9 })]
+    })
+    const bairro = makeTerritory({
+      id: 't-bairro',
+      name: 'Bairro Norte',
+      blocks: [makeBlock({ id: 'block-bairro', number: 1 })]
+    })
+    const api = makeApi({
+      territories: {
+        listWithBlocks: vi.fn().mockResolvedValue([zona, bairro]),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn()
+      }
+    })
+    vi.stubGlobal('api', api)
+
+    render(<HomeScreen />)
+
+    const buttons = await screen.findAllByRole('button', { name: /^Quadra \d+$/ })
+    expect(buttons.map((button) => button.textContent)).toEqual(['Quadra 1', 'Quadra 9'])
+  })
+
+  it('"Novo território" hands over the territories in sorted order', async () => {
+    const territories = [
+      makeTerritory({ id: 't-zona', name: 'Zona Sul' }),
+      makeTerritory({ id: 't-bairro', name: 'Bairro Norte' })
+    ]
+    const api = makeApi({
+      territories: {
+        listWithBlocks: vi.fn().mockResolvedValue(territories),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn()
+      }
+    })
+    vi.stubGlobal('api', api)
+    const onNewTerritory = vi.fn()
+    const user = userEvent.setup()
+
+    render(<HomeScreen onNewTerritory={onNewTerritory} />)
+    await user.click(await screen.findByRole('button', { name: /novo território/i }))
+
+    expect(onNewTerritory).toHaveBeenCalledWith([territories[1], territories[0]])
+  })
+
+  it('"Editar demarcação" hands over the neighbours in sorted order', async () => {
+    const territories = [
+      makeTerritory({ id: 't-zona', name: 'Zona Sul' }),
+      makeTerritory({ id: 't-bairro', name: 'Bairro Norte' })
+    ]
+    const api = makeApi({
+      territories: {
+        listWithBlocks: vi.fn().mockResolvedValue(territories),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn()
+      }
+    })
+    vi.stubGlobal('api', api)
+    const onEditTerritory = vi.fn()
+    const user = userEvent.setup()
+
+    render(<HomeScreen onEditTerritory={onEditTerritory} />)
+    await openTerritoryMenu(user, 'Bairro Norte')
+    await user.click(
+      await screen.findByRole('menuitem', { name: /editar demarcação.*bairro norte/i })
+    )
+
+    expect(onEditTerritory).toHaveBeenCalledWith(territories[1], [territories[1], territories[0]])
   })
 })
 
@@ -258,7 +403,10 @@ describe('HomeScreen deleting a territory', () => {
     const user = userEvent.setup()
 
     render(<HomeScreen />)
-    await user.click(await screen.findByRole('button', { name: /apagar território.*bairro sul/i }))
+    await openTerritoryMenu(user, 'Bairro Sul')
+    await user.click(
+      await screen.findByRole('menuitem', { name: /apagar território.*bairro sul/i })
+    )
 
     expect(confirmSpy).toHaveBeenCalledTimes(1)
     const message = confirmSpy.mock.calls[0]?.[0] as string
@@ -285,7 +433,10 @@ describe('HomeScreen deleting a territory', () => {
     const user = userEvent.setup()
 
     render(<HomeScreen />)
-    await user.click(await screen.findByRole('button', { name: /apagar território.*bairro sul/i }))
+    await openTerritoryMenu(user, 'Bairro Sul')
+    await user.click(
+      await screen.findByRole('menuitem', { name: /apagar território.*bairro sul/i })
+    )
 
     const message = confirmSpy.mock.calls[0]?.[0] as string
     expect(message).toMatch(/histórico/i)
@@ -309,7 +460,10 @@ describe('HomeScreen deleting a territory', () => {
     const user = userEvent.setup()
 
     render(<HomeScreen />)
-    await user.click(await screen.findByRole('button', { name: /apagar território.*bairro sul/i }))
+    await openTerritoryMenu(user, 'Bairro Sul')
+    await user.click(
+      await screen.findByRole('menuitem', { name: /apagar território.*bairro sul/i })
+    )
 
     expect(deleteTerritory).not.toHaveBeenCalled()
   })
@@ -328,7 +482,10 @@ describe('HomeScreen deleting a territory', () => {
     const user = userEvent.setup()
 
     render(<HomeScreen />)
-    await user.click(await screen.findByRole('button', { name: /apagar território.*bairro sul/i }))
+    await openTerritoryMenu(user, 'Bairro Sul')
+    await user.click(
+      await screen.findByRole('menuitem', { name: /apagar território.*bairro sul/i })
+    )
 
     expect(await screen.findByRole('alert')).toHaveTextContent('O território tem uma pendência.')
   })
