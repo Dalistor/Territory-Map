@@ -275,6 +275,47 @@ describe('usePolygonEditor', () => {
     })
   })
 
+  describe('setPoints', () => {
+    it('replaces the whole ring in one mutation', () => {
+      const { result } = renderHook(() => usePolygonEditor())
+
+      act(() => result.current.setPoints([a, b, c]))
+
+      expect(result.current.points).toEqual([a, b, c])
+    })
+
+    it('is undoable, restoring the ring from before the replacement -- even from empty', () => {
+      // This is the shape a finished Leaflet-Geoman draw feeds in: the ring
+      // goes straight from empty to a whole closed polygon in one `pm:create`
+      // event, not one `addPoint` per vertex, so `setPoints` has to take its
+      // own snapshot rather than piggyback on one `addPoint` already having.
+      const { result } = renderHook(() => usePolygonEditor())
+
+      act(() => result.current.setPoints([a, b, c, d]))
+      expect(result.current.points).toEqual([a, b, c, d])
+      expect(result.current.canUndo).toBe(true)
+
+      act(() => result.current.undo())
+
+      expect(result.current.points).toEqual([])
+    })
+
+    it('snapshots the prior ring, not the one it replaces it with', () => {
+      const { result } = renderSquare()
+
+      act(() =>
+        result.current.setPoints([
+          { lat: 5, lng: 5 },
+          { lat: 6, lng: 6 },
+          { lat: 7, lng: 7 }
+        ])
+      )
+      act(() => result.current.undo())
+
+      expect(result.current.points).toEqual([a, b, c, d])
+    })
+  })
+
   it('propagates an error from validateRing that is not InvalidPolygonError, instead of swallowing it', () => {
     // deriveState only translates InvalidPolygonError into `problem`/`hint` --
     // anything else (a genuine bug elsewhere) must not be hidden behind a

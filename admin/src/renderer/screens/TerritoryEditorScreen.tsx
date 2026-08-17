@@ -19,6 +19,7 @@ import { PolygonEditorLayers } from '../map/PolygonEditorLayers'
 import { usePolygonEditor } from '../map/usePolygonEditor'
 import type { LatLng } from '../../shared/geo'
 import type { Territory } from '../../shared/models'
+import { parseIpcError } from '../../shared/ipc-error'
 
 /** Brasília -- the fallback centre when there is nothing to draw yet and no neighbour to anchor on. */
 const FALLBACK_CENTER: LatLngTuple = [-15.78, -47.93]
@@ -36,6 +37,12 @@ export interface TerritoryEditorScreenProps {
   readonly neighbours?: Territory[]
   /** Fired after a successful save, so the caller decides what happens next (close, refresh, both). */
   readonly onSaved?: () => void
+  /**
+   * Where the map opens when there is no existing boundary and no neighbour
+   * to anchor on -- the congregation's own city, geocoded once by
+   * `AuthenticatedApp`. Falls back to Brasília when even that is unavailable.
+   */
+  readonly fallbackCenter?: LatLngTuple
 }
 
 function toTuple(point: LatLng): LatLngTuple {
@@ -44,18 +51,22 @@ function toTuple(point: LatLng): LatLngTuple {
 
 /**
  * Where the map opens: the first point of the existing boundary when
- * reshaping one, else the first point of the first neighbour, else Brasília.
- * Mirrors `_initialCenter` in the removed Dart screen.
+ * reshaping one, else the first point of the first neighbour, else the
+ * caller's `fallbackCenter`, else Brasília as the last resort. Mirrors
+ * `_initialCenter` in the removed Dart screen, with the fallback added.
  */
 function initialCenter(
   territory: Territory | undefined,
-  neighbours: readonly Territory[]
+  neighbours: readonly Territory[],
+  fallbackCenter?: LatLngTuple
 ): LatLngTuple {
   const existing = territory?.boundary
   if (existing !== undefined && existing.length > 0) return toTuple(existing[0])
 
   const neighbourPoint = neighbours.flatMap((neighbour) => neighbour.boundary)[0]
-  return neighbourPoint === undefined ? FALLBACK_CENTER : toTuple(neighbourPoint)
+  if (neighbourPoint !== undefined) return toTuple(neighbourPoint)
+
+  return fallbackCenter ?? FALLBACK_CENTER
 }
 
 /**
@@ -71,7 +82,8 @@ function initialCenter(
 export function TerritoryEditorScreen({
   territory,
   neighbours = [],
-  onSaved
+  onSaved,
+  fallbackCenter
 }: TerritoryEditorScreenProps): React.JSX.Element {
   const editor = usePolygonEditor(territory?.boundary ?? [])
   const [name, setName] = useState(territory?.name ?? '')
@@ -92,7 +104,10 @@ export function TerritoryEditorScreen({
     [neighbours, territory?.id]
   )
 
-  const center = useMemo(() => initialCenter(territory, neighbours), [territory, neighbours])
+  const center = useMemo(
+    () => initialCenter(territory, neighbours, fallbackCenter),
+    [territory, neighbours, fallbackCenter]
+  )
 
   async function handleSave(): Promise<void> {
     if (!canSave) return
@@ -112,8 +127,9 @@ export function TerritoryEditorScreen({
     } catch (thrown) {
       // Verbatim: the server already wrote this message with the admin in
       // mind (e.g. "o território se sobrepõe a Jardim") -- rephrasing it
-      // here would only make it less precise.
-      setError(thrown instanceof Error ? thrown.message : String(thrown))
+      // here would only make it less precise. `parseIpcError` is what
+      // recovers that verbatim message from a real bridged rejection.
+      setError(parseIpcError(thrown, 'Não foi possível salvar o território.').message)
     } finally {
       setSaving(false)
     }

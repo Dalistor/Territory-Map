@@ -3,10 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <title>Territory Map Admin</title>
-    <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
+    <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+         `img-src` allows the OSM tile host on top of `'self'`/`data:` --
+         `TerritoryMap`/`PolygonEditorLayers` (Tasks 09/11, spec 0003) load
+         every map tile as an `<img>` from `tile.openstreetmap.org`, which the
+         renderer's CSP governs (unlike the admin API calls, which run as a
+         Node `fetch` in the main process and never touch this policy). -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://tile.openstreetmap.org"
     />
   </head>
 

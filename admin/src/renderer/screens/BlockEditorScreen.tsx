@@ -14,6 +14,7 @@ import type { LatLngTuple } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { Block, Territory } from '../../shared/models'
 import type { LatLng } from '../../shared/geo'
+import { parseIpcError } from '../../shared/ipc-error'
 import { usePolygonEditor } from '../map/usePolygonEditor'
 import { PolygonEditorLayers } from '../map/PolygonEditorLayers'
 
@@ -54,7 +55,7 @@ function parseNumberField(raw: string): NumberField {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
+  return parseIpcError(error, 'Não foi possível completar a operação.').message
 }
 
 /**

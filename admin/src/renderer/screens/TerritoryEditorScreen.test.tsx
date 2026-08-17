@@ -73,7 +73,8 @@ function fakeApi(
     },
     blocks: { create: vi.fn(), update: vi.fn(), delete: vi.fn() },
     publishers: { list: vi.fn(), create: vi.fn(), regenerateCode: vi.fn(), setActive: vi.fn() },
-    workLogs: { listFor: vi.fn(), delete: vi.fn() }
+    workLogs: { listFor: vi.fn(), delete: vi.fn() },
+    geo: { geocodeCity: vi.fn() }
   }
 }
 

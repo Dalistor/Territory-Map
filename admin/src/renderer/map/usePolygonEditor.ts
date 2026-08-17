@@ -65,6 +65,7 @@ type Action =
   | { type: 'add'; point: LatLng }
   | { type: 'move'; index: number; point: LatLng }
   | { type: 'remove'; index: number }
+  | { type: 'set'; points: LatLng[] }
   | { type: 'undo' }
   | { type: 'clear' }
 
@@ -96,6 +97,12 @@ function reducer(state: InternalState, action: Action): InternalState {
       }
     }
 
+    case 'set':
+      return {
+        points: action.points,
+        undoStack: pushSnapshot(state.undoStack, state.points)
+      }
+
     case 'undo': {
       if (state.undoStack.length === 0) return state
       return {
@@ -119,6 +126,12 @@ export interface PolygonEditor {
   addPoint(point: LatLng): void
   movePoint(index: number, point: LatLng): void
   removePoint(index: number): void
+  /**
+   * Replaces the whole ring in one mutation, snapshotted as a single undo
+   * step -- what a finished Leaflet-Geoman draw (`pm:create`) feeds in, all
+   * at once, rather than one `addPoint` per vertex.
+   */
+  setPoints(points: LatLng[]): void
   undo(): void
   clear(): void
 }
@@ -147,6 +160,7 @@ export function usePolygonEditor(initial: readonly LatLng[] = []): PolygonEditor
     []
   )
   const removePoint = useCallback((index: number) => dispatch({ type: 'remove', index }), [])
+  const setPoints = useCallback((points: LatLng[]) => dispatch({ type: 'set', points }), [])
   const undo = useCallback(() => dispatch({ type: 'undo' }), [])
   const clear = useCallback(() => dispatch({ type: 'clear' }), [])
 
@@ -159,6 +173,7 @@ export function usePolygonEditor(initial: readonly LatLng[] = []): PolygonEditor
     addPoint,
     movePoint,
     removePoint,
+    setPoints,
     undo,
     clear
   }

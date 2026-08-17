@@ -2,6 +2,7 @@
 // the root decision between the setup screen and the authenticated app.
 // `window.api` is never the real IPC bridge here, per the spec 0003
 // convention already used by `HomeScreen.test.tsx`/`session.test.ts`.
+import type { ReactNode } from 'react'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -9,6 +10,20 @@ import '@testing-library/jest-dom/vitest'
 import type { IpcApi } from '../shared/ipc-contract'
 import type { Block, Congregation, Territory } from '../shared/models'
 import App from './App'
+
+// `TerritoryEditorScreen`/`BlockEditorScreen` (real here, reached by
+// navigating from `HomeScreen`) pull in `react-leaflet`/`PolygonEditorLayers`,
+// which need a real Leaflet DOM layout jsdom does not provide -- same stub
+// their own test files use. `AuthenticatedApp`'s job is only wiring the
+// navigation together, not how either map draws.
+vi.mock('react-leaflet', () => ({
+  MapContainer: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
+  TileLayer: () => null
+}))
+
+vi.mock('./map/PolygonEditorLayers', () => ({
+  PolygonEditorLayers: () => null
+}))
 
 // `HomeScreen` (rendered for real here, not mocked) pulls in `TerritoryMap`,
 // which needs a real Leaflet DOM layout jsdom does not provide. Same stub
@@ -35,6 +50,33 @@ vi.mock('./map/TerritoryMap', () => ({
 }))
 
 const CONGREGATION: Congregation = { id: 'cong-1', name: 'Congregação Central', city: 'São Paulo' }
+
+function makeBlock(overrides: Partial<Block> = {}): Block {
+  return {
+    id: 'block-1',
+    number: 1,
+    polygon: [
+      { lat: 0, lng: 0 },
+      { lat: 0, lng: 1 },
+      { lat: 1, lng: 1 }
+    ],
+    ...overrides
+  }
+}
+
+function makeTerritory(overrides: Partial<Territory> = {}): Territory {
+  return {
+    id: 'territory-1',
+    name: 'Centro',
+    boundary: [
+      { lat: 0, lng: 0 },
+      { lat: 0, lng: 1 },
+      { lat: 1, lng: 1 }
+    ],
+    blocks: [],
+    ...overrides
+  }
+}
 
 /** A fake covering every member of `IpcApi` -- `App` only calls
  * `session.isConfigured`, `session.getCongregation` and
@@ -74,6 +116,10 @@ function fakeApi(overrides: Partial<IpcApi> = {}): IpcApi {
       listFor: vi.fn(),
       delete: vi.fn(),
       ...overrides.workLogs
+    },
+    geo: {
+      geocodeCity: vi.fn().mockResolvedValue(null),
+      ...overrides.geo
     }
   }
 }
@@ -358,5 +404,147 @@ describe('App', () => {
 
     expect(await screen.findByRole('button', { name: 'Recarregar' })).toBeInTheDocument()
     expect(screen.queryByTestId('setup-reason')).not.toBeInTheDocument()
+  })
+})
+
+// `HomeScreen`'s own test suite (Task 14) already verifies that each action
+// calls the right callback with the right arguments -- what nothing verified
+// until now is that `App.tsx` actually wires those callbacks to a screen the
+// admin can see and leave again. That gap (no task ever connected the six
+// screens together) is what shipped a `HomeScreen` where "Novo território"
+// silently did nothing.
+describe('AuthenticatedApp navigation', () => {
+  async function renderHome(api: IpcApi): Promise<void> {
+    vi.stubGlobal('api', api)
+    render(<App />)
+    // "Recarregar" is always in the header, loading or not -- "Novo
+    // território" only renders once HomeScreen's own territories fetch has
+    // actually settled successfully, which is the readiness signal every
+    // test below needs before it can find the button it wants to click.
+    await screen.findByRole('button', { name: 'Novo território' })
+  }
+
+  it('opens the territory editor from "Novo território" and returns home on "← Voltar"', async () => {
+    const user = userEvent.setup()
+    await renderHome(
+      fakeApi({
+        session: {
+          isConfigured: vi.fn().mockResolvedValue(true),
+          configure: vi.fn(),
+          signOut: vi.fn(),
+          getCongregation: vi.fn().mockResolvedValue(CONGREGATION)
+        },
+        territories: {
+          listWithBlocks: vi.fn().mockResolvedValue([]),
+          create: vi.fn(),
+          update: vi.fn(),
+          delete: vi.fn()
+        }
+      })
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Novo território' }))
+
+    expect(await screen.findByRole('heading', { name: 'Novo território' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Recarregar' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '← Voltar' }))
+
+    expect(await screen.findByRole('button', { name: 'Recarregar' })).toBeInTheDocument()
+  })
+
+  it('opens the block editor from a territory\'s "Adicionar quadra" action', async () => {
+    const user = userEvent.setup()
+    const territory = makeTerritory()
+    await renderHome(
+      fakeApi({
+        session: {
+          isConfigured: vi.fn().mockResolvedValue(true),
+          configure: vi.fn(),
+          signOut: vi.fn(),
+          getCongregation: vi.fn().mockResolvedValue(CONGREGATION)
+        },
+        territories: {
+          listWithBlocks: vi.fn().mockResolvedValue([territory]),
+          create: vi.fn(),
+          update: vi.fn(),
+          delete: vi.fn()
+        }
+      })
+    )
+
+    await user.click(screen.getByRole('button', { name: `Adicionar quadra em ${territory.name}` }))
+
+    expect(
+      await screen.findByRole('heading', { name: `Nova quadra em ${territory.name}` })
+    ).toBeInTheDocument()
+  })
+
+  it('opens the block history sheet after tapping a block and choosing "Ver histórico"', async () => {
+    const user = userEvent.setup()
+    const block = makeBlock()
+    const territory = makeTerritory({ blocks: [block] })
+    await renderHome(
+      fakeApi({
+        session: {
+          isConfigured: vi.fn().mockResolvedValue(true),
+          configure: vi.fn(),
+          signOut: vi.fn(),
+          getCongregation: vi.fn().mockResolvedValue(CONGREGATION)
+        },
+        territories: {
+          listWithBlocks: vi.fn().mockResolvedValue([territory]),
+          create: vi.fn(),
+          update: vi.fn(),
+          delete: vi.fn()
+        },
+        workLogs: {
+          listFor: vi.fn().mockResolvedValue([]),
+          delete: vi.fn()
+        }
+      })
+    )
+
+    await user.click(await screen.findByRole('button', { name: `Quadra ${block.number}` }))
+    await user.click(screen.getByRole('menuitem', { name: 'Ver histórico' }))
+
+    expect(
+      await screen.findByRole('heading', { name: `Quadra ${block.number} — ${territory.name}` })
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '← Voltar' })).toBeInTheDocument()
+  })
+
+  it('opens the publishers screen from the "Publicadores" action', async () => {
+    const user = userEvent.setup()
+    await renderHome(
+      fakeApi({
+        session: {
+          isConfigured: vi.fn().mockResolvedValue(true),
+          configure: vi.fn(),
+          signOut: vi.fn(),
+          getCongregation: vi.fn().mockResolvedValue(CONGREGATION)
+        },
+        territories: {
+          listWithBlocks: vi.fn().mockResolvedValue([]),
+          create: vi.fn(),
+          update: vi.fn(),
+          delete: vi.fn()
+        },
+        publishers: {
+          list: vi.fn().mockResolvedValue([]),
+          create: vi.fn(),
+          regenerateCode: vi.fn(),
+          setActive: vi.fn()
+        }
+      })
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Publicadores' }))
+
+    expect(await screen.findByRole('heading', { name: 'Publicadores' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '← Voltar' }))
+
+    expect(await screen.findByRole('button', { name: 'Recarregar' })).toBeInTheDocument()
   })
 })

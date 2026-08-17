@@ -6,8 +6,12 @@
 // reached through callback props instead of an import, so this file does not
 // need to know those screens exist yet.
 import { useCallback, useEffect, useState } from 'react'
+import type { LatLngTuple } from 'leaflet'
 import type { Block, Congregation, Territory } from '../../shared/models'
+import { parseIpcError } from '../../shared/ipc-error'
 import { TerritoryMap } from '../map/TerritoryMap'
+
+const GENERIC_ERROR_MESSAGE = 'Não foi possível completar a operação.'
 
 export interface HomeScreenProps {
   /**
@@ -26,14 +30,18 @@ export interface HomeScreenProps {
   readonly onAddBlock?: (territory: Territory) => void
   readonly onShowHistory?: (territory: Territory, block: Block) => void
   readonly onEditBlock?: (territory: Territory, block: Block) => void
+  /** Opens the publishers screen -- unrelated to any territory or block. */
+  readonly onOpenPublishers?: () => void
   /** Called after a successful sign-out so the caller can route back to setup. */
   readonly onSignedOut?: () => void
   /** Overridable so a test can pin what counts as "today" for the map's colours. */
   readonly now?: Date
+  /** Where the map centres when there are no territories yet -- the congregation's own city. */
+  readonly fallbackCenter?: LatLngTuple
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Não foi possível completar a operação.'
+  return parseIpcError(error, GENERIC_ERROR_MESSAGE).message
 }
 
 /** Literal, because `block_work_logs.block_id` really is `ON DELETE CASCADE` on the server. */
@@ -66,8 +74,10 @@ export function HomeScreen({
   onAddBlock,
   onShowHistory,
   onEditBlock,
+  onOpenPublishers,
   onSignedOut,
-  now
+  now,
+  fallbackCenter
 }: HomeScreenProps): React.JSX.Element {
   const [territories, setTerritories] = useState<Territory[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -166,6 +176,7 @@ export function HomeScreen({
     <div>
       <header>
         <h1>{title}</h1>
+        <button onClick={onOpenPublishers}>Publicadores</button>
         <button onClick={() => void load()}>Recarregar</button>
         <button
           aria-haspopup="true"
@@ -213,6 +224,7 @@ export function HomeScreen({
               territories={territories}
               now={now ?? new Date()}
               onBlockTap={(territory, block) => setActiveBlock({ territory, block })}
+              fallbackCenter={fallbackCenter}
             />
           </>
         )}

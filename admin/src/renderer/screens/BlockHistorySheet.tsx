@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Block, Territory, WorkLog } from '../../shared/models'
 import { workLogWasSyncedLate } from '../../shared/models'
+import { parseIpcError } from '../../shared/ipc-error'
 
 export interface BlockHistorySheetProps {
   readonly territory: Territory
@@ -28,9 +29,8 @@ function formatDateTime(moment: Date): string {
   return `${two(moment.getDate())}/${two(moment.getMonth() + 1)}/${moment.getFullYear()} ${two(moment.getHours())}:${two(moment.getMinutes())}`
 }
 
-/** IPC only reliably carries `Error#message` across the bridge -- see `shared/ipc-contract.ts`. */
 function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback
+  return parseIpcError(error, fallback).message
 }
 
 export function BlockHistorySheet({

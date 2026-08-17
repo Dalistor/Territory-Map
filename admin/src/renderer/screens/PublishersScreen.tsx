@@ -10,6 +10,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Publisher } from '../../shared/models'
 import { publisherHasLiveCode, publisherIsPending } from '../../shared/models'
+import { parseIpcError } from '../../shared/ipc-error'
+
+const GENERIC_ERROR_MESSAGE = 'Não foi possível completar a operação.'
 
 export interface PublishersScreenProps {
   /** Injected rather than read here, so a test can pin "today" wherever it needs a code's fate to land. */
@@ -32,8 +35,7 @@ function statusOf(publisher: Publisher, now: Date): string {
 
 /** Reduces whatever a rejected `window.api` call threw to text the admin can read. */
 function errorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) return error.message
-  return 'Não foi possível completar a operação.'
+  return parseIpcError(error, GENERIC_ERROR_MESSAGE).message
 }
 
 /** What the code dialog is currently showing -- whose code, and the code itself. */

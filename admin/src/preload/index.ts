@@ -5,7 +5,6 @@
 // `ipcRenderer`, only this typed surface.
 
 import { contextBridge, ipcRenderer } from 'electron'
-import { electronAPI } from '@electron-toolkit/preload'
 import {
   IPC_CHANNELS,
   type BlockCreateInput,
@@ -50,22 +49,33 @@ const api: IpcApi = {
   workLogs: {
     listFor: (blockId: string) => ipcRenderer.invoke(IPC_CHANNELS.workLogsListFor, blockId),
     delete: (logId: string) => ipcRenderer.invoke(IPC_CHANNELS.workLogsDelete, logId)
+  },
+  geo: {
+    geocodeCity: (city: string) => ipcRenderer.invoke(IPC_CHANNELS.geoGeocodeCity, city)
   }
 }
 
-// Use `contextBridge` APIs to expose Electron APIs to
-// renderer only if context isolation is enabled, otherwise
-// just add to the DOM global.
+// Use `contextBridge` to expose `window.api` to the renderer only if context
+// isolation is enabled (it always is -- `sandbox: true`, `contextIsolation:
+// true` in `main/index.ts`), otherwise fall back to a plain global.
+//
+// This is the only Electron API the renderer gets: no `window.electron`,
+// because nothing in the app ever called it -- `@electron-toolkit/preload`
+// was scaffold leftover from Task 01 that Tasks 02-20 never ended up using.
+// Worse than dead weight: `require("@electron-toolkit/preload")` reaches a
+// third-party npm package that electron-vite does not bundle into this
+// file, and a sandboxed preload's module loader only allows a short list of
+// built-ins (`electron`, `events`, `timers`, `url`) -- not arbitrary
+// `node_modules` packages. That import throws at the top of the script,
+// before either `contextBridge` call below ever runs, which is why
+// `window.api` never existed at all.
 if (process.contextIsolated) {
   try {
-    contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('api', api)
   } catch (error) {
     console.error(error)
   }
 } else {
-  // @ts-ignore (define in dts)
-  window.electron = electronAPI
   // @ts-ignore (define in dts)
   window.api = api
 }

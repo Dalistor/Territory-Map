@@ -7,8 +7,10 @@
 // to pass `reason` back in) -- this component never decides that on its own.
 
 import { useState, type FormEvent } from 'react'
+import { parseIpcError } from '../../shared/ipc-error'
 
 const REQUIRED_MESSAGE = 'Campo obrigatório.'
+const GENERIC_ERROR_MESSAGE = 'Não foi possível configurar a congregação. Tente novamente.'
 
 export interface SetupScreenProps {
   /** Why the admin is back here, when this is not the first time. */
@@ -23,18 +25,12 @@ interface FieldErrors {
 
 /**
  * Reduces whatever `window.api.session.configure` rejected with to a string
- * worth showing the admin. `ipc-handlers.ts` (Task 07) always rejects with
- * something carrying a `message` -- a real `Error`, or (in tests, which fake
- * `window.api` rather than crossing the real IPC bridge) a plain object
- * shaped like one -- so reading `message` off either covers both.
+ * worth showing the admin. `parseIpcError` (`shared/ipc-error.ts`) is what
+ * un-mangles a real bridged rejection -- see its own comment for why that is
+ * not as simple as reading `error.message`.
  */
 function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'object' && error !== null && 'message' in error) {
-    const { message } = error as { message: unknown }
-    if (typeof message === 'string' && message.length > 0) return message
-  }
-  return 'Não foi possível configurar a congregação. Tente novamente.'
+  return parseIpcError(error, GENERIC_ERROR_MESSAGE).message
 }
 
 export function SetupScreen({ reason }: SetupScreenProps): React.JSX.Element {
@@ -79,56 +75,67 @@ export function SetupScreen({ reason }: SetupScreenProps): React.JSX.Element {
   }
 
   return (
-    <div style={{ maxWidth: 420, margin: '0 auto', padding: 32 }}>
-      <h1>Territory Map</h1>
-      <p>
-        Informe os dados da congregação. Eles ficam guardados neste computador e não serão pedidos
-        de novo.
-      </p>
-      {reason !== undefined && (
-        <p data-testid="setup-reason" role="note">
-          {reason}
+    <div className="setup-screen">
+      <div className="setup-card">
+        <div className="setup-mark" aria-hidden="true">
+          📍
+        </div>
+        <h1>Territory Map</h1>
+        <p>
+          Informe os dados da congregação. Eles ficam guardados neste computador e não serão pedidos
+          de novo.
         </p>
-      )}
-      <form onSubmit={handleSubmit} noValidate>
-        <div>
-          <label htmlFor="setup-name">Nome da congregação</label>
-          <input
-            id="setup-name"
-            type="text"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            aria-invalid={fieldErrors.name !== undefined}
-          />
-          {fieldErrors.name !== undefined && <span>{fieldErrors.name}</span>}
-        </div>
-        <div>
-          <label htmlFor="setup-city">Cidade</label>
-          <input
-            id="setup-city"
-            type="text"
-            value={city}
-            onChange={(event) => setCity(event.target.value)}
-            aria-invalid={fieldErrors.city !== undefined}
-          />
-          {fieldErrors.city !== undefined && <span>{fieldErrors.city}</span>}
-        </div>
-        <div>
-          <label htmlFor="setup-password">Senha</label>
-          <input
-            id="setup-password"
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            aria-invalid={fieldErrors.password !== undefined}
-          />
-          {fieldErrors.password !== undefined && <span>{fieldErrors.password}</span>}
-        </div>
-        {serverError !== null && <p role="alert">{serverError}</p>}
-        <button type="submit" disabled={submitting}>
-          {submitting ? <span role="status">Entrando…</span> : 'Entrar'}
-        </button>
-      </form>
+        {reason !== undefined && (
+          <p data-testid="setup-reason" role="note">
+            {reason}
+          </p>
+        )}
+        <form onSubmit={handleSubmit} noValidate>
+          <div className="field">
+            <label htmlFor="setup-name">Nome da congregação</label>
+            <input
+              id="setup-name"
+              type="text"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              aria-invalid={fieldErrors.name !== undefined}
+            />
+            {fieldErrors.name !== undefined && (
+              <span className="field-error">{fieldErrors.name}</span>
+            )}
+          </div>
+          <div className="field">
+            <label htmlFor="setup-city">Cidade</label>
+            <input
+              id="setup-city"
+              type="text"
+              value={city}
+              onChange={(event) => setCity(event.target.value)}
+              aria-invalid={fieldErrors.city !== undefined}
+            />
+            {fieldErrors.city !== undefined && (
+              <span className="field-error">{fieldErrors.city}</span>
+            )}
+          </div>
+          <div className="field">
+            <label htmlFor="setup-password">Senha</label>
+            <input
+              id="setup-password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              aria-invalid={fieldErrors.password !== undefined}
+            />
+            {fieldErrors.password !== undefined && (
+              <span className="field-error">{fieldErrors.password}</span>
+            )}
+          </div>
+          {serverError !== null && <p role="alert">{serverError}</p>}
+          <button type="submit" disabled={submitting}>
+            {submitting ? <span role="status">Entrando…</span> : 'Entrar'}
+          </button>
+        </form>
+      </div>
     </div>
   )
 }

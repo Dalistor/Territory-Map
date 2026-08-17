@@ -95,6 +95,10 @@ function makeApi(overrides: Partial<IpcApi> = {}): IpcApi {
       listFor: vi.fn(),
       delete: vi.fn(),
       ...overrides.workLogs
+    },
+    geo: {
+      geocodeCity: vi.fn(),
+      ...overrides.geo
     }
   }
 }

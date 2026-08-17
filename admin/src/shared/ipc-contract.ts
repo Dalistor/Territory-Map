@@ -91,7 +91,8 @@ export const IPC_CHANNELS = {
   publishersRegenerateCode: 'publishers:regenerateCode',
   publishersSetActive: 'publishers:setActive',
   workLogsListFor: 'workLogs:listFor',
-  workLogsDelete: 'workLogs:delete'
+  workLogsDelete: 'workLogs:delete',
+  geoGeocodeCity: 'geo:geocodeCity'
 } as const
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]
@@ -143,5 +144,15 @@ export interface IpcApi {
     listFor(blockId: string): Promise<WorkLog[]>
     /** Removing a log recomputes the block's `lastWorkedAt` on the server. */
     delete(logId: string): Promise<void>
+  }
+  readonly geo: {
+    /**
+     * A rough centre point for a city name (via OSM's Nominatim), or `null`
+     * when nothing matched or the lookup failed -- used only to give the map
+     * a sensible starting point when there is no territory yet to anchor on.
+     * Never routes through `session` -- it is not a call to this app's own
+     * server, so there is no token to attach and no 401 to retry.
+     */
+    geocodeCity(city: string): Promise<LatLng | null>
   }
 }

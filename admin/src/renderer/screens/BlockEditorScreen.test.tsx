@@ -111,7 +111,8 @@ function makeApi(overrides: Partial<IpcApi['blocks']> = {}): IpcApi {
       regenerateCode: vi.fn(),
       setActive: vi.fn()
     },
-    workLogs: { listFor: vi.fn(), delete: vi.fn() }
+    workLogs: { listFor: vi.fn(), delete: vi.fn() },
+    geo: { geocodeCity: vi.fn() }
   }
 }
 
@@ -408,7 +409,7 @@ describe('BlockEditorScreen', () => {
     expect(onSaved).not.toHaveBeenCalled()
   })
 
-  it('stringifies a rejection that is not an Error instance', async () => {
+  it('falls back to a generic message for a rejection that carries no usable message', async () => {
     const user = userEvent.setup()
     const create = vi.fn().mockRejectedValue('boom')
     window.api = makeApi({ create })
@@ -417,7 +418,7 @@ describe('BlockEditorScreen', () => {
     await drawValidRing(user)
     await user.click(saveButton())
 
-    expect(await screen.findByText('boom')).toBeTruthy()
+    expect(await screen.findByText('Não foi possível completar a operação.')).toBeTruthy()
   })
 
   it('disables Save and shows a saving indicator while the request is in flight', async () => {

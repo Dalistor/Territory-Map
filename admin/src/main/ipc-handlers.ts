@@ -18,10 +18,12 @@ import {
 import { ApiErrorException } from '../shared/api-errors'
 import type { ApiClient } from './api-client'
 import type { Session } from './session'
+import type { Geocoder } from './geocode'
 
 export interface RegisterIpcHandlersOptions {
   readonly session: Session
   readonly api: ApiClient
+  readonly geocoder: Geocoder
 }
 
 /**
@@ -70,7 +72,7 @@ function handle<Args extends unknown[], Result>(
   })
 }
 
-export function registerIpcHandlers({ session, api }: RegisterIpcHandlersOptions): void {
+export function registerIpcHandlers({ session, api, geocoder }: RegisterIpcHandlersOptions): void {
   handle(IPC_CHANNELS.sessionIsConfigured, () => session.isConfigured())
   handle(IPC_CHANNELS.sessionConfigure, (credentials: SessionCredentials) =>
     session.configure(credentials)
@@ -126,4 +128,8 @@ export function registerIpcHandlers({ session, api }: RegisterIpcHandlersOptions
   handle(IPC_CHANNELS.workLogsDelete, (logId: string) =>
     session.run(() => api.deleteWorkLog(logId))
   )
+
+  // Not a call to this app's own server -- no `session.run()`, same as
+  // `sessionIsConfigured`/`sessionGetCongregation` above.
+  handle(IPC_CHANNELS.geoGeocodeCity, (city: string) => geocoder.geocodeCity(city))
 }

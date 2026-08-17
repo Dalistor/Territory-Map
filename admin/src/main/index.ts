@@ -14,6 +14,7 @@ import { createApiClient } from './api-client'
 import { createCredentialsStore } from './credentials-store'
 import { createSession } from './session'
 import { registerIpcHandlers } from './ipc-handlers'
+import { createGeocoder } from './geocode'
 
 // `__dirname` is always `<admin>/out/main` here — electron-vite bundles the
 // main process to `out/` in both `dev` and `build`, so this path reaches
@@ -91,7 +92,8 @@ app.whenReady().then(() => {
     getFilePath: () => join(app.getPath('userData'), 'credentials.enc')
   })
   const session = createSession({ api, store: credentialsStore })
-  registerIpcHandlers({ session, api })
+  const geocoder = createGeocoder()
+  registerIpcHandlers({ session, api, geocoder })
 
   createWindow()
 

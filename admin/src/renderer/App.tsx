@@ -16,11 +16,27 @@
 //      the one time the admin actually types the password (`SetupScreen`);
 //      every later launch signs in silently, so this is the only way
 //      `HomeScreen` learns who it is.
+//
+// Once authenticated, `AuthenticatedApp` below owns the in-app navigation
+// between `HomeScreen` and the four screens it can open (territory editor,
+// block editor, publishers, block history) -- none of the tasks that built
+// those screens ever wired them together, since each was tested in
+// isolation against a faked `HomeScreen`-shaped caller. There is no router
+// library involved: `route` is one piece of state, and leaving a pushed
+// screen always returns to a freshly mounted `HomeScreen`, whose own mount
+// effect refetches the territories -- so a save doesn't need its own
+// invalidation path, going home already causes one.
 
 import { useEffect, useState } from 'react'
-import type { Congregation } from '../shared/models'
+import type { LatLngTuple } from 'leaflet'
+import type { Block, Congregation, Territory } from '../shared/models'
+import { parseIpcError } from '../shared/ipc-error'
 import SetupScreen from './screens/SetupScreen'
 import HomeScreen from './screens/HomeScreen'
+import TerritoryEditorScreen from './screens/TerritoryEditorScreen'
+import BlockEditorScreen from './screens/BlockEditorScreen'
+import PublishersScreen from './screens/PublishersScreen'
+import BlockHistorySheet from './screens/BlockHistorySheet'
 
 const STORAGE_READ_ERROR_MESSAGE = 'Não foi possível ler os dados guardados neste computador.'
 const CREDENTIALS_REJECTED_NAME = 'CredentialsRejectedException'
@@ -29,30 +45,6 @@ type RootState =
   | { readonly status: 'loading' }
   | { readonly status: 'setup'; readonly reason?: string }
   | { readonly status: 'home'; readonly congregation: Congregation | null }
-
-/**
- * Every error crossing the IPC bridge lands as a `SerializedIpcError`-shaped
- * plain object in tests that fake `window.api` directly (see
- * `shared/ipc-contract.ts`), or as a real `Error` when a test throws one --
- * this reads `name` off either without assuming which.
- */
-function errorName(error: unknown): string | undefined {
-  if (error instanceof Error) return error.name
-  if (typeof error === 'object' && error !== null && 'name' in error) {
-    const { name } = error as { name: unknown }
-    if (typeof name === 'string') return name
-  }
-  return undefined
-}
-
-function errorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'object' && error !== null && 'message' in error) {
-    const { message } = error as { message: unknown }
-    if (typeof message === 'string' && message.length > 0) return message
-  }
-  return fallback
-}
 
 export function App(): React.JSX.Element {
   const [state, setState] = useState<RootState>({ status: 'loading' })
@@ -78,11 +70,9 @@ export function App(): React.JSX.Element {
         await window.api.territories.listWithBlocks()
       } catch (error) {
         if (cancelled) return
-        if (errorName(error) === CREDENTIALS_REJECTED_NAME) {
-          setState({
-            status: 'setup',
-            reason: errorMessage(error, STORAGE_READ_ERROR_MESSAGE)
-          })
+        const parsed = parseIpcError(error, STORAGE_READ_ERROR_MESSAGE)
+        if (parsed.name === CREDENTIALS_REJECTED_NAME) {
+          setState({ status: 'setup', reason: parsed.message })
         } else {
           // Not a credentials problem -- HomeScreen's own load fetches the
           // territories again and shows this failure the way it already
@@ -120,10 +110,131 @@ export function App(): React.JSX.Element {
   }
 
   return (
-    <HomeScreen
+    <AuthenticatedApp
       congregation={state.congregation}
       onSignedOut={() => setState({ status: 'setup' })}
     />
+  )
+}
+
+type Route =
+  | { readonly kind: 'home' }
+  | {
+      readonly kind: 'territory-editor'
+      readonly territory?: Territory
+      readonly neighbours: Territory[]
+    }
+  | { readonly kind: 'block-editor'; readonly territory: Territory; readonly block?: Block }
+  | { readonly kind: 'publishers' }
+  | { readonly kind: 'block-history'; readonly territory: Territory; readonly block: Block }
+
+interface AuthenticatedAppProps {
+  readonly congregation: Congregation | null
+  readonly onSignedOut: () => void
+}
+
+/** Everything reachable once the admin is signed in -- `HomeScreen` and the four screens it opens. */
+function AuthenticatedApp({ congregation, onSignedOut }: AuthenticatedAppProps): React.JSX.Element {
+  const [route, setRoute] = useState<Route>({ kind: 'home' })
+  const goHome = (): void => setRoute({ kind: 'home' })
+
+  // A one-time, best-effort lookup of the congregation's own city, so the
+  // map opens somewhere useful instead of the middle of Brazil when there
+  // is no territory yet to anchor on (`TerritoryMap`/`TerritoryEditorScreen`
+  // both already have their own further fallbacks, so a failed or still-
+  // pending lookup here is never a broken map, just a less helpful one).
+  const [fallbackCenter, setFallbackCenter] = useState<LatLngTuple | undefined>(undefined)
+  useEffect(() => {
+    if (congregation === null) return
+    let cancelled = false
+    window.api.geo
+      .geocodeCity(congregation.city)
+      .then((point) => {
+        if (!cancelled && point !== null) setFallbackCenter([point.lat, point.lng])
+      })
+      .catch(() => {
+        // A failed lookup is not worth surfacing -- the map's own hardcoded
+        // fallback covers it.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [congregation])
+
+  switch (route.kind) {
+    case 'territory-editor':
+      return (
+        <PushedScreen onBack={goHome}>
+          <TerritoryEditorScreen
+            territory={route.territory}
+            neighbours={route.neighbours}
+            onSaved={goHome}
+            fallbackCenter={fallbackCenter}
+          />
+        </PushedScreen>
+      )
+    case 'block-editor':
+      return (
+        <PushedScreen onBack={goHome}>
+          <BlockEditorScreen territory={route.territory} block={route.block} onSaved={goHome} />
+        </PushedScreen>
+      )
+    case 'publishers':
+      return (
+        <PushedScreen onBack={goHome}>
+          <PublishersScreen />
+        </PushedScreen>
+      )
+    case 'block-history':
+      return (
+        <PushedScreen onBack={goHome}>
+          <BlockHistorySheet territory={route.territory} block={route.block} />
+        </PushedScreen>
+      )
+    case 'home':
+      return (
+        <HomeScreen
+          congregation={congregation}
+          onNewTerritory={(neighbours) => setRoute({ kind: 'territory-editor', neighbours })}
+          onEditTerritory={(territory, neighbours) =>
+            setRoute({ kind: 'territory-editor', territory, neighbours })
+          }
+          onAddBlock={(territory) => setRoute({ kind: 'block-editor', territory })}
+          onEditBlock={(territory, block) => setRoute({ kind: 'block-editor', territory, block })}
+          onShowHistory={(territory, block) =>
+            setRoute({ kind: 'block-history', territory, block })
+          }
+          onOpenPublishers={() => setRoute({ kind: 'publishers' })}
+          onSignedOut={onSignedOut}
+          fallbackCenter={fallbackCenter}
+        />
+      )
+  }
+}
+
+interface PushedScreenProps {
+  readonly onBack: () => void
+  readonly children: React.ReactNode
+}
+
+/**
+ * The "← Voltar" chrome every screen `AuthenticatedApp` pushes needs but
+ * does not have built in -- each one was designed to be pushed by a real
+ * router (the Dart admin got a back button for free from
+ * `Navigator.push`'s `AppBar`), which this app has never had until now.
+ * Wraps without touching the screen itself, so none of its own tests had to
+ * change.
+ */
+function PushedScreen({ onBack, children }: PushedScreenProps): React.JSX.Element {
+  return (
+    <div className="pushed-screen">
+      <div className="back-bar">
+        <button type="button" onClick={onBack}>
+          ← Voltar
+        </button>
+      </div>
+      {children}
+    </div>
   )
 }
 

@@ -37,6 +37,8 @@ export interface TerritoryMapProps {
   /** Injected rather than read here, so a test can pin "today" wherever it needs the colours to land. */
   readonly now: Date
   readonly onBlockTap?: (territory: Territory, block: Block) => void
+  /** Where to centre the map when there are no territories yet -- see {@link initialCenter}. */
+  readonly fallbackCenter?: LatLngTuple
 }
 
 function toLatLngTuple(point: LatLng): LatLngTuple {
@@ -59,12 +61,18 @@ function averageCentroid(ring: readonly LatLng[]): LatLngTuple {
 }
 
 /**
- * Average of every territory boundary point, or the Brasília fallback when
- * there are no territories to centre on yet.
+ * Average of every territory boundary point, or -- when there are no
+ * territories to centre on yet -- the caller's own `fallbackCenter` (the
+ * congregation's city, geocoded once by `AuthenticatedApp`), and only the
+ * hardcoded Brasília point as the last resort when even that is unavailable
+ * (offline, or the lookup found nothing).
  */
-function initialCenter(territories: readonly Territory[]): LatLngTuple {
+function initialCenter(
+  territories: readonly Territory[],
+  fallbackCenter?: LatLngTuple
+): LatLngTuple {
   const points = territories.flatMap((territory) => territory.boundary)
-  if (points.length === 0) return FALLBACK_CENTER
+  if (points.length === 0) return fallbackCenter ?? FALLBACK_CENTER
   const lat = points.reduce((sum, point) => sum + point.lat, 0) / points.length
   const lng = points.reduce((sum, point) => sum + point.lng, 0) / points.length
   return [lat, lng]
@@ -97,9 +105,13 @@ function numberIcon(number: number, color: string): DivIcon {
 export function TerritoryMap({
   territories,
   now,
-  onBlockTap
+  onBlockTap,
+  fallbackCenter
 }: TerritoryMapProps): React.JSX.Element {
-  const center = useMemo(() => initialCenter(territories), [territories])
+  const center = useMemo(
+    () => initialCenter(territories, fallbackCenter),
+    [territories, fallbackCenter]
+  )
   const zoom = territories.length === 0 ? FALLBACK_ZOOM : TERRITORY_ZOOM
 
   return (
