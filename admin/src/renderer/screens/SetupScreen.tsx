@@ -8,6 +8,7 @@
 
 import { useState, type FormEvent } from 'react'
 import { parseIpcError } from '../../shared/ipc-error'
+import logo from '../assets/logo.png'
 
 const REQUIRED_MESSAGE = 'Campo obrigatório.'
 const GENERIC_ERROR_MESSAGE = 'Não foi possível configurar a congregação. Tente novamente.'
@@ -77,10 +78,10 @@ export function SetupScreen({ reason }: SetupScreenProps): React.JSX.Element {
   return (
     <div className="setup-screen">
       <div className="setup-card">
-        <div className="setup-mark" aria-hidden="true">
-          📍
-        </div>
-        <h1>Territory Map</h1>
+        {/* The logo already carries the "TERRITORY MAP" wordmark, so it
+            replaces both the old emoji mark and the <h1> — keeping the
+            heading would print the name twice, stacked. */}
+        <img className="setup-logo" src={logo} alt="Territory Map" />
         <p>
           Informe os dados da congregação. Eles ficam guardados neste computador e não serão pedidos
           de novo.

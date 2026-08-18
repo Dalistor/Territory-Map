@@ -40,12 +40,14 @@ import type { PolygonEditor } from './usePolygonEditor'
 
 /**
  * Same intent as the removed Dart admin's Material colour scheme (`scheme
- * .primary` / `scheme.error` in the old `PolygonEditorLayers` widget): green
- * while the ring could be saved, red while it could not. This project has no
+ * .primary` / `scheme.error` in the old `PolygonEditorLayers` widget): the
+ * primary colour while the ring could be saved, red while it could not.
+ * Primary is the admin's blue since spec 0006 (green survives only as the
+ * "worked recently" block status in `TerritoryMap`). This project has no
  * design-token system yet to draw the colours from instead -- if one shows
  * up later, these two constants are what to replace.
  */
-const VALID_COLOR = '#2e7d32'
+const VALID_COLOR = '#1565c0'
 const INVALID_COLOR = '#c62828'
 /** Thin, faint outline for non-editable reference context. */
 const CONTEXT_COLOR = '#9e9e9e'

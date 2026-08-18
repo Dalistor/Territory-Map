@@ -94,7 +94,13 @@ export function TerritoryEditorScreen({
   // it is safe, unlike a password. `ringToJson`-style precision does not
   // apply here.
   const trimmedName = name.trim()
-  const canSave = editor.state.problem === null && trimmedName.length > 0 && !saving
+  // Territory names carry their sequence number by convention ("Centro - N5"),
+  // and the lists sort by that number -- a name without one would float
+  // unpredictably, so the number is required before saving. The rule lives
+  // here (client) only: the server keeps accepting any name, and this is the
+  // one place names are typed.
+  const nameHasNumber = /\d/.test(trimmedName)
+  const canSave = editor.state.problem === null && trimmedName.length > 0 && nameHasNumber && !saving
 
   const context = useMemo(
     () =>
@@ -135,37 +141,54 @@ export function TerritoryEditorScreen({
     }
   }
 
+  // Same side-by-side shell as `BlockEditorScreen` (spec 0006): compact form
+  // panel on the left, the map filling the rest -- markup only, every control
+  // and its enablement is unchanged.
   return (
-    <div>
-      <h1>{territory === undefined ? 'Novo território' : `Editar ${territory.name}`}</h1>
+    <div className="editor-split">
+      <div className="editor-panel">
+        <h1>{territory === undefined ? 'Novo território' : `Editar ${territory.name}`}</h1>
 
-      <label>
-        Nome do território
-        <input value={name} onChange={(event) => setName(event.target.value)} />
-      </label>
+        <label>
+          Nome do território
+          <input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Ex.: Centro - N5"
+            aria-invalid={trimmedName.length > 0 && !nameHasNumber}
+          />
+        </label>
+        {trimmedName.length > 0 && !nameHasNumber && (
+          <p className="field-error">
+            O nome precisa incluir o número do território (ex.: Centro - N5).
+          </p>
+        )}
 
-      <div>
-        <button onClick={editor.undo} disabled={!editor.canUndo}>
-          Desfazer
-        </button>
-        <button onClick={editor.clear} disabled={editor.points.length === 0}>
-          Apagar tudo
-        </button>
-        <button onClick={handleSave} disabled={!canSave}>
-          {saving ? 'Salvando…' : 'Salvar'}
-        </button>
+        <div role="toolbar">
+          <button onClick={editor.undo} disabled={!editor.canUndo}>
+            Desfazer
+          </button>
+          <button onClick={editor.clear} disabled={editor.points.length === 0}>
+            Apagar tudo
+          </button>
+          <button onClick={handleSave} disabled={!canSave}>
+            {saving ? 'Salvando…' : 'Salvar'}
+          </button>
+        </div>
+
+        {editor.state.hint !== null && <p>{editor.state.hint}</p>}
+        {error !== null && <p role="alert">{error}</p>}
       </div>
 
-      {editor.state.hint !== null && <p>{editor.state.hint}</p>}
-      {error !== null && <p role="alert">{error}</p>}
-
-      <MapContainer center={center} zoom={MAP_ZOOM} style={{ height: '100%', width: '100%' }}>
-        <TileLayer
-          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution="&copy; OpenStreetMap contributors"
-        />
-        <PolygonEditorLayers controller={editor} context={context} />
-      </MapContainer>
+      <div className="editor-map">
+        <MapContainer center={center} zoom={MAP_ZOOM} style={{ height: '100%', width: '100%' }}>
+          <TileLayer
+            url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution="&copy; OpenStreetMap contributors"
+          />
+          <PolygonEditorLayers controller={editor} context={context} />
+        </MapContainer>
+      </div>
     </div>
   )
 }

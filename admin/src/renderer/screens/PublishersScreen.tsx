@@ -44,6 +44,37 @@ function statusCategory(
   return 'active'
 }
 
+/**
+ * Lowercases and strips diacritics, so "joao" and "João" compare equal.
+ * NFD splits each accented letter into base letter + combining mark, and the
+ * combining-mark range is then dropped.
+ */
+function searchable(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
+/**
+ * One line next to the title: "2 ativos · 1 com código válido". Categories
+ * with nobody in them are left out -- "0 desativados" is noise, not a count.
+ */
+function summaryOf(publishers: Publisher[], now: Date): string {
+  const counts = { active: 0, 'live-code': 0, pending: 0, revoked: 0 }
+  for (const publisher of publishers) {
+    counts[statusCategory(publisher, now)] += 1
+  }
+  const parts: string[] = []
+  if (counts.active > 0) parts.push(`${counts.active} ${counts.active === 1 ? 'ativo' : 'ativos'}`)
+  if (counts['live-code'] > 0) parts.push(`${counts['live-code']} com código válido`)
+  if (counts.pending > 0) parts.push(`${counts.pending} sem código válido`)
+  if (counts.revoked > 0) {
+    parts.push(`${counts.revoked} ${counts.revoked === 1 ? 'desativado' : 'desativados'}`)
+  }
+  return parts.join(' · ')
+}
+
 /** Reduces whatever a rejected `window.api` call threw to text the admin can read. */
 function errorMessage(error: unknown): string {
   return parseIpcError(error, GENERIC_ERROR_MESSAGE).message
@@ -71,6 +102,7 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
   const [loadError, setLoadError] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
 
+  const [search, setSearch] = useState('')
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [newName, setNewName] = useState('')
@@ -165,9 +197,19 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
     await navigator.clipboard.writeText(code)
   }
 
+  const filtered = publishers.filter((publisher) =>
+    searchable(publisher.name).includes(searchable(search.trim()))
+  )
+
   return (
     <div>
       <h1>Publicadores</h1>
+
+      {!loading && !loadError && publishers.length > 0 && (
+        <p className="publishers-summary" data-testid="publishers-summary">
+          {summaryOf(publishers, today)}
+        </p>
+      )}
 
       {toast && (
         <div role="alert" data-testid="toast">
@@ -186,8 +228,23 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
       {!loading && !loadError && publishers.length === 0 && <p>Nenhum publicador cadastrado.</p>}
 
       {!loading && !loadError && publishers.length > 0 && (
+        <input
+          type="search"
+          className="publishers-search"
+          aria-label="Buscar publicador"
+          placeholder="Buscar por nome…"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+      )}
+
+      {!loading && !loadError && publishers.length > 0 && filtered.length === 0 && (
+        <p>Nenhum publicador encontrado para a busca.</p>
+      )}
+
+      {!loading && !loadError && filtered.length > 0 && (
         <ul>
-          {publishers.map((publisher) => (
+          {filtered.map((publisher) => (
             <li
               key={publisher.id}
               className="publisher-row"

@@ -1,9 +1,8 @@
-/* Global styling for the admin renderer.
- *
- * No component imports this by class name -- every rule below targets plain
- * tags, roles, and ARIA attributes that the screens already render, so this
- * file is the only thing that had to be added to stop the app looking like
- * unstyled HTML. `main.tsx` is the single place that imports it.
+/* Global styling for the admin renderer -- `main.tsx` is the single place
+ * that imports it. Started out targeting only plain tags, roles, and ARIA
+ * attributes the screens already rendered; screens now also opt into the
+ * shared class names defined further down (`.app-shell`, `.editor-split`,
+ * dialogs, badges).
  *
  * `.leaflet-container` gets an explicit `min-height` rather than relying on
  * `height: 100%` reaching all the way up through `#root`/`main`: a
@@ -13,15 +12,15 @@
  */
 
 :root {
-  --color-primary: #2e7d32;
-  --color-primary-dark: #1b5e20;
+  --color-primary: #1565c0;
+  --color-primary-dark: #0d47a1;
   --color-danger: #c62828;
   --color-text: #1a1a1a;
   --color-text-muted: #5f6368;
   --color-border: #d7dbe0;
   --color-surface: #ffffff;
-  --color-background: #f4f6f5;
-  --radius: 6px;
+  --color-background: #f4f6f8;
+  --radius: 8px;
   color-scheme: light;
 }
 
@@ -74,6 +73,25 @@ a {
   min-height: 0;
 }
 
+/* The shell is the one root child that flows sideways: sidebar | content.
+   Spelled with the `#root >` prefix on purpose -- the generic rule above
+   carries an ID in its specificity, so a bare `.app-shell` class could never
+   out-rank its `flex-direction: column` and the sidebar would silently stack
+   on top of the content (the exact bug this selector fixes). */
+#root > .app-shell {
+  flex-direction: row;
+}
+
+/* Every routed screen inside the shell is a plain <div> shell of its own
+   (header + main); stretch it the same way `#root > div` stretches root
+   screens, or the map inside it collapses to nothing. */
+.app-content > div {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
 header {
   display: flex;
   align-items: center;
@@ -83,10 +101,20 @@ header {
   border-bottom: 1px solid var(--color-border);
 }
 
-header h1 {
+/* h1 on most screens, h2 on BlockHistorySheet -- same visual weight. */
+header h1,
+header h2 {
   flex: 1;
   margin: 0;
   font-size: 1.1rem;
+}
+
+/* A summary line inside a header (DesignationsScreen's "N de M territórios
+   designados") -- inline with the title, muted, no paragraph margins. */
+header p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
 }
 
 main {
@@ -114,12 +142,49 @@ main > div:has(> .leaflet-container) {
   border: 1px solid var(--color-border);
 }
 
-/* Wraps the territory <ul> on HomeScreen so a long list scrolls in its own
-   sidebar-sized box instead of growing the whole page -- 300px mirrors the
-   width the removed Flutter admin used for this same list. */
+/* HomeScreen: territory panel on the left, map filling everything else.
+   The map is what the admin actually works on, so it gets the space; the
+   list is a sidebar-sized column that scrolls on its own. */
+.home-split {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+}
+
+.home-panel {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.home-map {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.home-map .leaflet-container {
+  height: 100%;
+}
+
+/* The territory <ul> scrolls inside the panel instead of growing the page. */
 .territory-list {
-  max-height: 360px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
+}
+
+.territory-row {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.territory-row:hover {
+  border-color: var(--color-primary);
+  box-shadow: 0 1px 4px rgba(13, 71, 161, 0.12);
 }
 
 ul {
@@ -147,12 +212,20 @@ li > span:first-child {
   margin-right: auto;
 }
 
-/* HomeScreen's territory row -- who it is designated to, when it is. Sits
-   between the name and the "⋮" button, muted so the name stays the visual
-   anchor of the row. */
+/* HomeScreen's territory row -- who it is designated to, when it is. A soft
+   pill between the name and the "⋮" button, so the designation reads as a
+   status without stealing the name's anchor role. */
 .territory-assigned-user {
-  color: var(--color-text-muted);
-  font-size: 0.85rem;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #e8f0fe;
+  color: var(--color-primary-dark);
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
 }
 
 form {
@@ -267,7 +340,7 @@ button[type='submit']:hover:not(:disabled),
   border: 1px solid var(--color-border);
   border-radius: 12px;
   box-shadow:
-    0 0 0 9999px rgba(17, 24, 21, 0.45),
+    0 0 0 9999px rgba(15, 23, 32, 0.45),
     0 24px 48px rgba(0, 0, 0, 0.25);
   z-index: 1000;
 }
@@ -308,7 +381,7 @@ button[type='submit']:hover:not(:disabled),
   border: 1px solid var(--color-border);
   border-radius: 12px;
   box-shadow:
-    0 0 0 9999px rgba(17, 24, 21, 0.45),
+    0 0 0 9999px rgba(15, 23, 32, 0.45),
     0 24px 48px rgba(0, 0, 0, 0.25);
   z-index: 1000;
 }
@@ -371,7 +444,7 @@ button[type='submit']:hover:not(:disabled),
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: linear-gradient(180deg, #eef4ef 0%, var(--color-background) 55%);
+  background: linear-gradient(180deg, #eef3fa 0%, var(--color-background) 55%);
 }
 
 .setup-card {
@@ -381,20 +454,21 @@ button[type='submit']:hover:not(:disabled),
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 16px;
-  box-shadow: 0 24px 48px rgba(27, 94, 32, 0.1);
+  box-shadow: 0 24px 48px rgba(13, 71, 161, 0.1);
   text-align: center;
 }
 
-.setup-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 48px;
-  height: 48px;
-  margin: 0 auto 12px;
-  border-radius: 50%;
-  background: #e8f3e9;
-  font-size: 22px;
+/* The full logo (pin + wordmark). The source image has its own #f5f5f5
+   background, slightly off the card's white -- rounding the corners and
+   keeping a hairline border turns that square into an intentional tile
+   instead of a mismatched patch. */
+.setup-logo {
+  display: block;
+  width: 140px;
+  height: 140px;
+  margin: 0 auto 16px;
+  border-radius: 20px;
+  border: 1px solid var(--color-border);
 }
 
 .setup-card h1 {
@@ -436,15 +510,97 @@ button[type='submit']:hover:not(:disabled),
   font-size: 1.15rem;
 }
 
-/* HomeScreen's "Atribuir a publicador" dialog -- one radio option per row,
+/* DesignationsScreen's "Atribuir publicador" dialog -- one radio option per row,
    input and label sharing a line instead of the `.field` default of stacking
    a label above its control (there is one shared `.field` here, not one per
    option, so the stacking rule alone would not separate the options). */
+/* The leader picker: one selectable card per option, the raw radio kept in
+   the DOM (accessibility, and what the tests query) but visually hidden --
+   the card itself is the control the admin sees. */
+.assign-options {
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
 .assign-options label {
   display: flex;
+  /* The generic `label` rule stacks its children in a column; without this
+     the avatar and the name would pile up instead of sitting side by side. */
+  flex-direction: row;
   align-items: center;
-  gap: 8px;
-  font-weight: 400;
+  gap: 10px;
+  font-weight: 500;
+  color: var(--color-text);
+  font-size: 0.95rem;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.assign-options label:hover {
+  background: var(--color-background);
+}
+
+.assign-options label.is-selected {
+  border-color: var(--color-primary);
+  background: #e8f0fe;
+  color: var(--color-primary-dark);
+}
+
+/* Visually hidden, still focusable/checkable -- never `display: none`, which
+   would drop it from the accessibility tree and break keyboard use. */
+.assign-options input[type='radio'] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* Keyboard focus has to stay visible somewhere once the radio itself is
+   invisible -- paint it on the card instead. */
+.assign-options label:has(input:focus-visible) {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.assign-option-avatar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #dbe7f5;
+  color: var(--color-primary-dark);
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.assign-option-avatar-none {
+  background: #ececec;
+  color: var(--color-text-muted);
+}
+
+.assign-option-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The line under a dialog's title ("Quem vai cuidar deste território?"). */
+.dialog-subtitle {
+  margin: -8px 0 12px;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
 }
 
 /* The row of buttons at the bottom of a dialog, right-aligned, cancel before
@@ -472,9 +628,25 @@ button[type='submit']:hover:not(:disabled),
 }
 
 .back-bar {
-  padding: 8px 20px;
+  padding: 8px 12px;
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
+}
+
+/* The "← Voltar" button reads as quiet chrome, like the sidebar's own
+   navigation buttons, not as a form action. */
+.back-bar button {
+  border: none;
+  background: transparent;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.back-bar button:hover:not(:disabled) {
+  background: var(--color-background);
+  color: var(--color-text);
 }
 
 .pushed-screen > .back-bar + * {
@@ -491,6 +663,21 @@ button[type='submit']:hover:not(:disabled),
   gap: 12px;
 }
 
+/* The one-line category count next to the title (spec 0006, Task 07). */
+.publishers-summary {
+  margin: -4px 0 8px;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+/* The name filter above the list (spec 0006, Task 07). */
+.publishers-search {
+  display: block;
+  width: 100%;
+  max-width: 360px;
+  margin: 12px 0 4px;
+}
+
 .avatar {
   flex-shrink: 0;
   display: inline-flex;
@@ -499,7 +686,7 @@ button[type='submit']:hover:not(:disabled),
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: #dcebe0;
+  background: #dbe7f5;
   color: var(--color-primary-dark);
   font-weight: 700;
   font-size: 0.95rem;
@@ -571,4 +758,151 @@ button[type='submit']:hover:not(:disabled),
   border: 1px dashed var(--color-border);
   border-radius: 8px;
   color: var(--color-primary-dark);
+}
+
+/* App shell with a permanent sidebar (spec 0006). Inert until App.tsx adopts
+   the layout in Task 04: no component renders these classes yet. */
+.app-shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+}
+
+.app-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* The pin logo. Its source has the logo's #f5f5f5 background baked in, so
+   the rounded corners make it read as a small app tile. */
+.sidebar-header img {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 8px;
+}
+
+.sidebar-header-text {
+  min-width: 0; /* let long congregation names shrink inside the 220px sidebar */
+}
+
+/* App.tsx renders the congregation as <strong> name + <span> city. */
+.sidebar-header strong {
+  display: block;
+  font-size: 1rem;
+  line-height: 1.3;
+}
+
+.sidebar-header span {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+}
+
+.sidebar-nav {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 8px;
+}
+
+.sidebar-nav button {
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--color-text);
+}
+
+.sidebar-nav button:hover:not(:disabled) {
+  background: var(--color-background);
+}
+
+.sidebar-nav button.is-active {
+  background: #e8f0fe;
+  color: var(--color-primary-dark);
+  font-weight: 600;
+}
+
+.sidebar-footer {
+  padding: 10px 8px;
+  border-top: 1px solid var(--color-border);
+}
+
+.sidebar-footer button {
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
+.sidebar-footer button:hover:not(:disabled) {
+  background: var(--color-background);
+  color: var(--color-danger);
+}
+
+/* Where the routed screens render, to the right of the sidebar. */
+.app-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Side-by-side editors (spec 0006): compact form panel on the left, the map
+   taking the rest of the screen. Used by BlockEditorScreen (Task 06) and
+   TerritoryEditorScreen (Task 08). Padding mirrors <main>'s so the editors
+   line up with the routed screens. */
+.editor-split {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  padding: 16px 20px;
+}
+
+.editor-panel {
+  width: 300px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.editor-map {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-map .leaflet-container {
+  height: 100%;
+  min-height: 0;
+  flex: 1;
 }

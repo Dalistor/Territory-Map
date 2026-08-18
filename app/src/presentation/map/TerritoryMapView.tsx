@@ -25,8 +25,15 @@
 // component's own state, feeding the marker below. It is never sent to the
 // server and never written to disk. `watchPosition` starts once permission
 // is granted and stops (`clearWatch`) the moment this component unmounts.
-import { useEffect, useMemo, useState } from 'react';
-import { PermissionsAndroid, StyleSheet, Text, View, type NativeSyntheticEvent } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  PermissionsAndroid,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type NativeSyntheticEvent,
+} from 'react-native';
 import Geolocation, { type GeoPosition } from 'react-native-geolocation-service';
 import {
   Camera,
@@ -36,10 +43,12 @@ import {
   Marker,
   RasterSource,
   TransformRequestManager,
+  type CameraRef,
   type LngLat,
   type LngLatBounds,
   type PressEventWithFeatures,
 } from '@maplibre/maplibre-react-native';
+import { isTerritoryAssignedToMe } from '../../domain/assignment';
 import { blockColorCategory, type BlockColorCategory } from '../../domain/blockColor';
 import type { Block, LatLng, Territory } from '../../domain/models';
 
@@ -63,9 +72,14 @@ const CATEGORY_COLOR: Record<BlockColorCategory, string> = {
   recent: '#2e7d32', // green -- worked recently
 };
 
-const TERRITORY_OUTLINE_COLOR = '#1565c0';
+// Mirrors the admin's Designations map: the territory that is "yours" reads
+// as a solid, confident blue; everything else is a muted grey the eye skips.
+const MY_TERRITORY_COLOR = '#1565c0';
+const OTHER_TERRITORY_COLOR = '#78909c';
 const FALLBACK_CENTER: LngLat = [-47.93, -15.78]; // Brasília, [lng, lat] -- nothing to centre on yet
 const FALLBACK_ZOOM = 4;
+/** Keeps a fitted territory clear of the filter bar and the attribution badge. */
+const MAP_PADDING = { top: 48, right: 48, bottom: 48, left: 48 };
 
 /**
  * A base style with no sources/layers of its own -- every source and layer
@@ -113,15 +127,34 @@ interface BlockLookup {
 export interface TerritoryMapViewProps {
   /** Already filtered by the caller (`MapScreen`'s `visibleTerritories`) -- this component draws exactly this list. */
   readonly territories: Territory[];
+  /** The publisher looking at the map -- decides which outlines read as "mine". */
+  readonly myUserId: string;
   /** Injected so a fixed "now" can drive `blockColorCategory`; defaults to the real clock. */
   readonly now?: Date;
+  /**
+   * `false` (the overview) draws territory outlines with their name over the
+   * centroid, and nothing else. `true` (the detail) adds the blocks and their
+   * numbers.
+   *
+   * The split is what keeps the overview readable: drawing every block of
+   * every territory at city zoom is a wall of colour with numbers too small
+   * to read, and it is also the moment the label markers are most expensive.
+   * The publisher picks a territory -- by tapping it or through the search
+   * box -- and only then pays for the detail.
+   */
+  readonly showBlocks?: boolean;
   readonly onBlockTap?: (territory: Territory, block: Block) => void;
+  /** Fired when a territory's outline or name label is tapped -- how the overview drills into the detail. */
+  readonly onTerritoryTap?: (territory: Territory) => void;
 }
 
 export function TerritoryMapView({
   territories,
+  myUserId,
   now,
+  showBlocks = false,
   onBlockTap,
+  onTerritoryTap,
 }: TerritoryMapViewProps): React.JSX.Element {
   // Wrapped in `useMemo` (not just `now ?? new Date()`) so this only changes
   // identity when `now` itself changes -- otherwise every render would mint a
@@ -180,26 +213,54 @@ export function TerritoryMapView({
     return lookup;
   }, [territories]);
 
+  const drawableTerritories = useMemo(
+    () => territories.filter((territory) => territory.boundary.length >= 3),
+    [territories],
+  );
+
   const territoryOutlines = useMemo(
     (): GeoJSON.FeatureCollection => ({
       type: 'FeatureCollection',
-      features: territories
-        .filter((territory) => territory.boundary.length >= 3)
-        .map((territory) => ({
-          type: 'Feature' as const,
-          properties: { territoryId: territory.id },
-          geometry: { type: 'Polygon' as const, coordinates: [closedRing(territory.boundary)] },
-        })),
+      features: drawableTerritories.map((territory) => ({
+        type: 'Feature' as const,
+        properties: {
+          territoryId: territory.id,
+          color: isTerritoryAssignedToMe(territory, myUserId)
+            ? MY_TERRITORY_COLOR
+            : OTHER_TERRITORY_COLOR,
+        },
+        geometry: { type: 'Polygon' as const, coordinates: [closedRing(territory.boundary)] },
+      })),
     }),
-    [territories],
+    [drawableTerritories, myUserId],
+  );
+
+  /**
+   * One name badge per territory, over its centroid -- the same thing the
+   * admin's Designations map draws.
+   *
+   * Overview only. In the detail the territory is already named by the
+   * active chip above the map, so the badge would just sit on top of the
+   * block numbers it is competing with -- and those are what the publisher
+   * came here to read.
+   */
+  const territoryLabelMarkers = useMemo(
+    () =>
+      (showBlocks ? [] : drawableTerritories).map((territory) => ({
+        territory,
+        mine: isTerritoryAssignedToMe(territory, myUserId),
+        center: averageCentroid(territory.boundary),
+      })),
+    [drawableTerritories, showBlocks, myUserId],
   );
 
   const blockFeatureProperties = useMemo(
     () =>
-      territories.flatMap((territory) =>
+      (showBlocks ? territories : []).flatMap((territory) =>
         territory.blocks
           .filter((block) => block.polygon.length >= 3)
           .map((block) => ({
+            territory,
             block,
             properties: {
               blockId: block.id,
@@ -208,7 +269,7 @@ export function TerritoryMapView({
             },
           })),
       ),
-    [territories, effectiveNow],
+    [territories, showBlocks, effectiveNow],
   );
 
   const blockPolygons = useMemo(
@@ -223,19 +284,61 @@ export function TerritoryMapView({
     [blockFeatureProperties],
   );
 
-  const blockLabels = useMemo(
-    (): GeoJSON.FeatureCollection => ({
-      type: 'FeatureCollection',
-      features: blockFeatureProperties.map(({ block, properties }) => ({
-        type: 'Feature' as const,
-        properties,
-        geometry: { type: 'Point' as const, coordinates: averageCentroid(block.polygon) },
+  /**
+   * The block numbers, as one `Marker` (a real React Native `<Text>`) each.
+   *
+   * Not a `symbol` layer with `text-field`: MapLibre renders label text from
+   * SDF glyphs fetched from the style's `glyphs` URL, and this map's style is
+   * raster-only -- it has no `glyphs`, and adding one would mean a font
+   * server on the network, which both costs a provider (the project's whole
+   * reason for OSM + MapLibre) and would leave the numbers invisible exactly
+   * when the publisher is offline in the field. A `<Text>` marker is drawn by
+   * React Native itself, so the numbers survive with no signal.
+   *
+   * The tradeoff is that each marker is a native view; with the "Todos"
+   * filter over a congregation with hundreds of blocks this is the heaviest
+   * thing on screen. If that ever drags, the fix is to thin the list by
+   * viewport or zoom here, not to go back to a glyph server.
+   */
+  const blockLabelMarkers = useMemo(
+    () =>
+      blockFeatureProperties.map(({ territory, block, properties }) => ({
+        territory,
+        block,
+        color: properties.color,
+        label: properties.label,
+        center: averageCentroid(block.polygon),
       })),
-    }),
     [blockFeatureProperties],
   );
 
   const bounds = useMemo(() => boundsOf(territories), [territories]);
+
+  const cameraRef = useRef<CameraRef>(null);
+  // The territories arrive from the API *after* this component first mounts,
+  // so `initialViewState` alone would leave the map parked on the fallback
+  // (a country-wide view of Brasília) forever. Keying the refit on the bounds
+  // *value* -- not the array identity -- is what keeps the camera still while
+  // the publisher marks a block: `territories` gets a new identity on every
+  // optimistic update, but the same four numbers mean the same city, so the
+  // map does not snap back under the publisher's finger. It refits when the
+  // filter changes, which is the point: picking a territory flies to it.
+  const boundsKey = bounds?.join(',') ?? null;
+  useEffect(() => {
+    if (bounds === null) return;
+    cameraRef.current?.fitBounds(bounds, { padding: MAP_PADDING, duration: 600 });
+    // `bounds` is intentionally absent: `boundsKey` is its value-identity, and
+    // depending on the array itself would refit on every unrelated re-render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boundsKey]);
+
+  function handleTerritoryPress(event: NativeSyntheticEvent<PressEventWithFeatures>): void {
+    const territoryId = event.nativeEvent.features[0]?.properties?.territoryId as string | undefined;
+    if (territoryId === undefined) return;
+    const found = territories.find((territory) => territory.id === territoryId);
+    if (found === undefined) return;
+    onTerritoryTap?.(found);
+  }
 
   function handleBlockPress(event: NativeSyntheticEvent<PressEventWithFeatures>): void {
     const blockId = event.nativeEvent.features[0]?.properties?.blockId as string | undefined;
@@ -249,8 +352,11 @@ export function TerritoryMapView({
     <View style={styles.container}>
       <MapLibreMap mapStyle={EMPTY_MAP_STYLE} style={styles.map}>
         <Camera
+          ref={cameraRef}
           initialViewState={
-            bounds !== null ? { bounds } : { center: FALLBACK_CENTER, zoom: FALLBACK_ZOOM }
+            bounds !== null
+              ? { bounds, padding: MAP_PADDING }
+              : { center: FALLBACK_CENTER, zoom: FALLBACK_ZOOM }
           }
         />
         <RasterSource
@@ -261,14 +367,39 @@ export function TerritoryMapView({
         >
           <Layer id="osm-tiles-layer" type="raster" />
         </RasterSource>
-        <GeoJSONSource id="territory-outlines" data={territoryOutlines}>
+        <GeoJSONSource
+          id="territory-outlines"
+          data={territoryOutlines}
+          // Only the overview drills in. In the detail every tap inside the
+          // territory is meant for a block, and leaving two pressable
+          // sources stacked there is how a tap that misses a block by a few
+          // pixels silently re-selects the territory instead.
+          onPress={showBlocks ? undefined : handleTerritoryPress}
+        >
+          {/* A near-transparent fill, not decoration: a line is a few pixels
+              wide and impossible to hit with a thumb, so the fill is what
+              makes the whole territory tappable. */}
+          <Layer
+            id="territory-fill-layer"
+            type="fill"
+            paint={{ 'fill-color': ['get', 'color'], 'fill-opacity': showBlocks ? 0.04 : 0.1 }}
+          />
           <Layer
             id="territory-outlines-layer"
             type="line"
-            paint={{ 'line-color': TERRITORY_OUTLINE_COLOR, 'line-width': 2 }}
+            paint={{ 'line-color': ['get', 'color'], 'line-width': 2 }}
           />
         </GeoJSONSource>
-        <GeoJSONSource id="blocks" data={blockPolygons} onPress={handleBlockPress}>
+        {/* The whole polygon is the target, not just the number badge: a
+            thumb is far wider than a 24px circle, and the fill below is what
+            the press actually lands on. `hitbox` widens that further, so a
+            tap a few pixels outside a small block still counts. */}
+        <GeoJSONSource
+          id="blocks"
+          data={blockPolygons}
+          onPress={handleBlockPress}
+          hitbox={{ top: 22, right: 22, bottom: 22, left: 22 }}
+        >
           <Layer
             id="blocks-fill-layer"
             type="fill"
@@ -279,24 +410,39 @@ export function TerritoryMapView({
             }}
           />
         </GeoJSONSource>
-        <GeoJSONSource id="block-labels" data={blockLabels}>
-          <Layer
-            id="block-labels-circle-layer"
-            type="circle"
-            paint={{
-              'circle-color': ['get', 'color'],
-              'circle-radius': 12,
-              'circle-stroke-color': '#ffffff',
-              'circle-stroke-width': 2,
-            }}
-          />
-          <Layer
-            id="block-labels-text-layer"
-            type="symbol"
-            layout={{ 'text-field': ['get', 'label'], 'text-size': 11, 'text-allow-overlap': true }}
-            paint={{ 'text-color': '#ffffff' }}
-          />
-        </GeoJSONSource>
+        {territoryLabelMarkers.map(({ territory, mine, center }) => (
+          <Marker
+            key={`territory-${territory.id}`}
+            id={`territory-label-${territory.id}`}
+            lngLat={center}
+            anchor="center"
+          >
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Território ${territory.name}`}
+              onPress={() => onTerritoryTap?.(territory)}
+              style={styles.territoryLabel}
+            >
+              <Text style={styles.territoryLabelText}>{territory.name}</Text>
+              {mine && <Text style={styles.territoryLabelMine}>Seu território</Text>}
+            </Pressable>
+          </Marker>
+        ))}
+        {blockLabelMarkers.map(({ territory, block, color, label, center }) => (
+          <Marker key={block.id} id={`block-label-${block.id}`} lngLat={center} anchor="center">
+            {/* Tappable for the same reason the fill below is: the badge sits
+                on top of the polygon and would otherwise be a dead spot right
+                where the publisher aims. */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Quadra ${label}`}
+              onPress={() => onBlockTap?.(territory, block)}
+              style={[styles.blockLabel, { backgroundColor: color }]}
+            >
+              <Text style={styles.blockLabelText}>{label}</Text>
+            </Pressable>
+          </Marker>
+        ))}
         {userLocation !== null && (
           <Marker lngLat={userLocation} anchor="center">
             <View style={styles.userLocationDot} />
@@ -322,6 +468,26 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#ffffff',
   },
+  territoryLabel: {
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    alignItems: 'center',
+  },
+  territoryLabelText: { fontSize: 11, fontWeight: '600', color: '#37474f' },
+  territoryLabelMine: { fontSize: 10, color: '#1565c0' },
+  blockLabel: {
+    minWidth: 24,
+    height: 24,
+    paddingHorizontal: 4,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#ffffff',
+  },
+  blockLabelText: { color: '#ffffff', fontSize: 11, fontWeight: '700' },
   attribution: {
     position: 'absolute',
     right: 4,

@@ -11,8 +11,9 @@
 // `react-native-safe-area-context` SafeAreaView (the native-stack header
 // covers that job on every other screen).
 import { useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import logo from '../assets/logo.png';
 import { createApiClient } from '../../data/api-client';
 import { saveSession } from '../../data/session-store';
 import type { Session } from '../../domain/models';
@@ -59,7 +60,12 @@ export default function ActivationScreen({ onActivated }: ActivationScreenProps)
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.content}>
-        <Text style={styles.appTitle}>Territórios</Text>
+        <Image
+          source={logo}
+          style={styles.logo}
+          resizeMode="contain"
+          accessibilityLabel="Territory Map"
+        />
         <Text style={styles.subtitle}>
           Digite o código de acesso que você recebeu de quem cuida dos territórios na congregação.
         </Text>
@@ -92,11 +98,13 @@ export default function ActivationScreen({ onActivated }: ActivationScreenProps)
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },
   content: { flex: 1, justifyContent: 'center', padding: spacing.lg },
-  appTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: colors.primary,
-    textAlign: 'center',
+  logo: {
+    // The source PNG is 640x749 (pin + wordmark); the image's own light-gray
+    // background (#f5f5f5) sits close enough to colors.background (#f5f7fa)
+    // to blend without any treatment.
+    width: 180,
+    height: 210,
+    alignSelf: 'center',
     marginBottom: spacing.sm,
   },
   subtitle: {

@@ -6,14 +6,19 @@
 // load, because the filter needs the *whole* congregation list ("Todos" and
 // the per-territory picker), not just the ones assigned to this publisher.
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ApiClient } from '../../data/api-client';
 import { WorkLogDrainError, type WorkLogQueue } from '../../data/work-log-queue';
 import { isTerritoryAssignedToMe } from '../../domain/assignment';
 import type { Block, Session, Territory } from '../../domain/models';
 import { TerritoryMapView } from '../map/TerritoryMapView';
-import { defaultFilter, visibleTerritories, type MapFilter } from '../map/territoryFilter';
+import {
+  defaultFilter,
+  searchTerritories,
+  visibleTerritories,
+  type MapFilter,
+} from '../map/territoryFilter';
 import { colors, spacing } from '../theme';
 
 export interface MapScreenProps {
@@ -60,6 +65,8 @@ export function MapScreen({
   const [confirmTarget, setConfirmTarget] = useState<BlockTarget | null>(null);
   const [readOnlyTarget, setReadOnlyTarget] = useState<BlockTarget | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
+  /** What the publisher typed in the search box -- narrows the chip list, never the map itself. */
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     apiClient
@@ -109,7 +116,16 @@ export function MapScreen({
     if (confirmTarget === null) return;
     const { block } = confirmTarget;
     const workedAt = effectiveNow;
-    await workLogQueue.enqueue(block.id, workedAt);
+    try {
+      await workLogQueue.enqueue(block.id, workedAt);
+    } catch {
+      // Writing to the on-device queue is the one step with no fallback: if
+      // it fails the visit is not recorded anywhere, so the publisher has to
+      // hear about it instead of watching the dialog sit there doing nothing.
+      setConfirmTarget(null);
+      setBanner('Não foi possível registrar a marcação neste aparelho. Tente novamente.');
+      return;
+    }
     setJustWorked((previous) => ({ ...previous, [block.id]: workedAt }));
     setConfirmTarget(null);
     try {
@@ -133,8 +149,23 @@ export function MapScreen({
           <Text style={styles.bannerText}>{banner}</Text>
         </View>
       )}
-      <FilterControl filter={filter} territories={territories} onChange={setFilter} />
-      <TerritoryMapView territories={visible} now={effectiveNow} onBlockTap={handleBlockTap} />
+      <FilterControl
+        filter={filter}
+        territories={territories}
+        search={search}
+        onSearchChange={setSearch}
+        onChange={setFilter}
+      />
+      <TerritoryMapView
+        territories={visible}
+        myUserId={session.user.id}
+        // The overview shows names over the demarcations; the blocks and
+        // their numbers appear once a single territory is picked.
+        showBlocks={filter.mode === 'specific'}
+        now={effectiveNow}
+        onBlockTap={handleBlockTap}
+        onTerritoryTap={(territory) => setFilter({ mode: 'specific', territoryId: territory.id })}
+      />
       {confirmTarget !== null && (
         <Modal transparent animationType="fade" onRequestClose={() => setConfirmTarget(null)}>
           <View style={styles.modalOverlay}>
@@ -204,6 +235,8 @@ export function MapScreen({
 interface FilterControlProps {
   readonly filter: MapFilter;
   readonly territories: Territory[];
+  readonly search: string;
+  readonly onSearchChange: (search: string) => void;
   readonly onChange: (filter: MapFilter) => void;
 }
 
@@ -229,29 +262,68 @@ function FilterChip({
   );
 }
 
-/** "Meu(s) território(s)" / "Todos" / one chip per individual territory. */
-function FilterControl({ filter, territories, onChange }: FilterControlProps): React.JSX.Element {
+/**
+ * The search box plus the chip row: "Meu(s) território(s)" / "Todos" / one
+ * chip per individual territory.
+ *
+ * The search narrows the *chips*, not the map. A congregation has dozens of
+ * territories, so the row scrolls well past the screen and the chip the
+ * publisher wants is usually off it; typing brings it into reach. Filtering
+ * the map by a half-typed name instead would leave the publisher looking at
+ * a map that changes under every keystroke.
+ */
+function FilterControl({
+  filter,
+  territories,
+  search,
+  onSearchChange,
+  onChange,
+}: FilterControlProps): React.JSX.Element {
+  // Ranked, not filtered flat: the closest name comes first and the looser
+  // ones stay reachable below it.
+  const matches = searchTerritories(territories, search);
+  const searching = search.trim().length > 0;
   return (
-    <ScrollView horizontal style={styles.filterBar} showsHorizontalScrollIndicator={false}>
-      <FilterChip
-        label="Meu(s) território(s)"
-        active={filter.mode === 'assigned'}
-        onPress={() => onChange({ mode: 'assigned' })}
+    <View style={styles.filterContainer}>
+      <TextInput
+        style={styles.searchInput}
+        value={search}
+        onChangeText={onSearchChange}
+        placeholder="Buscar território pelo nome"
+        placeholderTextColor={colors.textSecondary}
+        accessibilityLabel="Buscar território pelo nome"
+        autoCorrect={false}
+        returnKeyType="search"
+        clearButtonMode="while-editing"
       />
-      <FilterChip
-        label="Todos"
-        active={filter.mode === 'all'}
-        onPress={() => onChange({ mode: 'all' })}
-      />
-      {territories.map((territory) => (
+      <ScrollView horizontal style={styles.filterBar} showsHorizontalScrollIndicator={false}>
+        {/* The two mode chips stay put while searching. They were hidden
+            here at first, and that made typing a single letter look like the
+            whole row had emptied out -- the way back to the full map has to
+            remain on screen. */}
         <FilterChip
-          key={territory.id}
-          label={territory.name}
-          active={filter.mode === 'specific' && filter.territoryId === territory.id}
-          onPress={() => onChange({ mode: 'specific', territoryId: territory.id })}
+          label="Meu(s) território(s)"
+          active={filter.mode === 'assigned'}
+          onPress={() => onChange({ mode: 'assigned' })}
         />
-      ))}
-    </ScrollView>
+        <FilterChip
+          label="Todos"
+          active={filter.mode === 'all'}
+          onPress={() => onChange({ mode: 'all' })}
+        />
+        {matches.map((territory) => (
+          <FilterChip
+            key={territory.id}
+            label={territory.name}
+            active={filter.mode === 'specific' && filter.territoryId === territory.id}
+            onPress={() => onChange({ mode: 'specific', territoryId: territory.id })}
+          />
+        ))}
+        {searching && matches.length === 0 && (
+          <Text style={styles.noMatches}>Nenhum território com esse nome.</Text>
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -259,7 +331,20 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   banner: { backgroundColor: colors.warningSurface, padding: spacing.sm },
   bannerText: { color: colors.warningText },
+  filterContainer: { paddingTop: spacing.sm },
+  searchInput: {
+    marginHorizontal: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    color: colors.textPrimary,
+    fontSize: 15,
+  },
   filterBar: { flexGrow: 0, paddingHorizontal: spacing.sm, paddingVertical: spacing.sm },
+  noMatches: { color: colors.textSecondary, paddingVertical: 7 },
   filterChip: {
     paddingHorizontal: 14,
     paddingVertical: 7,

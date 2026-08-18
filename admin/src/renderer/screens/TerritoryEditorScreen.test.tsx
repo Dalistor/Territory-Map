@@ -79,7 +79,7 @@ function fakeApi(
   }
 }
 
-const CENTRO: Territory = { id: 't1', name: 'Centro', boundary: DRAWN, blocks: [] }
+const CENTRO: Territory = { id: 't1', name: 'Centro - N5', boundary: DRAWN, blocks: [] }
 
 /** A resolvable/rejectable promise this test can settle whenever it wants,
  * so "Salvar" can be inspected while a save is still pending. */
@@ -120,7 +120,7 @@ describe('TerritoryEditorScreen', () => {
     window.api = fakeApi({})
     render(<TerritoryEditorScreen territory={CENTRO} />)
 
-    expect(screen.getByText('Editar Centro')).toBeInTheDocument()
+    expect(screen.getByText('Editar Centro - N5')).toBeInTheDocument()
   })
 
   it('disables Salvar with nothing drawn and no name', () => {
@@ -162,7 +162,18 @@ describe('TerritoryEditorScreen', () => {
     expect(screen.getByRole('button', { name: 'Salvar' })).toBeDisabled()
   })
 
-  it('enables Salvar once the name is filled and the ring is valid', async () => {
+  it('enables Salvar once the numbered name is filled and the ring is valid', async () => {
+    const user = userEvent.setup()
+    window.api = fakeApi({})
+    render(<TerritoryEditorScreen />)
+
+    await user.type(screen.getByLabelText('Nome do território'), 'Centro - N5')
+    await addPoints(user, 3)
+
+    expect(screen.getByRole('button', { name: 'Salvar' })).toBeEnabled()
+  })
+
+  it('keeps Salvar disabled while the name has no number, and explains why', async () => {
     const user = userEvent.setup()
     window.api = fakeApi({})
     render(<TerritoryEditorScreen />)
@@ -170,7 +181,19 @@ describe('TerritoryEditorScreen', () => {
     await user.type(screen.getByLabelText('Nome do território'), 'Centro')
     await addPoints(user, 3)
 
-    expect(screen.getByRole('button', { name: 'Salvar' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Salvar' })).toBeDisabled()
+    expect(
+      screen.getByText('O nome precisa incluir o número do território (ex.: Centro - N5).')
+    ).toBeInTheDocument()
+  })
+
+  it('does not nag about the number while the name is still empty', () => {
+    window.api = fakeApi({})
+    render(<TerritoryEditorScreen />)
+
+    expect(
+      screen.queryByText('O nome precisa incluir o número do território (ex.: Centro - N5).')
+    ).not.toBeInTheDocument()
   })
 
   it('disables Desfazer with nothing drawn, and enables it after a mutation', async () => {
@@ -231,13 +254,13 @@ describe('TerritoryEditorScreen', () => {
     const onSaved = vi.fn()
     render(<TerritoryEditorScreen onSaved={onSaved} />)
 
-    await user.type(screen.getByLabelText('Nome do território'), '  Centro  ')
+    await user.type(screen.getByLabelText('Nome do território'), '  Centro - N5  ')
     await addPoints(user, 3)
     await user.click(screen.getByRole('button', { name: 'Salvar' }))
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
     expect(create).toHaveBeenCalledTimes(1)
-    expect(create).toHaveBeenCalledWith({ name: 'Centro', boundary: DRAWN })
+    expect(create).toHaveBeenCalledWith({ name: 'Centro - N5', boundary: DRAWN })
   })
 
   it('updates the existing territory by id instead of creating a new one', async () => {
@@ -258,7 +281,7 @@ describe('TerritoryEditorScreen', () => {
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
     expect(update).toHaveBeenCalledTimes(1)
-    expect(update).toHaveBeenCalledWith('t1', { name: 'Centro', boundary: DRAWN })
+    expect(update).toHaveBeenCalledWith('t1', { name: 'Centro - N5', boundary: DRAWN })
   })
 
   it('disables Salvar while a save is still pending', async () => {
@@ -273,13 +296,13 @@ describe('TerritoryEditorScreen', () => {
     window.api = fakeApi({ create })
     render(<TerritoryEditorScreen />)
 
-    await user.type(screen.getByLabelText('Nome do território'), 'Centro')
+    await user.type(screen.getByLabelText('Nome do território'), 'Centro - N5')
     await addPoints(user, 3)
     await user.click(screen.getByRole('button', { name: 'Salvar' }))
 
     expect(screen.getByRole('button', { name: /Salvar|Salvando/ })).toBeDisabled()
 
-    resolve({ id: 'new', name: 'Centro', boundary: DRAWN, blocks: [] })
+    resolve({ id: 'new', name: 'Centro - N5', boundary: DRAWN, blocks: [] })
     await waitFor(() => expect(screen.getByRole('button', { name: 'Salvar' })).toBeEnabled())
   })
 
@@ -292,7 +315,7 @@ describe('TerritoryEditorScreen', () => {
     const onSaved = vi.fn()
     render(<TerritoryEditorScreen onSaved={onSaved} />)
 
-    await user.type(screen.getByLabelText('Nome do território'), 'Vila Nova')
+    await user.type(screen.getByLabelText('Nome do território'), 'Vila Nova - N3')
     await addPoints(user, 3)
     await user.click(screen.getByRole('button', { name: 'Salvar' }))
 

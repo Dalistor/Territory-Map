@@ -42,3 +42,92 @@ export function defaultFilter(all: Territory[], myUserId: string): MapFilter {
   const hasAssignment = all.some((territory) => isTerritoryAssignedToMe(territory, myUserId))
   return hasAssignment ? { mode: 'assigned' } : { mode: 'all' }
 }
+
+/**
+ * Strips the accents a Portuguese territory name can carry, so "proximo"
+ * finds "Proximo".
+ *
+ * A hand-written table rather than `String.prototype.normalize('NFD')`:
+ * normalization depends on the Unicode data the JS engine ships, and this
+ * runs on Hermes on whatever Android build the publisher happens to have.
+ * Every accented letter Portuguese actually uses fits in the table below, so
+ * the deterministic version costs nothing and cannot regress on one device.
+ */
+const ACCENTS: Record<string, string> = {
+  á: 'a', à: 'a', ã: 'a', â: 'a', ä: 'a',
+  é: 'e', è: 'e', ê: 'e', ë: 'e',
+  í: 'i', ì: 'i', î: 'i', ï: 'i',
+  ó: 'o', ò: 'o', õ: 'o', ô: 'o', ö: 'o',
+  ú: 'u', ù: 'u', û: 'u', ü: 'u',
+  ç: 'c',
+  ñ: 'n'
+}
+
+/** Lowercased, accent-free, trimmed -- the form both sides of a search comparison are reduced to. */
+function normalizeForSearch(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[\u00c0-\u024f]/g, (character) => ACCENTS[character] ?? character)
+}
+
+/** Letters and digits only -- "Santa Helena - N 7" becomes "santahelenan7". */
+function compact(text: string): string {
+  return normalizeForSearch(text).replace(/[^a-z0-9]/g, '')
+}
+
+/** True when every character of `query` appears in `text`, in order, gaps allowed. */
+function isSubsequence(query: string, text: string): boolean {
+  let index = 0
+  for (const character of text) {
+    if (character === query[index]) index += 1
+    if (index === query.length) return true
+  }
+  return query.length === 0
+}
+
+/**
+ * How well a name answers a query. Higher is closer; 0 means "do not offer
+ * this one at all".
+ *
+ * Three tiers, deliberately forgiving in this order:
+ *  3. the whole query, punctuation ignored, appears in the name -- "n7"
+ *     finds "N 7", which typing the exact spacing would not.
+ *  2. every word typed appears somewhere in the name, in any order --
+ *     "helena santa" still finds "Santa Helena".
+ *  1. the letters appear in order with gaps ("sthelena") -- the tier that
+ *     catches a name half-remembered or half-typed.
+ */
+function matchScore(name: string, query: string): number {
+  const compactName = compact(name)
+  const compactQuery = compact(query)
+  if (compactQuery.length === 0) return 0
+  if (compactName.includes(compactQuery)) return 3
+
+  const normalizedName = normalizeForSearch(name)
+  const words = normalizeForSearch(query).split(/\s+/).filter(Boolean)
+  if (words.length > 1 && words.every((word) => normalizedName.includes(word))) return 2
+
+  return isSubsequence(compactQuery, compactName) ? 1 : 0
+}
+
+/**
+ * The territories matching `query`, closest first. A blank query matches
+ * everything -- an empty search box is not a filter.
+ *
+ * Ranked rather than filtered flat: the publisher is typing a name from
+ * memory, on a phone, in the field. Showing the looser matches below the
+ * literal one costs a line of screen and saves retyping; showing nothing
+ * because the spacing was off is the failure mode this replaces.
+ */
+export function searchTerritories(all: Territory[], query: string): Territory[] {
+  if (compact(query).length === 0) return all
+  return all
+    .map((territory, index) => ({ territory, index, score: matchScore(territory.name, query) }))
+    .filter((scored) => scored.score > 0)
+    // Ties keep the caller's order (`sort` alone is stable in modern engines,
+    // but the explicit index makes that a property of this function rather
+    // than of whichever engine runs it).
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map((scored) => scored.territory)
+}

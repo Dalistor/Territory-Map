@@ -391,6 +391,103 @@ describe('PublishersScreen', () => {
     expect(statusOf('Daniel')).toBe('Ativo neste aparelho.')
   })
 
+  it('the summary counts each category present and leaves the zeroed ones out', async () => {
+    const fake = installFakeApi()
+    // Two on-device, one live code -- nobody pending, nobody revoked.
+    const second: Publisher = { ...onDevice, id: 'p5', name: 'Elisa' }
+    fake.publishers = [awaitingCode, onDevice, second]
+
+    render(<PublishersScreen now={now} />)
+    await screen.findByTestId('publisher-row-Bruno')
+
+    const summary = screen.getByTestId('publishers-summary')
+    expect(summary).toHaveTextContent('2 ativos · 1 com código válido')
+    // Zeroed categories are not narrated as "0 of something".
+    expect(summary.textContent).not.toMatch(/desativado|sem código/)
+  })
+
+  it('the summary pluralizes the revoked count', async () => {
+    const fake = installFakeApi()
+    fake.publishers = [revoked, { ...revoked, id: 'p7', name: 'Fábio' }]
+
+    render(<PublishersScreen now={now} />)
+    await screen.findByTestId('publisher-row-Ana')
+
+    expect(screen.getByTestId('publishers-summary')).toHaveTextContent('2 desativados')
+  })
+
+  it('the search field appears only once a non-empty list has loaded', async () => {
+    const empty = installFakeApi()
+    const { unmount } = render(<PublishersScreen now={now} />)
+    await screen.findByText('Nenhum publicador cadastrado.')
+
+    // Nobody registered: nothing to search through.
+    expect(screen.queryByLabelText('Buscar publicador')).not.toBeInTheDocument()
+    expect(empty.listCalls).toBe(1)
+    unmount()
+
+    const fake = installFakeApi()
+    fake.publishers = [awaitingCode, onDevice]
+    render(<PublishersScreen now={now} />)
+    await screen.findByTestId('publisher-row-Bruno')
+
+    expect(screen.getByLabelText('Buscar publicador')).toHaveAttribute(
+      'placeholder',
+      'Buscar por nome…'
+    )
+  })
+
+  it('typing filters the rows by name, and clearing brings everyone back', async () => {
+    const fake = installFakeApi()
+    fake.publishers = [revoked, awaitingCode, expiredCode, onDevice]
+    const user = userEvent.setup()
+    render(<PublishersScreen now={now} />)
+    await screen.findByTestId('publisher-row-Ana')
+
+    await user.type(screen.getByLabelText('Buscar publicador'), 'an')
+
+    // "an" matches Ana and Daniel; Bruno and Carla drop out.
+    expect(screen.getByTestId('publisher-row-Ana')).toBeInTheDocument()
+    expect(screen.getByTestId('publisher-row-Daniel')).toBeInTheDocument()
+    expect(screen.queryByTestId('publisher-row-Bruno')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('publisher-row-Carla')).not.toBeInTheDocument()
+
+    await user.clear(screen.getByLabelText('Buscar publicador'))
+    for (const name of ['Ana', 'Bruno', 'Carla', 'Daniel']) {
+      expect(screen.getByTestId(`publisher-row-${name}`)).toBeInTheDocument()
+    }
+  })
+
+  it('the search ignores case and accents: "joao" finds "João"', async () => {
+    const fake = installFakeApi()
+    const joao: Publisher = { ...onDevice, id: 'p6', name: 'João' }
+    fake.publishers = [joao, awaitingCode]
+    const user = userEvent.setup()
+    render(<PublishersScreen now={now} />)
+    await screen.findByTestId('publisher-row-João')
+
+    await user.type(screen.getByLabelText('Buscar publicador'), 'joao')
+
+    expect(screen.getByTestId('publisher-row-João')).toBeInTheDocument()
+    expect(screen.queryByTestId('publisher-row-Bruno')).not.toBeInTheDocument()
+  })
+
+  it('a search with no match says so, not "nobody registered"', async () => {
+    const fake = installFakeApi()
+    fake.publishers = [awaitingCode, onDevice]
+    const user = userEvent.setup()
+    render(<PublishersScreen now={now} />)
+    await screen.findByTestId('publisher-row-Bruno')
+
+    await user.type(screen.getByLabelText('Buscar publicador'), 'zzz')
+
+    expect(screen.getByText('Nenhum publicador encontrado para a busca.')).toBeInTheDocument()
+    // The congregation does have people -- the empty-registry message would lie.
+    expect(screen.queryByText('Nenhum publicador cadastrado.')).not.toBeInTheDocument()
+    // And the field itself stays, so the admin can retype.
+    expect(screen.getByLabelText('Buscar publicador')).toBeInTheDocument()
+  })
+
   it('a refused toggle is shown and access is unchanged', async () => {
     const fake = installFakeApi()
     fake.publishers = [awaitingCode]

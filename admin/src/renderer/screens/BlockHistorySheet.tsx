@@ -82,50 +82,59 @@ export function BlockHistorySheet({
     }
   }
 
+  // Same header/main shell as the other routed screens (HomeScreen,
+  // DesignationsScreen), so the sheet inherits the shared chrome spacing
+  // instead of sitting edge-to-edge inside the pushed screen.
   return (
     <div>
-      <h2>
-        Quadra {block.number} — {territory.name}
-      </h2>
-      {error && <p role="alert">{error}</p>}
-      {isLoading ? (
-        <p>Carregando…</p>
-      ) : logs.length === 0 ? (
-        <p>Esta quadra nunca foi trabalhada.</p>
-      ) : (
-        <ul>
-          {logs.map((log) => (
-            <li key={log.id}>
-              <span>{log.publisher.name}</span>
-              <span>{formatDateTime(log.workedAt)}</span>
-              {workLogWasSyncedLate(log) && (
-                <span> sincronizado em {formatDateTime(log.createdAt)}</span>
-              )}
-              <button
-                type="button"
-                aria-label={`Remover registro de ${log.publisher.name} em ${formatDateTime(log.workedAt)}`}
-                onClick={() => setPendingDeleteId(log.id)}
-              >
+      <header>
+        <h2>
+          Quadra {block.number} — {territory.name}
+        </h2>
+      </header>
+      <main>
+        {error && <p role="alert">{error}</p>}
+        {isLoading ? (
+          <p>Carregando…</p>
+        ) : logs.length === 0 ? (
+          <p>Esta quadra nunca foi trabalhada.</p>
+        ) : (
+          <ul>
+            {logs.map((log) => (
+              <li key={log.id}>
+                <span>{log.publisher.name}</span>
+                <span>{formatDateTime(log.workedAt)}</span>
+                {workLogWasSyncedLate(log) && (
+                  <span> sincronizado em {formatDateTime(log.createdAt)}</span>
+                )}
+                <button
+                  type="button"
+                  aria-label={`Remover registro de ${log.publisher.name} em ${formatDateTime(log.workedAt)}`}
+                  onClick={() => setPendingDeleteId(log.id)}
+                >
+                  Remover
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {pendingLog && (
+          <div role="dialog" aria-label="Remover registro?">
+            <p>
+              A marcação de {pendingLog.publisher.name} em {formatDateTime(pendingLog.workedAt)}{' '}
+              será apagada, e a data da última visita da quadra será recalculada.
+            </p>
+            <div className="dialog-actions">
+              <button type="button" onClick={() => setPendingDeleteId(null)}>
+                Cancelar
+              </button>
+              <button type="button" onClick={() => confirmDelete(pendingLog)}>
                 Remover
               </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {pendingLog && (
-        <div role="dialog" aria-label="Remover registro?">
-          <p>
-            A marcação de {pendingLog.publisher.name} em {formatDateTime(pendingLog.workedAt)} será
-            apagada, e a data da última visita da quadra será recalculada.
-          </p>
-          <button type="button" onClick={() => setPendingDeleteId(null)}>
-            Cancelar
-          </button>
-          <button type="button" onClick={() => confirmDelete(pendingLog)}>
-            Remover
-          </button>
-        </div>
-      )}
+            </div>
+          </div>
+        )}
+      </main>
     </div>
   )
 }

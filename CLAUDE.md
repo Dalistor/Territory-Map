@@ -76,10 +76,16 @@ usuário e quem trabalhou cada quadra. Só o admin tem senha.
 
 ## Estrutura do Projeto
 
-Monorepo. O servidor está completo. O `admin/` está implementado — configuração inicial, mapa,
-editor de polígono, quadras (criar, editar e apagar), publicadores, designação de território,
-histórico e saída da congregação —, com as telas cobertas por teste (Vitest + React Testing
-Library). O `app/` (React Native) também está implementado — ativação por código, dashboard,
+Monorepo. O servidor está completo. O `admin/` está implementado — configuração inicial e, a partir
+daí, **navegação por sidebar permanente** (Mapa / Designações / Publicadores, com o nome da
+congregação no topo e "Sair da congregação" no rodapé): o Mapa é a Home (mapa + lista de
+territórios), **Designações** é a página própria da designação de território (mapa só com as
+demarcações, sem quadras, o nome do dirigente sobreposto a cada território, e clique abrindo o
+diálogo de atribuição — os canais IPC são os mesmos da spec 0005), e Publicadores tem busca por
+nome e contadores por situação. Os editores de território e de quadra são telas empurradas
+("← Voltar") em **layout lado a lado** (painel compacto à esquerda, mapa grande à direita); o de
+quadra ainda sugere o próximo número da sequência após cada salvamento. As sete telas são cobertas
+por teste (Vitest + React Testing Library), mais o roteamento/sidebar em `App.test.tsx`. O `app/` (React Native) também está implementado — ativação por código, dashboard,
 mapa com MapLibre e localização em tempo real, marcação de quadra restrita ao território designado,
 fila offline e cache local —, com as telas de `presentation/` e as camadas de `domain/`/`data/`
 cobertas por teste (Jest + `@testing-library/react-native`); só o componente que efetivamente
@@ -693,9 +699,10 @@ Gatekeeper do macOS vão exibir aviso de desenvolvedor não identificado na prim
 Documentar o "abrir mesmo assim" para o admin. Assinar exige certificado pago.
 
 Build verde só prova que compila — ninguém clica num binário. Quem valida comportamento são os
-testes (Vitest + React Testing Library), que existem e cobrem as seis telas (configuração inicial,
-roteamento, `HomeScreen` e as cores do mapa, publicadores, os dois editores e o histórico), mais o
-que se abre com `npm run dev` durante o desenvolvimento.
+testes (Vitest + React Testing Library), que existem e cobrem as sete telas (configuração inicial,
+`HomeScreen` e as cores do mapa, Designações, publicadores, os dois editores e o histórico), mais o
+roteamento com a sidebar (`App.test.tsx`) e o que se abre com `npm run dev` durante o
+desenvolvimento.
 
 **App Android** — sem CI, mesmo caminho do admin: build sempre **local**.
 
@@ -800,8 +807,9 @@ o `.env` exige gerar o `.apk` de novo. Detalhes em `app/README.md`.
 próprio `usePolygonEditor` (`admin/src/renderer/map/usePolygonEditor.ts`), com o Leaflet-Geoman só
 traduzindo eventos para ele, não mutando estado direto —, o admin já apaga quadra e sai da
 congregação pela interface, e o fluxo de **atribuição de território a publicador** existe de ponta a
-ponta (spec 0005): o admin designa pela `HomeScreen`, o servidor restringe a marcação de quadra ao
-território designado, e o app do publicador em React Native já existe.
+ponta (spec 0005): o admin designa pela página **Designações** (spec 0006 — antes era pela
+`HomeScreen`), o servidor restringe a marcação de quadra ao território designado, e o app do
+publicador em React Native já existe.
 
 ## Implementações
 

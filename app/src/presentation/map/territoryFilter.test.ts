@@ -1,5 +1,5 @@
 import type { Territory } from '../../domain/models'
-import { defaultFilter, visibleTerritories } from './territoryFilter'
+import { defaultFilter, searchTerritories, visibleTerritories } from './territoryFilter'
 
 function makeTerritory(overrides: Partial<Territory> = {}): Territory {
   return {
@@ -87,5 +87,74 @@ describe('defaultFilter', () => {
 
   it("is {mode: 'all'} for an empty territory list", () => {
     expect(defaultFilter([], 'user-1')).toEqual({ mode: 'all' })
+  })
+})
+
+describe('searchTerritories', () => {
+  const santaHelena7 = makeTerritory({ id: 'territory-1', name: 'Santa Helena - N 7' })
+  const vilaGuarani = makeTerritory({ id: 'territory-2', name: 'Vila Guarani - N14' })
+  const centro = makeTerritory({ id: 'territory-3', name: 'Próximo ao centro - N12' })
+  const all = [santaHelena7, vilaGuarani, centro]
+
+  it('returns every territory for an empty or blank query', () => {
+    expect(searchTerritories(all, '')).toEqual(all)
+    expect(searchTerritories(all, '   ')).toEqual(all)
+  })
+
+  it('matches any part of the name, not just its start', () => {
+    expect(searchTerritories(all, 'helena')).toEqual([santaHelena7])
+    expect(searchTerritories(all, 'N14')).toEqual([vilaGuarani])
+  })
+
+  it('ignores case', () => {
+    expect(searchTerritories(all, 'SANTA')).toEqual([santaHelena7])
+  })
+
+  it('ignores accents, in both the query and the name', () => {
+    // The publisher types on a phone keyboard, in the field, often in a
+    // hurry -- "proximo" has to find "Próximo".
+    expect(searchTerritories(all, 'proximo')).toEqual([centro])
+    expect(searchTerritories(all, 'PRÓXIMO')).toEqual([centro])
+  })
+
+  it('ignores surrounding whitespace in the query', () => {
+    expect(searchTerritories(all, '  guarani  ')).toEqual([vilaGuarani])
+  })
+
+  it('returns an empty list when nothing matches', () => {
+    expect(searchTerritories(all, 'jardim')).toEqual([])
+  })
+
+  it('ignores spaces and punctuation, so "n7" finds "N 7"', () => {
+    // The publisher reads "Santa Helena - N 7" off a paper card and types
+    // what they see without the spacing.
+    expect(searchTerritories(all, 'n7')).toEqual([santaHelena7])
+    expect(searchTerritories(all, 'santahelena')).toEqual([santaHelena7])
+  })
+
+  it('matches letters typed in order even with gaps', () => {
+    // "sthelena" is "Santa Helena" typed in a hurry; nothing else in the
+    // list has those letters in that order.
+    expect(searchTerritories(all, 'sthelena')).toEqual([santaHelena7])
+  })
+
+  it('puts the closer match first instead of dropping the looser ones', () => {
+    const santaHelena8 = makeTerritory({ id: 'territory-4', name: 'Santa Helena - N 8' })
+    const sitioAntigo = makeTerritory({ id: 'territory-5', name: 'Sitio Antigo' })
+
+    // "sant" is contained in "Santa Helena" and only scattered through
+    // "Sitio Antigo" -- both are offered, the literal one first.
+    const result = searchTerritories([sitioAntigo, santaHelena8], 'sant')
+
+    expect(result).toEqual([santaHelena8, sitioAntigo])
+  })
+
+  it('keeps the original order between equally good matches', () => {
+    const santaHelena8 = makeTerritory({ id: 'territory-4', name: 'Santa Helena - N 8' })
+
+    expect(searchTerritories([santaHelena7, santaHelena8], 'santa helena')).toEqual([
+      santaHelena7,
+      santaHelena8
+    ])
   })
 })

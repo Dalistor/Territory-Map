@@ -452,19 +452,59 @@ describe('BlockEditorScreen', () => {
     expect(screen.getByText('Toque no mapa para marcar ao menos 3 pontos.')).toBeTruthy()
   })
 
-  it('resets the number field to empty after a successful create', async () => {
+  it('suggests the saved number plus one in the number field after a successful create', async () => {
     const user = userEvent.setup()
-    const created: Block = { id: 'new-block', number: 9, polygon: [] }
+    const created: Block = { id: 'new-block', number: 7, polygon: [] }
     const create = vi.fn().mockResolvedValue(created)
     window.api = makeApi({ create })
     render(<BlockEditorScreen territory={makeTerritory()} onSaved={vi.fn()} />)
 
     await drawValidRing(user)
-    await user.type(numberField(), '9')
     await user.click(saveButton())
 
     await screen.findByRole('status')
-    expect(numberField().value).toBe('')
+    expect(numberField().value).toBe('8')
+  })
+
+  it('sends the suggested next number on the following save without retyping', async () => {
+    const user = userEvent.setup()
+    const create = vi
+      .fn()
+      .mockResolvedValueOnce({ id: 'block-a', number: 7, polygon: [] })
+      .mockResolvedValueOnce({ id: 'block-b', number: 8, polygon: [] })
+    window.api = makeApi({ create })
+    render(<BlockEditorScreen territory={makeTerritory()} onSaved={vi.fn()} />)
+
+    await drawValidRing(user)
+    await user.click(saveButton())
+    await screen.findByRole('status')
+
+    await drawValidRing(user)
+    await user.click(saveButton())
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(2))
+    expect(create.mock.calls[1][0].number).toBe(8)
+  })
+
+  it('lets the admin erase the suggested number and save blank, leaving the choice to the server', async () => {
+    const user = userEvent.setup()
+    const create = vi
+      .fn()
+      .mockResolvedValueOnce({ id: 'block-a', number: 7, polygon: [] })
+      .mockResolvedValueOnce({ id: 'block-b', number: 1, polygon: [] })
+    window.api = makeApi({ create })
+    render(<BlockEditorScreen territory={makeTerritory()} onSaved={vi.fn()} />)
+
+    await drawValidRing(user)
+    await user.click(saveButton())
+    await screen.findByRole('status')
+
+    await user.clear(numberField())
+    await drawValidRing(user)
+    await user.click(saveButton())
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(2))
+    expect(create.mock.calls[1][0].number).toBeUndefined()
   })
 
   it('adds the newly created block to the map context, so drawing the next one shows it', async () => {
@@ -526,6 +566,8 @@ describe('BlockEditorScreen', () => {
     await screen.findByRole('status')
     expect(screen.getByText('Nova quadra em Bairro Norte')).toBeTruthy()
     expect(screen.queryByText(/^Editar quadra/)).toBeNull()
+    // Blank, not "edited + 1" -- suggesting a number after an edit would
+    // usually collide with a block that already exists.
     expect(numberField().value).toBe('')
   })
 

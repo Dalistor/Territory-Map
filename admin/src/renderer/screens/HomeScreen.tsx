@@ -1,13 +1,14 @@
-// Ports `admin/lib/presentation/home_screen.dart` (removed Flutter admin) --
-// the main screen: the map, the territory list, and the way into everything
-// else. Only talks to the outside world through `window.api` (the IPC
-// bridge, Task 07) and the `TerritoryMap` component (Task 09); every other
-// screen it opens (territory editor, block editor, publishers, history) is
-// reached through callback props instead of an import, so this file does not
-// need to know those screens exist yet.
+// The "Mapa" section of the sidebar shell (spec 0006): the map and the
+// territory list. Navigation between sections and sign-out belong to the
+// sidebar in `App.tsx`, and assigning a territory to a publisher lives in
+// `DesignationsScreen` -- this screen only shows "Designado a {nome}" as
+// read-only context. Only talks to the outside world through `window.api`
+// (the IPC bridge) and the `TerritoryMap` component; the screens it pushes
+// (territory editor, block editor, history) are reached through callback
+// props instead of an import, so this file does not need to know they exist.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { LatLngTuple } from 'leaflet'
-import type { Block, Congregation, Publisher, Territory } from '../../shared/models'
+import type { Block, Congregation, Territory } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
 import { TerritoryMap } from '../map/TerritoryMap'
 
@@ -30,10 +31,6 @@ export interface HomeScreenProps {
   readonly onAddBlock?: (territory: Territory) => void
   readonly onShowHistory?: (territory: Territory, block: Block) => void
   readonly onEditBlock?: (territory: Territory, block: Block) => void
-  /** Opens the publishers screen -- unrelated to any territory or block. */
-  readonly onOpenPublishers?: () => void
-  /** Called after a successful sign-out so the caller can route back to setup. */
-  readonly onSignedOut?: () => void
   /** Overridable so a test can pin what counts as "today" for the map's colours. */
   readonly now?: Date
   /** Where the map centres when there are no territories yet -- the congregation's own city. */
@@ -70,11 +67,6 @@ function deleteBlockConfirmMessage(territory: Territory, block: Block): string {
   )
 }
 
-const SIGN_OUT_CONFIRM_MESSAGE =
-  'Os dados salvos neste computador serão apagados. Nada é removido do servidor: o território, ' +
-  'as quadras e o histórico de trabalho continuam lá. Para usar este computador de novo, será ' +
-  'preciso digitar o nome, a cidade e a senha da congregação de novo.'
-
 export function HomeScreen({
   congregation,
   onNewTerritory,
@@ -82,8 +74,6 @@ export function HomeScreen({
   onAddBlock,
   onShowHistory,
   onEditBlock,
-  onOpenPublishers,
-  onSignedOut,
   now,
   fallbackCenter,
   mapView,
@@ -92,33 +82,25 @@ export function HomeScreen({
   const [territories, setTerritories] = useState<Territory[]>([])
   // Sorted once here, and used everywhere below (the list, the map, and the
   // territories handed to onNewTerritory/onEditTerritory) -- so every
-  // consumer of "the territories" sees the same alphabetical order, not just
-  // the <ul>. `sensitivity: 'base'` ignores case and diacritics ("Árvore"
-  // and "arvore" land next to each other), matching how a Portuguese-speaking
-  // admin expects a name list to read.
+  // consumer of "the territories" sees the same order, not just the <ul>.
+  // `sensitivity: 'base'` ignores case and diacritics ("Árvore" and "arvore"
+  // land next to each other); `numeric: true` compares embedded digits as
+  // numbers, so the "N 10" of a territory name sorts after "N 9" instead of
+  // after "N 1" -- territory names carry their sequence number by convention.
   const sortedTerritories = useMemo(
     () =>
       [...territories].sort((a, b) =>
-        a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+        a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true })
       ),
     [territories]
   )
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false)
   const [activeBlock, setActiveBlock] = useState<{ territory: Territory; block: Block } | null>(
     null
   )
   const [openTerritoryMenuId, setOpenTerritoryMenuId] = useState<string | null>(null)
-  // The "Atribuir a publicador" dialog. `assignTarget` doubles as "is the
-  // dialog open" -- non-null means it is, for this one territory.
-  // `assignPublishers` is fetched fresh (filtered to active ones) every time
-  // the dialog opens, since the admin may have deactivated someone since the
-  // territory list last loaded.
-  const [assignTarget, setAssignTarget] = useState<Territory | null>(null)
-  const [assignPublishers, setAssignPublishers] = useState<Publisher[]>([])
-  const [selectedPublisherId, setSelectedPublisherId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setIsLoading(true)
@@ -187,42 +169,6 @@ export function HomeScreen({
     [runAction]
   )
 
-  /**
-   * Opens the assign dialog for `territory` and loads the publisher options.
-   * Pre-selects whoever is already designated (or "Nenhum" if nobody is), so
-   * confirming without touching anything is a no-op rather than a surprise
-   * unassignment.
-   */
-  const openAssignDialog = useCallback(async (territory: Territory) => {
-    setOpenTerritoryMenuId(null)
-    setSelectedPublisherId(territory.assignedUser?.id ?? null)
-    setAssignTarget(territory)
-    try {
-      const list = await window.api.publishers.list()
-      setAssignPublishers(list.filter((publisher) => publisher.isActive))
-    } catch (error) {
-      setActionError(errorMessage(error))
-      setAssignPublishers([])
-    }
-  }, [])
-
-  /**
-   * Confirms the dialog's current selection: `null` when "Nenhum" is picked,
-   * a publisher's `id` otherwise. Closes the dialog immediately, independent
-   * of what the server answers -- same shape as `submitCreate` in
-   * `PublishersScreen.tsx`.
-   */
-  const confirmAssign = useCallback(() => {
-    if (assignTarget === null) return Promise.resolve()
-    const territoryId = assignTarget.id
-    const userId = selectedPublisherId
-    setAssignTarget(null)
-    return runAction(async () => {
-      await window.api.territories.assign(territoryId, userId)
-      await load()
-    })
-  }, [assignTarget, selectedPublisherId, load, runAction])
-
   const handleDeleteTerritory = useCallback(
     (territory: Territory) =>
       runConfirmed(deleteTerritoryConfirmMessage(territory), async () => {
@@ -242,130 +188,108 @@ export function HomeScreen({
     [load, runConfirmed]
   )
 
-  const handleSignOut = useCallback(() => {
-    setIsMoreMenuOpen(false)
-    return runConfirmed(SIGN_OUT_CONFIRM_MESSAGE, async () => {
-      await window.api.session.signOut()
-      onSignedOut?.()
-    })
-  }, [onSignedOut, runConfirmed])
-
   const title = congregation ? `${congregation.name} — ${congregation.city}` : 'Territory Map'
 
   return (
     <div>
       <header>
         <h1>{title}</h1>
-        <button onClick={onOpenPublishers}>Publicadores</button>
         <button onClick={() => void load()}>Recarregar</button>
-        <button
-          aria-haspopup="true"
-          aria-expanded={isMoreMenuOpen}
-          onClick={() => setIsMoreMenuOpen((open) => !open)}
-        >
-          Mais opções
-        </button>
-        {isMoreMenuOpen && (
-          <div role="menu">
-            <button role="menuitem" onClick={() => void handleSignOut()}>
-              Sair da congregação
-            </button>
-          </div>
-        )}
       </header>
       <main>
         {actionError !== null && <p role="alert">{actionError}</p>}
         {isLoading && <p>Carregando…</p>}
         {!isLoading && loadError !== null && <p role="alert">{loadError}</p>}
         {!isLoading && loadError === null && (
-          <>
-            <button onClick={() => onNewTerritory?.(sortedTerritories)}>Novo território</button>
-            {sortedTerritories.length === 0 ? (
-              <p>Nenhum território cadastrado ainda.</p>
-            ) : (
-              <div className="territory-list">
-                <ul>
-                  {sortedTerritories.map((territory) => (
-                    <li key={territory.id} className="territory-row">
-                      <span>{territory.name}</span>
-                      {territory.assignedUser && (
-                        <span className="territory-assigned-user">
-                          Designado a {territory.assignedUser.name}
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        className="icon-button"
-                        aria-label={`Opções de ${territory.name}`}
-                        aria-expanded={openTerritoryMenuId === territory.id}
-                        onClick={() =>
-                          setOpenTerritoryMenuId(
-                            openTerritoryMenuId === territory.id ? null : territory.id
-                          )
-                        }
-                      >
-                        ⋮
-                      </button>
-                      {openTerritoryMenuId === territory.id && (
-                        <ul role="menu" aria-label={`Opções de ${territory.name}`}>
-                          <li>
-                            <button
-                              role="menuitem"
-                              onClick={() => {
-                                setOpenTerritoryMenuId(null)
-                                onAddBlock?.(territory)
-                              }}
-                            >
-                              {`Adicionar quadra em ${territory.name}`}
-                            </button>
-                          </li>
-                          <li>
-                            <button
-                              role="menuitem"
-                              onClick={() => {
-                                setOpenTerritoryMenuId(null)
-                                onEditTerritory?.(territory, sortedTerritories)
-                              }}
-                            >
-                              {`Editar demarcação de ${territory.name}`}
-                            </button>
-                          </li>
-                          <li>
-                            <button
-                              role="menuitem"
-                              onClick={() => void openAssignDialog(territory)}
-                            >
-                              {`Atribuir a publicador em ${territory.name}`}
-                            </button>
-                          </li>
-                          <li>
-                            <button
-                              role="menuitem"
-                              className="block-action-danger"
-                              onClick={() => {
-                                setOpenTerritoryMenuId(null)
-                                void handleDeleteTerritory(territory)
-                              }}
-                            >
-                              {`Apagar território ${territory.name}`}
-                            </button>
-                          </li>
-                        </ul>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <TerritoryMap
-              territories={sortedTerritories}
-              now={now ?? new Date()}
-              onBlockTap={(territory, block) => setActiveBlock({ territory, block })}
-              fallbackCenter={fallbackCenter}
-              initialView={mapView}
-              onViewChange={onMapViewChange}
-            />
-          </>
+          <div className="home-split">
+            <div className="home-panel">
+              <button
+                className="button-primary"
+                onClick={() => onNewTerritory?.(sortedTerritories)}
+              >
+                Novo território
+              </button>
+              {sortedTerritories.length === 0 ? (
+                <p>Nenhum território cadastrado ainda.</p>
+              ) : (
+                <div className="territory-list">
+                  <ul>
+                    {sortedTerritories.map((territory) => (
+                      <li key={territory.id} className="territory-row">
+                        <span>{territory.name}</span>
+                        {territory.assignedUser && (
+                          <span className="territory-assigned-user">
+                            Designado a {territory.assignedUser.name}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          className="icon-button"
+                          aria-label={`Opções de ${territory.name}`}
+                          aria-expanded={openTerritoryMenuId === territory.id}
+                          onClick={() =>
+                            setOpenTerritoryMenuId(
+                              openTerritoryMenuId === territory.id ? null : territory.id
+                            )
+                          }
+                        >
+                          ⋮
+                        </button>
+                        {openTerritoryMenuId === territory.id && (
+                          <ul role="menu" aria-label={`Opções de ${territory.name}`}>
+                            <li>
+                              <button
+                                role="menuitem"
+                                onClick={() => {
+                                  setOpenTerritoryMenuId(null)
+                                  onAddBlock?.(territory)
+                                }}
+                              >
+                                {`Adicionar quadra em ${territory.name}`}
+                              </button>
+                            </li>
+                            <li>
+                              <button
+                                role="menuitem"
+                                onClick={() => {
+                                  setOpenTerritoryMenuId(null)
+                                  onEditTerritory?.(territory, sortedTerritories)
+                                }}
+                              >
+                                {`Editar demarcação de ${territory.name}`}
+                              </button>
+                            </li>
+                            <li>
+                              <button
+                                role="menuitem"
+                                className="block-action-danger"
+                                onClick={() => {
+                                  setOpenTerritoryMenuId(null)
+                                  void handleDeleteTerritory(territory)
+                                }}
+                              >
+                                {`Apagar território ${territory.name}`}
+                              </button>
+                            </li>
+                          </ul>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+            <div className="home-map">
+              <TerritoryMap
+                territories={sortedTerritories}
+                now={now ?? new Date()}
+                onBlockTap={(territory, block) => setActiveBlock({ territory, block })}
+                fallbackCenter={fallbackCenter}
+                initialView={mapView}
+                onViewChange={onMapViewChange}
+              />
+            </div>
+          </div>
         )}
         {activeBlock !== null && (
           <div
@@ -413,41 +337,6 @@ export function HomeScreen({
             >
               Apagar quadra
             </button>
-          </div>
-        )}
-        {assignTarget !== null && (
-          <div role="dialog" aria-label={`Atribuir publicador a ${assignTarget.name}`}>
-            <h2>Atribuir publicador a {assignTarget.name}</h2>
-            <div className="field assign-options">
-              <label>
-                <input
-                  type="radio"
-                  name="assign-publisher"
-                  checked={selectedPublisherId === null}
-                  onChange={() => setSelectedPublisherId(null)}
-                />
-                Nenhum
-              </label>
-              {assignPublishers.map((publisher) => (
-                <label key={publisher.id}>
-                  <input
-                    type="radio"
-                    name="assign-publisher"
-                    checked={selectedPublisherId === publisher.id}
-                    onChange={() => setSelectedPublisherId(publisher.id)}
-                  />
-                  {publisher.name}
-                </label>
-              ))}
-            </div>
-            <div className="dialog-actions">
-              <button type="button" onClick={() => setAssignTarget(null)}>
-                Cancelar
-              </button>
-              <button type="button" className="button-primary" onClick={() => void confirmAssign()}>
-                Atribuir
-              </button>
-            </div>
           </div>
         )}
       </main>

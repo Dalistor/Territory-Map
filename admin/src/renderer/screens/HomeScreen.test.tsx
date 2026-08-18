@@ -6,7 +6,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { IpcApi } from '../../shared/ipc-contract'
-import type { Block, Publisher, Territory } from '../../shared/models'
+import type { Block, Territory } from '../../shared/models'
 import { HomeScreen } from './HomeScreen'
 
 // The real TerritoryMap pulls in react-leaflet, which needs a real DOM layout
@@ -58,15 +58,6 @@ function makeTerritory(overrides: Partial<Territory> = {}): Territory {
       { lat: 1, lng: 1 }
     ],
     blocks: [],
-    ...overrides
-  }
-}
-
-function makePublisher(overrides: Partial<Publisher> = {}): Publisher {
-  return {
-    id: 'publisher-1',
-    name: 'Ana',
-    isActive: true,
     ...overrides
   }
 }
@@ -206,6 +197,58 @@ async function openTerritoryMenu(
 }
 
 describe('HomeScreen territory actions', () => {
+  it('the "⋮" menu offers exactly three actions: add block, edit boundary and delete territory', async () => {
+    const territory = makeTerritory({ name: 'Bairro Sul' })
+    const api = makeApi({
+      territories: {
+        listWithBlocks: vi.fn().mockResolvedValue([territory]),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+        assign: vi.fn()
+      }
+    })
+    vi.stubGlobal('api', api)
+    const user = userEvent.setup()
+
+    render(<HomeScreen />)
+    await openTerritoryMenu(user, 'Bairro Sul')
+
+    const menu = await screen.findByRole('menu', { name: /opções de bairro sul/i })
+    const items = within(menu).getAllByRole('menuitem')
+    expect(items.map((item) => item.textContent)).toEqual([
+      'Adicionar quadra em Bairro Sul',
+      'Editar demarcação de Bairro Sul',
+      'Apagar território Bairro Sul'
+    ])
+  })
+
+  it('shows "Designado a {name}" on the territory row when a publisher is designated', async () => {
+    const assigned = makeTerritory({
+      name: 'Bairro Sul',
+      assignedUser: { id: 'p1', name: 'Ana' }
+    })
+    const unassigned = makeTerritory({ id: 'territory-2', name: 'Centro' })
+    const api = makeApi({
+      territories: {
+        listWithBlocks: vi.fn().mockResolvedValue([assigned, unassigned]),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+        assign: vi.fn()
+      }
+    })
+    vi.stubGlobal('api', api)
+
+    render(<HomeScreen />)
+
+    expect(await screen.findByText('Designado a Ana')).toBeInTheDocument()
+    const rows = screen.getAllByRole('listitem')
+    const centroRow = rows.find((row) => within(row).queryByText('Centro') !== null)
+    expect(centroRow).toBeDefined()
+    expect(within(centroRow as HTMLElement).queryByText(/designado a/i)).not.toBeInTheDocument()
+  })
+
   it('"Novo território" signals the intent to create one, handing over the loaded territories', async () => {
     const territory = makeTerritory()
     const api = makeApi({
@@ -305,6 +348,32 @@ describe('HomeScreen territory list ordering', () => {
     render(<HomeScreen />)
 
     expect(await findRenderedTerritoryNames()).toEqual(['Bairro Norte', 'Centro', 'Zona Sul'])
+  })
+
+  it('sorts embedded numbers numerically, so "N 10" comes after "N 9" instead of after "N 1"', async () => {
+    const territories = [
+      makeTerritory({ id: 't-10', name: 'Santa Helena - N 10' }),
+      makeTerritory({ id: 't-7', name: 'Santa Helena - N 7' }),
+      makeTerritory({ id: 't-9', name: 'Santa Helena - N 9' })
+    ]
+    const api = makeApi({
+      territories: {
+        listWithBlocks: vi.fn().mockResolvedValue(territories),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+        assign: vi.fn()
+      }
+    })
+    vi.stubGlobal('api', api)
+
+    render(<HomeScreen />)
+
+    expect(await findRenderedTerritoryNames()).toEqual([
+      'Santa Helena - N 7',
+      'Santa Helena - N 9',
+      'Santa Helena - N 10'
+    ])
   })
 
   it('sorts ignoring case and accents, so accented and plain variants of a name land next to each other', async () => {
@@ -560,78 +629,17 @@ describe('HomeScreen reloading', () => {
   })
 })
 
-describe('HomeScreen signing out', () => {
-  it('keeps "Sair da congregação" behind a secondary menu, not next to "Recarregar"', async () => {
+describe('HomeScreen header after the sidebar shell', () => {
+  it('offers neither a "Publicadores" button nor a "Mais opções" menu -- navigation and sign-out moved to the sidebar', async () => {
     const api = makeApi()
     vi.stubGlobal('api', api)
 
     render(<HomeScreen />)
     await waitFor(() => expect(api.territories.listWithBlocks).toHaveBeenCalled())
 
-    const header = screen.getByRole('banner')
-    expect(
-      within(header).queryByRole('button', { name: /sair da congregação/i })
-    ).not.toBeInTheDocument()
-  })
-
-  it('explains, on confirmation, that local data is erased but nothing is removed from the server, and signs out on confirm', async () => {
-    const signOut = vi.fn().mockResolvedValue(undefined)
-    const api = makeApi({
-      session: { isConfigured: vi.fn(), configure: vi.fn(), signOut, getCongregation: vi.fn() }
-    })
-    vi.stubGlobal('api', api)
-    const onSignedOut = vi.fn()
-    const user = userEvent.setup()
-
-    render(<HomeScreen onSignedOut={onSignedOut} />)
-    await waitFor(() => expect(api.territories.listWithBlocks).toHaveBeenCalled())
-
-    await user.click(screen.getByRole('button', { name: /mais opções/i }))
-    await user.click(screen.getByRole('menuitem', { name: /sair da congregação/i }))
-
-    const message = confirmSpy.mock.calls[0]?.[0] as string
-    expect(message).toMatch(/neste computador/i)
-    expect(message).toMatch(/servidor/i)
-    expect(message).toMatch(/nome.*cidade.*senha|senha.*cidade.*nome|de novo/i)
-    await waitFor(() => expect(signOut).toHaveBeenCalledTimes(1))
-    await waitFor(() => expect(onSignedOut).toHaveBeenCalledTimes(1))
-  })
-
-  it('does not sign out when the confirmation is declined', async () => {
-    confirmSpy.mockReturnValue(false)
-    const signOut = vi.fn()
-    const api = makeApi({
-      session: { isConfigured: vi.fn(), configure: vi.fn(), signOut, getCongregation: vi.fn() }
-    })
-    vi.stubGlobal('api', api)
-    const user = userEvent.setup()
-
-    render(<HomeScreen />)
-    await waitFor(() => expect(api.territories.listWithBlocks).toHaveBeenCalled())
-    await user.click(screen.getByRole('button', { name: /mais opções/i }))
-    await user.click(screen.getByRole('menuitem', { name: /sair da congregação/i }))
-
-    expect(signOut).not.toHaveBeenCalled()
-  })
-
-  it('shows a visible error message when signing out fails', async () => {
-    const api = makeApi({
-      session: {
-        isConfigured: vi.fn(),
-        configure: vi.fn(),
-        signOut: vi.fn().mockRejectedValue(new Error('Falha ao sair.')),
-        getCongregation: vi.fn()
-      }
-    })
-    vi.stubGlobal('api', api)
-    const user = userEvent.setup()
-
-    render(<HomeScreen />)
-    await waitFor(() => expect(api.territories.listWithBlocks).toHaveBeenCalled())
-    await user.click(screen.getByRole('button', { name: /mais opções/i }))
-    await user.click(screen.getByRole('menuitem', { name: /sair da congregação/i }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('Falha ao sair.')
+    expect(screen.queryByRole('button', { name: /publicadores/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /mais opções/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: /sair da congregação/i })).not.toBeInTheDocument()
   })
 })
 
@@ -723,223 +731,5 @@ describe('HomeScreen tapping a block on the map', () => {
     expect(screen.queryByRole('menuitem', { name: 'Ver histórico' })).not.toBeInTheDocument()
     expect(onShowHistory).not.toHaveBeenCalled()
     expect(onEditBlock).not.toHaveBeenCalled()
-  })
-})
-
-/** Opens the "Atribuir a publicador" dialog for a territory row, via its "⋮" menu. */
-async function openAssignDialog(
-  user: ReturnType<typeof userEvent.setup>,
-  territoryName: string
-): Promise<HTMLElement> {
-  await openTerritoryMenu(user, territoryName)
-  await user.click(
-    await screen.findByRole('menuitem', {
-      name: new RegExp(`atribuir a publicador.*${territoryName}`, 'i')
-    })
-  )
-  return screen.findByRole('dialog', { name: new RegExp(territoryName, 'i') })
-}
-
-describe('HomeScreen assigning a territory to a publisher', () => {
-  it('lists active publishers as selectable options, plus "Nenhum", and excludes inactive ones', async () => {
-    const territory = makeTerritory({ name: 'Bairro Sul' })
-    const activePublisher = makePublisher({ id: 'p1', name: 'Ana', isActive: true })
-    const inactivePublisher = makePublisher({ id: 'p2', name: 'Beto', isActive: false })
-    const api = makeApi({
-      territories: {
-        listWithBlocks: vi.fn().mockResolvedValue([territory]),
-        create: vi.fn(),
-        update: vi.fn(),
-        delete: vi.fn(),
-        assign: vi.fn()
-      },
-      publishers: {
-        list: vi.fn().mockResolvedValue([activePublisher, inactivePublisher]),
-        create: vi.fn(),
-        regenerateCode: vi.fn(),
-        setActive: vi.fn()
-      }
-    })
-    vi.stubGlobal('api', api)
-    const user = userEvent.setup()
-
-    render(<HomeScreen />)
-    const dialog = await openAssignDialog(user, 'Bairro Sul')
-
-    expect(within(dialog).getByRole('radio', { name: 'Nenhum' })).toBeInTheDocument()
-    expect(within(dialog).getByRole('radio', { name: 'Ana' })).toBeInTheDocument()
-    expect(within(dialog).queryByRole('radio', { name: 'Beto' })).not.toBeInTheDocument()
-  })
-
-  it('assigns the selected publisher: calls assign with its id, reloads, and the row shows their name', async () => {
-    const territory = makeTerritory({ name: 'Bairro Sul' })
-    const assignedTerritory = { ...territory, assignedUser: { id: 'p1', name: 'Ana' } }
-    const publisher = makePublisher({ id: 'p1', name: 'Ana', isActive: true })
-    const listWithBlocks = vi
-      .fn()
-      .mockResolvedValueOnce([territory])
-      .mockResolvedValueOnce([assignedTerritory])
-    const assign = vi.fn().mockResolvedValue(assignedTerritory)
-    const api = makeApi({
-      territories: {
-        listWithBlocks,
-        create: vi.fn(),
-        update: vi.fn(),
-        delete: vi.fn(),
-        assign
-      },
-      publishers: {
-        list: vi.fn().mockResolvedValue([publisher]),
-        create: vi.fn(),
-        regenerateCode: vi.fn(),
-        setActive: vi.fn()
-      }
-    })
-    vi.stubGlobal('api', api)
-    const user = userEvent.setup()
-
-    render(<HomeScreen />)
-    const dialog = await openAssignDialog(user, 'Bairro Sul')
-    await user.click(within(dialog).getByRole('radio', { name: 'Ana' }))
-    await user.click(within(dialog).getByRole('button', { name: /^atribuir$/i }))
-
-    await waitFor(() => expect(assign).toHaveBeenCalledWith('territory-1', 'p1'))
-    await waitFor(() => expect(listWithBlocks).toHaveBeenCalledTimes(2))
-    expect(await screen.findByText(/designado a ana/i)).toBeInTheDocument()
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-  })
-
-  it('choosing "Nenhum" removes the assignment: calls assign with null, and the row no longer shows a publisher', async () => {
-    const territory = makeTerritory({
-      name: 'Bairro Sul',
-      assignedUser: { id: 'p1', name: 'Ana' }
-    })
-    const unassignedTerritory = { ...territory, assignedUser: undefined }
-    const publisher = makePublisher({ id: 'p1', name: 'Ana', isActive: true })
-    const listWithBlocks = vi
-      .fn()
-      .mockResolvedValueOnce([territory])
-      .mockResolvedValueOnce([unassignedTerritory])
-    const assign = vi.fn().mockResolvedValue(unassignedTerritory)
-    const api = makeApi({
-      territories: {
-        listWithBlocks,
-        create: vi.fn(),
-        update: vi.fn(),
-        delete: vi.fn(),
-        assign
-      },
-      publishers: {
-        list: vi.fn().mockResolvedValue([publisher]),
-        create: vi.fn(),
-        regenerateCode: vi.fn(),
-        setActive: vi.fn()
-      }
-    })
-    vi.stubGlobal('api', api)
-    const user = userEvent.setup()
-
-    render(<HomeScreen />)
-    expect(await screen.findByText(/designado a ana/i)).toBeInTheDocument()
-    const dialog = await openAssignDialog(user, 'Bairro Sul')
-    await user.click(within(dialog).getByRole('radio', { name: 'Nenhum' }))
-    await user.click(within(dialog).getByRole('button', { name: /^atribuir$/i }))
-
-    await waitFor(() => expect(assign).toHaveBeenCalledWith('territory-1', null))
-    await waitFor(() => expect(listWithBlocks).toHaveBeenCalledTimes(2))
-    await waitFor(() => expect(screen.queryByText(/designado a/i)).not.toBeInTheDocument())
-  })
-
-  it('shows a visible error message when assigning fails, without incorrectly reloading the list', async () => {
-    const territory = makeTerritory({ name: 'Bairro Sul' })
-    const publisher = makePublisher({ id: 'p1', name: 'Ana', isActive: true })
-    const listWithBlocks = vi.fn().mockResolvedValue([territory])
-    const assign = vi.fn().mockRejectedValue(new Error('Publicador não encontrado.'))
-    const api = makeApi({
-      territories: {
-        listWithBlocks,
-        create: vi.fn(),
-        update: vi.fn(),
-        delete: vi.fn(),
-        assign
-      },
-      publishers: {
-        list: vi.fn().mockResolvedValue([publisher]),
-        create: vi.fn(),
-        regenerateCode: vi.fn(),
-        setActive: vi.fn()
-      }
-    })
-    vi.stubGlobal('api', api)
-    const user = userEvent.setup()
-
-    render(<HomeScreen />)
-    const dialog = await openAssignDialog(user, 'Bairro Sul')
-    await user.click(within(dialog).getByRole('radio', { name: 'Ana' }))
-    await waitFor(() => expect(listWithBlocks).toHaveBeenCalledTimes(1))
-    await user.click(within(dialog).getByRole('button', { name: /^atribuir$/i }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('Publicador não encontrado.')
-    expect(listWithBlocks).toHaveBeenCalledTimes(1)
-  })
-
-  it('"Cancelar" closes the dialog without calling assign', async () => {
-    const territory = makeTerritory({ name: 'Bairro Sul' })
-    const publisher = makePublisher({ id: 'p1', name: 'Ana', isActive: true })
-    const assign = vi.fn()
-    const api = makeApi({
-      territories: {
-        listWithBlocks: vi.fn().mockResolvedValue([territory]),
-        create: vi.fn(),
-        update: vi.fn(),
-        delete: vi.fn(),
-        assign
-      },
-      publishers: {
-        list: vi.fn().mockResolvedValue([publisher]),
-        create: vi.fn(),
-        regenerateCode: vi.fn(),
-        setActive: vi.fn()
-      }
-    })
-    vi.stubGlobal('api', api)
-    const user = userEvent.setup()
-
-    render(<HomeScreen />)
-    const dialog = await openAssignDialog(user, 'Bairro Sul')
-    await user.click(within(dialog).getByRole('radio', { name: 'Ana' }))
-    await user.click(within(dialog).getByRole('button', { name: /^cancelar$/i }))
-
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(assign).not.toHaveBeenCalled()
-  })
-
-  it('shows a visible error message when loading the publisher options fails', async () => {
-    const territory = makeTerritory({ name: 'Bairro Sul' })
-    const api = makeApi({
-      territories: {
-        listWithBlocks: vi.fn().mockResolvedValue([territory]),
-        create: vi.fn(),
-        update: vi.fn(),
-        delete: vi.fn(),
-        assign: vi.fn()
-      },
-      publishers: {
-        list: vi.fn().mockRejectedValue(new Error('Falha ao carregar publicadores.')),
-        create: vi.fn(),
-        regenerateCode: vi.fn(),
-        setActive: vi.fn()
-      }
-    })
-    vi.stubGlobal('api', api)
-    const user = userEvent.setup()
-
-    render(<HomeScreen />)
-    await openTerritoryMenu(user, 'Bairro Sul')
-    await user.click(
-      await screen.findByRole('menuitem', { name: /atribuir a publicador.*bairro sul/i })
-    )
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('Falha ao carregar publicadores.')
   })
 })

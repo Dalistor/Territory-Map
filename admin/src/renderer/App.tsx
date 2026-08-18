@@ -17,17 +17,19 @@
 //      every later launch signs in silently, so this is the only way
 //      `HomeScreen` learns who it is.
 //
-// Once authenticated, `AuthenticatedApp` below owns the in-app navigation
-// between `HomeScreen` and the four screens it can open (territory editor,
-// block editor, publishers, block history) -- none of the tasks that built
-// those screens ever wired them together, since each was tested in
-// isolation against a faked `HomeScreen`-shaped caller. There is no router
+// Once authenticated, `AuthenticatedApp` below owns the in-app navigation:
+// a permanent sidebar (spec 0006) with the three sections -- Mapa (Home),
+// Designações, Publicadores -- plus sign-out in its footer, and a content
+// area beside it where the current route renders. The editors and the block
+// history are still pushed screens ("← Voltar") opened from Home, rendered
+// inside that content area so the sidebar stays visible. There is no router
 // library involved: `route` is one piece of state, and leaving a pushed
 // screen always returns to a freshly mounted `HomeScreen`, whose own mount
 // effect refetches the territories -- so a save doesn't need its own
 // invalidation path, going home already causes one.
 
 import { useEffect, useState } from 'react'
+import iconPin from './assets/icon-pin.png'
 import type { LatLngTuple } from 'leaflet'
 import type { Block, Congregation, Territory } from '../shared/models'
 import { parseIpcError } from '../shared/ipc-error'
@@ -37,9 +39,20 @@ import TerritoryEditorScreen from './screens/TerritoryEditorScreen'
 import BlockEditorScreen from './screens/BlockEditorScreen'
 import PublishersScreen from './screens/PublishersScreen'
 import BlockHistorySheet from './screens/BlockHistorySheet'
+import DesignationsScreen from './screens/DesignationsScreen'
 
 const STORAGE_READ_ERROR_MESSAGE = 'Não foi possível ler os dados guardados neste computador.'
 const CREDENTIALS_REJECTED_NAME = 'CredentialsRejectedException'
+const GENERIC_ERROR_MESSAGE = 'Não foi possível completar a operação.'
+
+// Same literal `HomeScreen` shows today (spec 0006 moves the sign-out to the
+// sidebar; Task 05 removes it from `HomeScreen`). Spells out exactly what is
+// destroyed (this computer's saved credentials) and what is not (everything
+// on the server).
+const SIGN_OUT_CONFIRM_MESSAGE =
+  'Os dados salvos neste computador serão apagados. Nada é removido do servidor: o território, ' +
+  'as quadras e o histórico de trabalho continuam lá. Para usar este computador de novo, será ' +
+  'preciso digitar o nome, a cidade e a senha da congregação de novo.'
 
 type RootState =
   | { readonly status: 'loading' }
@@ -125,8 +138,23 @@ type Route =
       readonly neighbours: Territory[]
     }
   | { readonly kind: 'block-editor'; readonly territory: Territory; readonly block?: Block }
+  | { readonly kind: 'designations' }
   | { readonly kind: 'publishers' }
   | { readonly kind: 'block-history'; readonly territory: Territory; readonly block: Block }
+
+/** The three sidebar sections. Pushed screens (editors, history) open from Home, so they keep "Mapa" lit. */
+type Section = 'home' | 'designations' | 'publishers'
+
+function sectionOf(route: Route): Section {
+  switch (route.kind) {
+    case 'designations':
+      return 'designations'
+    case 'publishers':
+      return 'publishers'
+    default:
+      return 'home'
+  }
+}
 
 interface AuthenticatedAppProps {
   readonly congregation: Congregation | null
@@ -169,64 +197,126 @@ function AuthenticatedApp({ congregation, onSignedOut }: AuthenticatedAppProps):
     }
   }, [congregation])
 
-  switch (route.kind) {
-    case 'territory-editor':
-      return (
-        <PushedScreen onBack={goHome}>
-          <TerritoryEditorScreen
-            territory={route.territory}
-            neighbours={route.neighbours}
-            onSaved={goHome}
+  // The sidebar's sign-out. Confirms first (destroying this computer's saved
+  // credentials deserves a beat), then routes back to setup; a failure shows
+  // in the content area instead of vanishing into an unhandled rejection.
+  const [signOutError, setSignOutError] = useState<string | null>(null)
+  const signOut = async (): Promise<void> => {
+    if (!window.confirm(SIGN_OUT_CONFIRM_MESSAGE)) return
+    setSignOutError(null)
+    try {
+      await window.api.session.signOut()
+      onSignedOut()
+    } catch (error) {
+      setSignOutError(parseIpcError(error, GENERIC_ERROR_MESSAGE).message)
+    }
+  }
+
+  const section = sectionOf(route)
+  const sectionButton = (target: Section, label: string): React.JSX.Element => (
+    <button
+      type="button"
+      className={section === target ? 'is-active' : undefined}
+      aria-current={section === target ? 'page' : undefined}
+      onClick={() => setRoute({ kind: target })}
+    >
+      {label}
+    </button>
+  )
+
+  return (
+    <div className="app-shell">
+      <nav className="app-sidebar">
+        <div className="sidebar-header">
+          {/* Decorative (alt="") — the text beside it already names the app
+              or the congregation; a repeated alt would just be noise to a
+              screen reader. */}
+          <img src={iconPin} alt="" />
+          <div className="sidebar-header-text">
+            {congregation !== null ? (
+              <>
+                <strong>{congregation.name}</strong>
+                <span>{congregation.city}</span>
+              </>
+            ) : (
+              <strong>Territory Map</strong>
+            )}
+          </div>
+        </div>
+        <div className="sidebar-nav">
+          {sectionButton('home', 'Mapa')}
+          {sectionButton('designations', 'Designações')}
+          {sectionButton('publishers', 'Publicadores')}
+        </div>
+        <div className="sidebar-footer">
+          <button type="button" onClick={() => void signOut()}>
+            Sair da congregação
+          </button>
+        </div>
+      </nav>
+      <div className="app-content">
+        {signOutError !== null && <p role="alert">{signOutError}</p>}
+        {renderRoute()}
+      </div>
+    </div>
+  )
+
+  function renderRoute(): React.JSX.Element {
+    switch (route.kind) {
+      case 'territory-editor':
+        return (
+          <PushedScreen onBack={goHome}>
+            <TerritoryEditorScreen
+              territory={route.territory}
+              neighbours={route.neighbours}
+              onSaved={goHome}
+              fallbackCenter={fallbackCenter}
+            />
+          </PushedScreen>
+        )
+      case 'block-editor':
+        // No `onSaved={goHome}` here on purpose, unlike the territory editor
+        // above: `BlockEditorScreen` (spec 0004, Task 04) now stays open and
+        // resets itself to create-mode after a successful save, precisely so
+        // the admin can keep adding blocks to the same territory without
+        // leaving. Wiring `onSaved` to `goHome` would navigate away the
+        // instant the save resolves, unmounting the screen before that reset
+        // was ever visible -- which is exactly the bug this comment is here
+        // to stop someone from reintroducing.
+        return (
+          <PushedScreen onBack={goHome}>
+            <BlockEditorScreen territory={route.territory} block={route.block} />
+          </PushedScreen>
+        )
+      case 'designations':
+        return <DesignationsScreen fallbackCenter={fallbackCenter} />
+      case 'publishers':
+        return <PublishersScreen />
+      case 'block-history':
+        return (
+          <PushedScreen onBack={goHome}>
+            <BlockHistorySheet territory={route.territory} block={route.block} />
+          </PushedScreen>
+        )
+      case 'home':
+        return (
+          <HomeScreen
+            congregation={congregation}
+            onNewTerritory={(neighbours) => setRoute({ kind: 'territory-editor', neighbours })}
+            onEditTerritory={(territory, neighbours) =>
+              setRoute({ kind: 'territory-editor', territory, neighbours })
+            }
+            onAddBlock={(territory) => setRoute({ kind: 'block-editor', territory })}
+            onEditBlock={(territory, block) => setRoute({ kind: 'block-editor', territory, block })}
+            onShowHistory={(territory, block) =>
+              setRoute({ kind: 'block-history', territory, block })
+            }
             fallbackCenter={fallbackCenter}
+            mapView={mapView ?? undefined}
+            onMapViewChange={setMapView}
           />
-        </PushedScreen>
-      )
-    case 'block-editor':
-      // No `onSaved={goHome}` here on purpose, unlike the territory editor
-      // above: `BlockEditorScreen` (spec 0004, Task 04) now stays open and
-      // resets itself to create-mode after a successful save, precisely so
-      // the admin can keep adding blocks to the same territory without
-      // leaving. Wiring `onSaved` to `goHome` would navigate away the
-      // instant the save resolves, unmounting the screen before that reset
-      // was ever visible -- which is exactly the bug this comment is here
-      // to stop someone from reintroducing.
-      return (
-        <PushedScreen onBack={goHome}>
-          <BlockEditorScreen territory={route.territory} block={route.block} />
-        </PushedScreen>
-      )
-    case 'publishers':
-      return (
-        <PushedScreen onBack={goHome}>
-          <PublishersScreen />
-        </PushedScreen>
-      )
-    case 'block-history':
-      return (
-        <PushedScreen onBack={goHome}>
-          <BlockHistorySheet territory={route.territory} block={route.block} />
-        </PushedScreen>
-      )
-    case 'home':
-      return (
-        <HomeScreen
-          congregation={congregation}
-          onNewTerritory={(neighbours) => setRoute({ kind: 'territory-editor', neighbours })}
-          onEditTerritory={(territory, neighbours) =>
-            setRoute({ kind: 'territory-editor', territory, neighbours })
-          }
-          onAddBlock={(territory) => setRoute({ kind: 'block-editor', territory })}
-          onEditBlock={(territory, block) => setRoute({ kind: 'block-editor', territory, block })}
-          onShowHistory={(territory, block) =>
-            setRoute({ kind: 'block-history', territory, block })
-          }
-          onOpenPublishers={() => setRoute({ kind: 'publishers' })}
-          onSignedOut={onSignedOut}
-          fallbackCenter={fallbackCenter}
-          mapView={mapView ?? undefined}
-          onMapViewChange={setMapView}
-        />
-      )
+        )
+    }
   }
 }
 

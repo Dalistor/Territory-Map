@@ -3,7 +3,7 @@
 // `window.api` is never the real IPC bridge here, per the spec 0003
 // convention already used by `HomeScreen.test.tsx`/`session.test.ts`.
 import type { ReactNode } from 'react'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
@@ -348,7 +348,7 @@ describe('App', () => {
     expect(getCongregation).not.toHaveBeenCalled()
   })
 
-  it('returns to SetupScreen after signing out from the authenticated HomeScreen', async () => {
+  it('returns to SetupScreen after signing out from the sidebar\'s "Sair da congregação"', async () => {
     const signOut = vi.fn().mockResolvedValue(undefined)
     const api = fakeApi({
       session: {
@@ -370,10 +370,14 @@ describe('App', () => {
 
     render(<App />)
 
-    await screen.findByRole('heading', { name: 'Congregação Central — São Paulo' })
-    await user.click(screen.getByRole('button', { name: /mais opções/i }))
-    await user.click(screen.getByRole('menuitem', { name: /sair da congregação/i }))
+    const nav = await screen.findByRole('navigation')
+    await user.click(within(nav).getByRole('button', { name: 'Sair da congregação' }))
 
+    expect(confirmSpy).toHaveBeenCalledWith(
+      'Os dados salvos neste computador serão apagados. Nada é removido do servidor: o território, ' +
+        'as quadras e o histórico de trabalho continuam lá. Para usar este computador de novo, será ' +
+        'preciso digitar o nome, a cidade e a senha da congregação de novo.'
+    )
     await waitFor(() => expect(signOut).toHaveBeenCalledTimes(1))
     expect(await screen.findByLabelText('Nome da congregação')).toBeInTheDocument()
     expect(screen.queryByTestId('setup-reason')).not.toBeInTheDocument()
@@ -434,6 +438,139 @@ describe('App', () => {
   })
 })
 
+/** An api whose boot path always lands on the authenticated shell. */
+function authedApi(overrides: Partial<IpcApi> = {}): IpcApi {
+  return fakeApi({
+    ...overrides,
+    session: {
+      isConfigured: vi.fn().mockResolvedValue(true),
+      configure: vi.fn(),
+      signOut: vi.fn().mockResolvedValue(undefined),
+      getCongregation: vi.fn().mockResolvedValue(CONGREGATION),
+      ...overrides.session
+    }
+  })
+}
+
+// The permanent navigation shell (spec 0006, Task 04): a fixed sidebar with
+// the congregation at the top, the three sections, and sign-out at the
+// bottom, with every route rendering in the content area beside it.
+describe('AuthenticatedApp sidebar shell', () => {
+  it('shows the sidebar with the congregation, the three sections, and "Mapa" initially active', async () => {
+    vi.stubGlobal('api', authedApi())
+
+    render(<App />)
+
+    const nav = await screen.findByRole('navigation')
+    expect(within(nav).getByText('Congregação Central')).toBeInTheDocument()
+    expect(within(nav).getByText('São Paulo')).toBeInTheDocument()
+    const mapButton = within(nav).getByRole('button', { name: 'Mapa' })
+    expect(mapButton).toHaveClass('is-active')
+    expect(mapButton).toHaveAttribute('aria-current', 'page')
+    expect(within(nav).getByRole('button', { name: 'Designações' })).not.toHaveAttribute(
+      'aria-current'
+    )
+    expect(within(nav).getByRole('button', { name: 'Publicadores' })).not.toHaveAttribute(
+      'aria-current'
+    )
+    expect(within(nav).getByRole('button', { name: 'Sair da congregação' })).toBeInTheDocument()
+  })
+
+  it('falls back to "Territory Map" in the sidebar header when the congregation is unknown', async () => {
+    vi.stubGlobal(
+      'api',
+      authedApi({
+        session: {
+          isConfigured: vi.fn().mockResolvedValue(true),
+          configure: vi.fn(),
+          signOut: vi.fn(),
+          getCongregation: vi.fn().mockResolvedValue(null)
+        }
+      })
+    )
+
+    render(<App />)
+
+    const nav = await screen.findByRole('navigation')
+    expect(within(nav).getByText('Territory Map')).toBeInTheDocument()
+    expect(within(nav).queryByText('Congregação Central')).not.toBeInTheDocument()
+  })
+
+  it('shows the Designations screen when "Designações" is clicked, and "Mapa" returns home', async () => {
+    vi.stubGlobal('api', authedApi())
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    const nav = await screen.findByRole('navigation')
+    await user.click(within(nav).getByRole('button', { name: 'Designações' }))
+
+    expect(await screen.findByRole('heading', { name: 'Designações' })).toBeInTheDocument()
+    const designationsButton = within(nav).getByRole('button', { name: 'Designações' })
+    expect(designationsButton).toHaveClass('is-active')
+    expect(designationsButton).toHaveAttribute('aria-current', 'page')
+    expect(within(nav).getByRole('button', { name: 'Mapa' })).not.toHaveAttribute('aria-current')
+
+    await user.click(within(nav).getByRole('button', { name: 'Mapa' }))
+
+    expect(await screen.findByRole('button', { name: 'Novo território' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Designações' })).not.toBeInTheDocument()
+  })
+
+  it('does not sign out when the confirmation is declined', async () => {
+    confirmSpy.mockReturnValue(false)
+    const signOut = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal(
+      'api',
+      authedApi({
+        session: {
+          isConfigured: vi.fn().mockResolvedValue(true),
+          configure: vi.fn(),
+          signOut,
+          getCongregation: vi.fn().mockResolvedValue(CONGREGATION)
+        }
+      })
+    )
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    const nav = await screen.findByRole('navigation')
+    await user.click(within(nav).getByRole('button', { name: 'Sair da congregação' }))
+
+    expect(signOut).not.toHaveBeenCalled()
+    // Still on the authenticated shell, not back at setup.
+    expect(screen.getByRole('navigation')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Nome da congregação')).not.toBeInTheDocument()
+  })
+
+  it('shows a sign-out failure as an alert in the content area and stays signed in', async () => {
+    const signOut = vi.fn().mockRejectedValue(new Error('Falha ao apagar as credenciais.'))
+    vi.stubGlobal(
+      'api',
+      authedApi({
+        session: {
+          isConfigured: vi.fn().mockResolvedValue(true),
+          configure: vi.fn(),
+          signOut,
+          getCongregation: vi.fn().mockResolvedValue(CONGREGATION)
+        }
+      })
+    )
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    const nav = await screen.findByRole('navigation')
+    await user.click(within(nav).getByRole('button', { name: 'Sair da congregação' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Falha ao apagar as credenciais.')
+    // Still authenticated -- the shell (and its sidebar) is intact.
+    expect(screen.getByRole('navigation')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Nome da congregação')).not.toBeInTheDocument()
+  })
+})
+
 // `HomeScreen`'s own test suite (Task 14) already verifies that each action
 // calls the right callback with the right arguments -- what nothing verified
 // until now is that `App.tsx` actually wires those callbacks to a screen the
@@ -475,6 +612,8 @@ describe('AuthenticatedApp navigation', () => {
 
     expect(await screen.findByRole('heading', { name: 'Novo território' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Recarregar' })).not.toBeInTheDocument()
+    // The editor is pushed inside the content area -- the sidebar stays visible.
+    expect(screen.getByRole('navigation')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '← Voltar' }))
 
@@ -606,23 +745,10 @@ describe('AuthenticatedApp navigation', () => {
     expect(screen.getByRole('button', { name: '← Voltar' })).toBeInTheDocument()
   })
 
-  it('opens the publishers screen from the "Publicadores" action', async () => {
+  it('opens the publishers screen from the sidebar and returns home from "Mapa"', async () => {
     const user = userEvent.setup()
     await renderHome(
-      fakeApi({
-        session: {
-          isConfigured: vi.fn().mockResolvedValue(true),
-          configure: vi.fn(),
-          signOut: vi.fn(),
-          getCongregation: vi.fn().mockResolvedValue(CONGREGATION)
-        },
-        territories: {
-          listWithBlocks: vi.fn().mockResolvedValue([]),
-          create: vi.fn(),
-          update: vi.fn(),
-          delete: vi.fn(),
-          assign: vi.fn()
-        },
+      authedApi({
         publishers: {
           list: vi.fn().mockResolvedValue([]),
           create: vi.fn(),
@@ -632,11 +758,18 @@ describe('AuthenticatedApp navigation', () => {
       })
     )
 
-    await user.click(screen.getByRole('button', { name: 'Publicadores' }))
+    const nav = screen.getByRole('navigation')
+    await user.click(within(nav).getByRole('button', { name: 'Publicadores' }))
 
     expect(await screen.findByRole('heading', { name: 'Publicadores' })).toBeInTheDocument()
+    expect(within(nav).getByRole('button', { name: 'Publicadores' })).toHaveAttribute(
+      'aria-current',
+      'page'
+    )
+    // A sidebar section, not a pushed screen -- there is no back bar to leave by.
+    expect(screen.queryByRole('button', { name: '← Voltar' })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '← Voltar' }))
+    await user.click(within(nav).getByRole('button', { name: 'Mapa' }))
 
     expect(await screen.findByRole('button', { name: 'Recarregar' })).toBeInTheDocument()
   })

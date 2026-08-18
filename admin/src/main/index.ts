@@ -40,7 +40,12 @@ function createWindow(): void {
     height: 800,
     show: false,
     autoHideMenuBar: true,
-    ...(process.platform === 'linux' ? { icon } : {}),
+    // Window icon for Linux and Windows (taskbar/window chrome, incl. dev).
+    // On macOS `BrowserWindow.icon` has no effect: the dev dock shows
+    // Electron's own icon, and the packaged app gets its icon from
+    // electron-builder (`build/icon.png`). Known limitation, not worth a
+    // workaround.
+    ...(process.platform !== 'darwin' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       // The renderer only ever reaches the main process through

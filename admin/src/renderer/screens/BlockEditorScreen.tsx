@@ -153,7 +153,11 @@ export function BlockEditorScreen({
       setSessionBlocks((previous) => [...previous.filter((other) => other.id !== saved.id), saved])
 
       if (editor.points.length > 0) editor.clear()
-      setNumberText('')
+      // After creating, the next block is usually the next number on the
+      // paper map, so it is suggested up front -- editable and erasable like
+      // anything typed. After an *edit* the field goes back to blank instead:
+      // "edited number + 1" would usually collide with an existing block.
+      setNumberText(editingBlock ? '' : String(saved.number + 1))
       setMode('create')
 
       if (confirmationTimeout.current !== null) clearTimeout(confirmationTimeout.current)
@@ -169,40 +173,44 @@ export function BlockEditorScreen({
   }
 
   return (
-    <div>
-      <h1>
-        {editingBlock ? `Editar quadra ${editingBlock.number}` : `Nova quadra em ${territory.name}`}
-      </h1>
-      {confirmation !== null && <p role="status">{confirmation}</p>}
-      <div role="toolbar">
-        <button type="button" onClick={editor.undo} disabled={!editor.canUndo}>
-          Desfazer
-        </button>
-        <button type="button" onClick={editor.clear} disabled={editor.points.length === 0}>
-          Apagar tudo
-        </button>
-        <button type="button" onClick={handleSave} disabled={!canSave}>
-          {saving ? 'Salvando…' : 'Salvar'}
-        </button>
+    <div className="editor-split">
+      <div className="editor-panel">
+        <h1>
+          {editingBlock
+            ? `Editar quadra ${editingBlock.number}`
+            : `Nova quadra em ${territory.name}`}
+        </h1>
+        {confirmation !== null && <p role="status">{confirmation}</p>}
+        <div role="toolbar">
+          <button type="button" onClick={editor.undo} disabled={!editor.canUndo}>
+            Desfazer
+          </button>
+          <button type="button" onClick={editor.clear} disabled={editor.points.length === 0}>
+            Apagar tudo
+          </button>
+          <button type="button" onClick={handleSave} disabled={!canSave}>
+            {saving ? 'Salvando…' : 'Salvar'}
+          </button>
+        </div>
+        <div>
+          <label htmlFor="block-number-field">Número da quadra</label>
+          <input
+            id="block-number-field"
+            type="text"
+            inputMode="numeric"
+            value={numberText}
+            onChange={(event) => setNumberText(event.target.value)}
+          />
+          {/* The numbering usually already exists on paper, so leaving it
+              blank is the normal path, not an omission -- but only worth
+              explaining while there is no number to show yet. */}
+          {isCreateMode && <p>Em branco, o servidor usa o menor número livre.</p>}
+          {!numberIsUsable && <p role="alert">Use um número a partir de 1.</p>}
+        </div>
+        {error !== null && <p role="alert">{error}</p>}
+        <p>{editor.state.hint ?? 'Arraste um ponto para mover, e segure para remover.'}</p>
       </div>
-      <div>
-        <label htmlFor="block-number-field">Número da quadra</label>
-        <input
-          id="block-number-field"
-          type="text"
-          inputMode="numeric"
-          value={numberText}
-          onChange={(event) => setNumberText(event.target.value)}
-        />
-        {/* The numbering usually already exists on paper, so leaving it
-            blank is the normal path, not an omission -- but only worth
-            explaining while there is no number to show yet. */}
-        {isCreateMode && <p>Em branco, o servidor usa o menor número livre.</p>}
-        {!numberIsUsable && <p role="alert">Use um número a partir de 1.</p>}
-      </div>
-      {error !== null && <p role="alert">{error}</p>}
-      <p>{editor.state.hint ?? 'Arraste um ponto para mover, e segure para remover.'}</p>
-      <div style={{ height: '480px', width: '100%' }}>
+      <div className="editor-map">
         <MapContainer center={center} zoom={MAP_ZOOM} style={{ height: '100%', width: '100%' }}>
           <TileLayer
             url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
