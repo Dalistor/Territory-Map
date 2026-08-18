@@ -16,7 +16,15 @@
 // the renderer calls it — `window.api.territories.create(...)`, not a flat
 // method bag.
 
-import type { Assignment, Block, Congregation, Publisher, Territory, WorkLog } from './models'
+import type {
+  Assignment,
+  AssignmentWithTerritory,
+  Block,
+  Congregation,
+  Publisher,
+  Territory,
+  WorkLog
+} from './models'
 import type { LatLng } from './geo'
 
 /**
@@ -91,6 +99,7 @@ export const IPC_CHANNELS = {
   publishersRegenerateCode: 'publishers:regenerateCode',
   publishersSetActive: 'publishers:setActive',
   assignmentsListFor: 'assignments:listFor',
+  assignmentsListAll: 'assignments:listAll',
   assignmentsDesignate: 'assignments:designate',
   assignmentsComplete: 'assignments:complete',
   assignmentsDelete: 'assignments:delete',
@@ -148,6 +157,8 @@ export interface IpcApi {
   readonly assignments: {
     /** The territory's whole history, open assignment included. */
     listFor(territoryId: string): Promise<Assignment[]>
+    /** The congregation's whole history, most recent first. */
+    listAll(): Promise<AssignmentWithTerritory[]>
     /** Opens a new assignment; the server closes whatever was open before. */
     designate(territoryId: string, publisherId: string): Promise<Assignment>
     /** Closes the open assignment, freeing the territory for someone else. */

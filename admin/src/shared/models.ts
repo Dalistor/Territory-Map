@@ -76,6 +76,15 @@ export interface Assignment {
   readonly completedAt?: Date
 }
 
+/**
+ * The shape of the congregation-wide history listing, where each record has
+ * to name its own territory — in the per-territory listing that was already
+ * in the context.
+ */
+export interface AssignmentWithTerritory extends Assignment {
+  readonly territory: { readonly id: string; readonly name: string }
+}
+
 /** A successful admin login. */
 export interface AdminSession {
   readonly accessToken: string

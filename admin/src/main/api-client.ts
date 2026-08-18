@@ -14,6 +14,7 @@ import { ApiErrorException, NetworkException } from '../shared/api-errors'
 import type {
   AdminSession,
   Assignment,
+  AssignmentWithTerritory,
   Block,
   Congregation,
   Publisher,
@@ -76,6 +77,8 @@ export interface ApiClient {
 
   /** The territory's whole assignment history, most recent first. */
   listAssignments(territoryId: string): Promise<Assignment[]>
+  /** The congregation's whole assignment history, most recent first. */
+  listAllAssignments(): Promise<AssignmentWithTerritory[]>
   /** Opens a new assignment; the server closes whatever was open before. */
   designate(territoryId: string, userId: string): Promise<Assignment>
   /** Closes the open assignment, freeing the territory for someone else. */
@@ -215,6 +218,19 @@ function parseAssignment(json: Record<string, unknown>): Assignment {
   }
 }
 
+/**
+ * The same row, plus the territory it belongs to. The general listing has no
+ * territory in the URL to fall back on, so each record has to name its own --
+ * everything else, dates included, is whatever `parseAssignment` already does.
+ */
+function parseAssignmentWithTerritory(json: Record<string, unknown>): AssignmentWithTerritory {
+  const territory = json.territory as Record<string, unknown>
+  return {
+    ...parseAssignment(json),
+    territory: { id: territory.id as string, name: territory.name as string }
+  }
+}
+
 function parseWorkLog(json: Record<string, unknown>): WorkLog {
   return {
     id: json.id as string,
@@ -330,6 +346,8 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
 
     listAssignments: (territoryId) =>
       list(`/admin/territories/${territoryId}/assignments`, parseAssignment),
+
+    listAllAssignments: () => list('/admin/assignments', parseAssignmentWithTerritory),
 
     async designate(territoryId, userId) {
       const json = await request('POST', `/admin/territories/${territoryId}/assignments`, {

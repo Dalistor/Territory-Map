@@ -92,6 +92,7 @@ function makeApi(overrides: Partial<IpcApi> = {}): IpcApi {
       ...overrides.publishers
     },
     assignments: {
+      listAll: vi.fn().mockResolvedValue([]),
       listFor: vi.fn().mockResolvedValue([]),
       designate: vi.fn(),
       complete: vi.fn(),

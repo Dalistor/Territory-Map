@@ -11,6 +11,12 @@ stint, close the one in force, and erase a record that should not have been writ
 Closing and erasing are deliberately different operations: `complete` keeps the row as
 history with its completion date, while `delete` removes it.
 
+One route does not fit that shape: the congregation-wide history, which is about no
+territory in particular and therefore hangs off `/admin/assignments`. It lives in this
+same module because it is the same resource read from the other end, and FastAPI ties a
+prefix to a router, so a second address means a second `APIRouter` -- `flat_router`,
+exported and included next to `router` in `app/main.py`.
+
 No rule lives here. Which stint gets closed when a territory is handed over, and what
 happens to `Territory.assigned_user_id` afterwards, is `AssignmentService`'s business;
 this module resolves the session, names the clock and turns models into DTOs.
@@ -28,12 +34,24 @@ from app.repositories.territory_assignment import TerritoryAssignmentRepository
 from app.repositories.user import UserRepository
 from app.routers.admin_territories import AdminCongregation
 from app.routers.auth import utc_now
-from app.schemas.assignment import AssignmentCreateIn, AssignmentOut
+from app.schemas.assignment import (
+    AssignmentCreateIn,
+    AssignmentOut,
+    AssignmentWithTerritoryOut,
+)
 from app.services.assignment import AssignmentService
 
 router = APIRouter(
     prefix="/admin/territories/{territory_id}/assignments", tags=["admin: assignments"]
 )
+
+#: The congregation-wide listing, which has no territory in its path.
+#:
+#: A prefix belongs to the router, not to the route, so the card's four routes and
+#: this one cannot share an `APIRouter` even though they read the same table. Two
+#: routers in one module, rather than a module each, keeps the assignment's HTTP
+#: surface in one file.
+flat_router = APIRouter(prefix="/admin/assignments", tags=["admin: assignments"])
 
 DbSession = Annotated[Session, Depends(get_session)]
 
@@ -118,3 +136,22 @@ def delete_assignment(
     """
     assignments.delete(congregation.id, assignment_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@flat_router.get("")
+def list_all_assignments(
+    congregation: AdminCongregation,
+    assignments: Assignments,
+) -> list[AssignmentWithTerritoryOut]:
+    """Every assignment of the congregation, most recent first.
+
+    This is the admin's History page: the whole set at once, open and completed
+    alike, so the page can group it by publisher or by territory without asking for
+    one card at a time. Each row names its territory -- `AssignmentWithTerritoryOut`
+    -- because unlike the per-territory listing there is no territory in the URL to
+    read it from, and the delete route needs that id to address the record.
+    """
+    return [
+        AssignmentWithTerritoryOut.model_validate(assignment)
+        for assignment in assignments.list_all(congregation.id)
+    ]

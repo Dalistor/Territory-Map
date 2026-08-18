@@ -77,7 +77,7 @@ usuário e quem trabalhou cada quadra. Só o admin tem senha.
 ## Estrutura do Projeto
 
 Monorepo. O servidor está completo. O `admin/` está implementado — configuração inicial e, a partir
-daí, **navegação por sidebar permanente** (Mapa / Designações / Publicadores, com o nome da
+daí, **navegação por sidebar permanente** (Mapa / Designações / Histórico / Publicadores, com o nome da
 congregação no topo e "Sair da congregação" no rodapé): o Mapa é a Home (mapa + lista de
 territórios), **Designações** é a página própria da designação de território (mapa só com as
 demarcações, sem quadras, o nome do dirigente sobreposto a cada território), onde clicar num
@@ -86,10 +86,19 @@ anteriores com suas datas e um botão de apagar em cada, mais "Designar a…" e 
 concluído" — e um botão **"Exportar para Excel"** gera um `.xlsx` com **uma aba por território**,
 no estilo do S-13 (publicador, data de início, data de conclusão); a planilha é montada com
 **`exceljs`** no main process (`admin/src/main/excel-export.ts`, que sanea e desduplica o nome da
-aba dentro do limite de 31 caracteres do Excel) e salva pelo `dialog.showSaveDialog` do Electron.
+aba dentro do limite de 31 caracteres do Excel) e sai **formatada** — larguras de coluna que
+comportam nome e rótulo de data, título e cabeçalho em negrito (o cabeçalho ainda com fundo cinza),
+bordas finas em toda a tabela, cabeçalho congelado e configuração de impressão que ajusta à largura
+da página e repete o cabeçalho em cada uma — e é salva pelo `dialog.showSaveDialog` do Electron.
+**Histórico** (spec 0008) é a página de consulta do histórico inteiro da congregação, numa chamada
+só (`GET /admin/assignments`): os mesmos registros em **duas visões alternadas por um seletor** —
+"Por dirigente" (cada publicador com as designações dele) e "Por território" (cada território com
+quem passou por ele) —, mais um campo de **busca por nome** que filtra pelo nome de quem a visão
+atual agrupa, e um botão de **apagar** em cada linha (com confirmação antes). Designar e concluir
+continuam só em Designações, onde o mapa dá o contexto.
 Publicadores tem busca por nome e contadores por situação. Os editores de território e de quadra são telas empurradas
 ("← Voltar") em **layout lado a lado** (painel compacto à esquerda, mapa grande à direita); o de
-quadra ainda sugere o próximo número da sequência após cada salvamento. As sete telas são cobertas
+quadra ainda sugere o próximo número da sequência após cada salvamento. As oito telas são cobertas
 por teste (Vitest + React Testing Library), mais o roteamento/sidebar em `App.test.tsx`. O `app/` (React Native) também está implementado — ativação por código, dashboard,
 mapa com MapLibre e localização em tempo real, marcação de quadra restrita ao território designado,
 marcação sempre confirmada pelo servidor e cache local de leitura —, com as telas de
@@ -359,7 +368,7 @@ Registro de que uma quadra foi trabalhada. Append-only pelo app.
 A designação é um **registro datado com histórico** (`TerritoryAssignment`), não um campo que se
 sobrescreve — é o cartão S-13 em banco. Só o **admin** escreve nela; o app do publicador nunca.
 
-As quatro rotas vivem em `server/app/routers/admin_assignments.py`, todas sob
+As rotas vivem todas em `server/app/routers/admin_assignments.py`. Quatro delas ficam sob
 `/admin/territories/{territory_id}/assignments`:
 
 | Rota | O que faz |
@@ -368,6 +377,16 @@ As quatro rotas vivem em `server/app/routers/admin_assignments.py`, todas sob
 | `POST ""` (201) | designa a um publicador (`{"user_id": "<uuid>"}`), com `started_at` = agora |
 | `POST "/complete"` | marca como concluído: fecha a designação em vigor e libera o território |
 | `DELETE "/{assignment_id}"` (204) | apaga um registro do histórico de vez |
+
+E há uma quinta, fora desse prefixo:
+
+| Rota | O que faz |
+|------|-----------|
+| `GET /admin/assignments` | o histórico inteiro da congregação, mais recente primeiro, com o território embutido em cada registro (é o que a página **Histórico** do admin lê) |
+
+Um prefixo pertence ao `APIRouter`, não à rota, então essa quinta rota tem um segundo `APIRouter`
+(`flat_router`) no **mesmo arquivo** — manter o HTTP da designação num módulo só vale mais do que
+uma pasta com um roteador por endereço.
 
 - **`PATCH /admin/territories/{id}/assignment` não existe mais** — foi removida junto com
   `TerritoryService.assign_to_user`. Designar e desdesignar deixaram de ser o mesmo `PATCH` com
@@ -769,10 +788,10 @@ Gatekeeper do macOS vão exibir aviso de desenvolvedor não identificado na prim
 Documentar o "abrir mesmo assim" para o admin. Assinar exige certificado pago.
 
 Build verde só prova que compila — ninguém clica num binário. Quem valida comportamento são os
-testes (Vitest + React Testing Library), que existem e cobrem as sete telas (configuração inicial,
-`HomeScreen` e as cores do mapa, Designações com o painel de histórico, publicadores, os dois
-editores e o histórico), mais o roteamento com a sidebar (`App.test.tsx`), o main process
-(incluindo a montagem da planilha em `excel-export.test.ts`) e o que se abre com `npm run dev`
+testes (Vitest + React Testing Library), que existem e cobrem as oito telas (configuração inicial,
+`HomeScreen` e as cores do mapa, Designações com o painel de histórico, Histórico, publicadores, os
+dois editores e o histórico da quadra), mais o roteamento com a sidebar (`App.test.tsx`), o main
+process (incluindo a montagem e a formatação da planilha em `excel-export.test.ts`) e o que se abre com `npm run dev`
 durante o desenvolvimento.
 
 **App Android** — sem CI, mesmo caminho do admin: build sempre **local**.
@@ -883,7 +902,9 @@ ponta (spec 0005): o admin designa pela página **Designações** (spec 0006 —
 `HomeScreen`), o servidor restringe a marcação de quadra ao território designado, e o app do
 publicador em React Native já existe. A designação também virou **histórico datado com exportação
 para Excel** (spec 0007): designar, concluir e apagar registro estão na interface, e
-`assigned_user_id` passou a ser projeção da designação aberta.
+`assigned_user_id` passou a ser projeção da designação aberta. E o histórico ganhou **página
+própria** (spec 0008), com as visões por dirigente e por território, busca por nome e apagar em
+cada linha — a planilha exportada, na mesma spec, passou a sair formatada e impressável.
 
 ## Implementações
 

@@ -18,8 +18,9 @@
 //      `HomeScreen` learns who it is.
 //
 // Once authenticated, `AuthenticatedApp` below owns the in-app navigation:
-// a permanent sidebar (spec 0006) with the three sections -- Mapa (Home),
-// Designações, Publicadores -- plus sign-out in its footer, and a content
+// a permanent sidebar (spec 0006) with the four sections -- Mapa (Home),
+// Designações, Histórico (spec 0008), Publicadores -- plus sign-out in its
+// footer, and a content
 // area beside it where the current route renders. The editors and the block
 // history are still pushed screens ("← Voltar") opened from Home, rendered
 // inside that content area so the sidebar stays visible. There is no router
@@ -40,6 +41,7 @@ import BlockEditorScreen from './screens/BlockEditorScreen'
 import PublishersScreen from './screens/PublishersScreen'
 import BlockHistorySheet from './screens/BlockHistorySheet'
 import DesignationsScreen from './screens/DesignationsScreen'
+import HistoryScreen from './screens/HistoryScreen'
 
 const STORAGE_READ_ERROR_MESSAGE = 'Não foi possível ler os dados guardados neste computador.'
 const CREDENTIALS_REJECTED_NAME = 'CredentialsRejectedException'
@@ -139,16 +141,19 @@ type Route =
     }
   | { readonly kind: 'block-editor'; readonly territory: Territory; readonly block?: Block }
   | { readonly kind: 'designations' }
+  | { readonly kind: 'history' }
   | { readonly kind: 'publishers' }
   | { readonly kind: 'block-history'; readonly territory: Territory; readonly block: Block }
 
-/** The three sidebar sections. Pushed screens (editors, history) open from Home, so they keep "Mapa" lit. */
-type Section = 'home' | 'designations' | 'publishers'
+/** The four sidebar sections. Pushed screens (editors, block history) open from Home, so they keep "Mapa" lit. */
+type Section = 'home' | 'designations' | 'history' | 'publishers'
 
 function sectionOf(route: Route): Section {
   switch (route.kind) {
     case 'designations':
       return 'designations'
+    case 'history':
+      return 'history'
     case 'publishers':
       return 'publishers'
     default:
@@ -161,7 +166,7 @@ interface AuthenticatedAppProps {
   readonly onSignedOut: () => void
 }
 
-/** Everything reachable once the admin is signed in -- `HomeScreen` and the four screens it opens. */
+/** Everything reachable once the admin is signed in -- `HomeScreen` and the five screens it opens. */
 function AuthenticatedApp({ congregation, onSignedOut }: AuthenticatedAppProps): React.JSX.Element {
   const [route, setRoute] = useState<Route>({ kind: 'home' })
   const goHome = (): void => setRoute({ kind: 'home' })
@@ -246,6 +251,7 @@ function AuthenticatedApp({ congregation, onSignedOut }: AuthenticatedAppProps):
         <div className="sidebar-nav">
           {sectionButton('home', 'Mapa')}
           {sectionButton('designations', 'Designações')}
+          {sectionButton('history', 'Histórico')}
           {sectionButton('publishers', 'Publicadores')}
         </div>
         <div className="sidebar-footer">
@@ -290,6 +296,8 @@ function AuthenticatedApp({ congregation, onSignedOut }: AuthenticatedAppProps):
         )
       case 'designations':
         return <DesignationsScreen fallbackCenter={fallbackCenter} />
+      case 'history':
+        return <HistoryScreen />
       case 'publishers':
         return <PublishersScreen />
       case 'block-history':

@@ -133,6 +133,7 @@ export function registerIpcHandlers({
   handle(IPC_CHANNELS.assignmentsListFor, (territoryId: string) =>
     session.run(() => api.listAssignments(territoryId))
   )
+  handle(IPC_CHANNELS.assignmentsListAll, () => session.run(() => api.listAllAssignments()))
   handle(IPC_CHANNELS.assignmentsDesignate, (territoryId: string, publisherId: string) =>
     session.run(() => api.designate(territoryId, publisherId))
   )

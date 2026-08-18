@@ -125,6 +125,10 @@ app.include_router(auth.router)
 app.include_router(admin_users.router)
 app.include_router(admin_territories.router)
 app.include_router(admin_assignments.router)
+# Two routers out of one module: the assignment's routes live at two addresses --
+# under the territory that owns the card, and flat for the congregation-wide
+# history -- and a prefix is a property of the router, not of the route.
+app.include_router(admin_assignments.flat_router)
 app.include_router(admin_blocks.router)
 app.include_router(app_client.router)
 

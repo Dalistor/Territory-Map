@@ -392,6 +392,35 @@ describe('createApiClient', () => {
       expect(assignment.startedAt).toEqual(new Date('2026-08-01T09:00:00Z'))
     })
 
+    it('listAllAssignments GETs /admin/assignments and returns the list with each territory', async () => {
+      const { client, fetchImpl } = makeClient(
+        jsonResponse(200, [
+          { ...ASSIGNMENT_JSON, territory: { id: 'terr-1', name: 'Centro - N6' } },
+          {
+            ...ASSIGNMENT_JSON,
+            id: 'asg-2',
+            completed_at: null,
+            territory: { id: 'terr-2', name: 'Vila - N7' }
+          }
+        ])
+      )
+
+      const assignments = await client.listAllAssignments()
+
+      const [url, init] = fetchImpl.mock.calls[0]
+      expect(url).toBe(`${BASE_URL}/admin/assignments`)
+      expect(init.method).toBe('GET')
+      expect(assignments).toEqual([
+        { ...PARSED_ASSIGNMENT, territory: { id: 'terr-1', name: 'Centro - N6' } },
+        {
+          ...PARSED_ASSIGNMENT,
+          id: 'asg-2',
+          completedAt: undefined,
+          territory: { id: 'terr-2', name: 'Vila - N7' }
+        }
+      ])
+    })
+
     it('designate POSTs /admin/territories/{id}/assignments with {user_id} and returns the parsed assignment', async () => {
       const { client, fetchImpl } = makeClient(
         jsonResponse(201, { ...ASSIGNMENT_JSON, completed_at: null })

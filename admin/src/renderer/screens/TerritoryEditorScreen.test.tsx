@@ -74,6 +74,7 @@ function fakeApi(
     blocks: { create: vi.fn(), update: vi.fn(), delete: vi.fn() },
     publishers: { list: vi.fn(), create: vi.fn(), regenerateCode: vi.fn(), setActive: vi.fn() },
     assignments: {
+      listAll: vi.fn().mockResolvedValue([]),
       listFor: vi.fn(),
       designate: vi.fn(),
       complete: vi.fn(),

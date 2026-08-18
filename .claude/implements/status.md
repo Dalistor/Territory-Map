@@ -139,6 +139,26 @@ Histórico de todas as implementações realizadas neste projeto.
 
 | [0126](0126/README.md) | CLAUDE.md atualizado para o histórico de designações e a exportação Excel (spec 0007, Task 12) | 2026-08-18 | Concluído | `CLAUDE.md` |
 
+| [0127](0127/README.md) | Schema do histórico com território embutido (spec 0008, Task 01) | 2026-08-18 | Concluído | `server/app/schemas/territory.py`, `server/app/schemas/assignment.py` |
+
+| [0128](0128/README.md) | Admin/Shared: contrato IPC da listagem geral de designações (spec 0008, Task 05) | 2026-08-18 | Concluído | `admin/src/shared/models.ts`, `admin/src/shared/ipc-contract.ts` |
+
+| [0129](0129/README.md) | Repositório: todas as designações da congregação (spec 0008, Task 02) | 2026-08-18 | Concluído | `server/app/repositories/territory_assignment.py` |
+
+| [0130](0130/README.md) | Excel: formatação e configuração de impressão das abas de designação (spec 0008, Task 09) | 2026-08-18 | Concluído | `admin/src/main/excel-export.ts`, `admin/src/main/excel-export.test.ts` |
+
+| [0131](0131/README.md) | Service: listar o histórico de designações da congregação (spec 0008, Task 03) | 2026-08-18 | Concluído | `server/app/services/assignment.py`, `server/tests/services/test_assignment_service.py` |
+
+| [0132](0132/README.md) | Rota `GET /admin/assignments`: histórico inteiro da congregação (spec 0008, Task 04) | 2026-08-18 | Concluído | `server/app/routers/admin_assignments.py`, `server/app/main.py`, `server/tests/routers/test_admin_assignments_routes.py` |
+
+| [0133](0133/README.md) | Admin: cliente da API e handler da listagem geral de designações (spec 0008, Task 06) | 2026-08-18 | Concluído | `admin/src/main/api-client.ts`, `admin/src/main/api-client.test.ts`, `admin/src/main/ipc-handlers.ts`, `admin/src/main/ipc-handlers.test.ts`, `admin/src/main/session.test.ts`, `admin/src/preload/index.ts` |
+
+| [0134](0134/README.md) | Admin: a tela de Histórico de designações (spec 0008, Task 07) | 2026-08-18 | Concluído | `admin/src/renderer/screens/HistoryScreen.tsx`, `admin/src/renderer/screens/HistoryScreen.test.tsx`, `admin/src/renderer/index.css`, `admin/src/renderer/screens/BlockEditorScreen.test.tsx`, `admin/src/renderer/screens/DesignationsScreen.test.tsx`, `admin/src/renderer/screens/HomeScreen.test.tsx`, `admin/src/renderer/screens/SetupScreen.test.tsx`, `admin/src/renderer/screens/TerritoryEditorScreen.test.tsx` |
+
+| [0135](0135/README.md) | Admin: a seção "Histórico" na sidebar (spec 0008, Task 08) | 2026-08-18 | Concluído | `admin/src/renderer/App.tsx`, `admin/src/renderer/App.test.tsx` |
+
+| [0136](0136/README.md) | CLAUDE.md: página de Histórico, rota `GET /admin/assignments` e planilha formatada (spec 0008, Task 10) | 2026-08-18 | Concluído | `CLAUDE.md` |
+
 ---
 
 _Atualizado automaticamente pelas skills `/centaur-driven-tdd` e `/centaur-driven-implement`_

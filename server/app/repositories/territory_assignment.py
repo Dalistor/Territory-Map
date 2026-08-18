@@ -86,6 +86,35 @@ class TerritoryAssignmentRepository:
             )
         )
 
+    def list_by_congregation(self, congregation_id: UUID) -> list[TerritoryAssignment]:
+        """The whole history of the congregation, most recent assignment first.
+
+        This is the general listing behind the admin's History page, which shows
+        every assignment at once instead of one territory at a time. The join on
+        `Territory` is the scope: same reasoning as `get_in_congregation` -- the
+        congregation of the token filters the rows in the statement itself, so data
+        from another congregation is never loaded to begin with.
+
+        The order is the same as `list_by_territory` (newest first), because the
+        page groups the rows client-side and each group must keep that order.
+
+        Both `user` and `territory` are eager-loaded here, not just `user` as in the
+        reads above: every row of this listing is displayed as "publisher --
+        territory", so lazy loading either one would cost a SELECT per record.
+        """
+        return list(
+            self.session.scalars(
+                select(TerritoryAssignment)
+                .join(Territory, TerritoryAssignment.territory_id == Territory.id)
+                .options(
+                    joinedload(TerritoryAssignment.user),
+                    joinedload(TerritoryAssignment.territory),
+                )
+                .where(Territory.congregation_id == congregation_id)
+                .order_by(TerritoryAssignment.started_at.desc())
+            )
+        )
+
     def get_in_congregation(
         self,
         congregation_id: UUID,

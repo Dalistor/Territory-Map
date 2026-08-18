@@ -218,3 +218,107 @@ async def test_no_route_here_is_reachable_without_an_admin_token(client, method,
     )
 
     assert response.status_code == 401
+
+
+# --- The congregation-wide listing: GET /admin/assignments --------------------
+
+
+async def draw_offset_territory(client, token: str, name: str, offset: float) -> str:
+    """A second territory, shifted so it does not overlap the first.
+
+    Territories of a congregation may touch but never overlap, so a listing test
+    that needs two of them cannot reuse `SQUARE` twice.
+    """
+    boundary = [{"lat": point["lat"] + offset, "lng": point["lng"]} for point in SQUARE]
+    response = await client.post(
+        "/admin/territories",
+        json={"name": name, "boundary": boundary},
+        headers=bearer(token),
+    )
+    return response.json()["id"]
+
+
+async def test_the_general_listing_names_the_territory_of_every_record(
+    client, make_admin, make_publisher
+):
+    congregation, token = make_admin()
+    first_territory = await draw_territory(client, token, name="Centro")
+    second_territory = await draw_offset_territory(client, token, "Vila Nova", offset=2.0)
+    joao = make_publisher(congregation.id, name="Irmão João")
+    maria = make_publisher(congregation.id, name="Irmã Maria")
+    await client.post(
+        f"/admin/territories/{first_territory}/assignments",
+        json={"user_id": str(joao.id)},
+        headers=bearer(token),
+    )
+    await client.post(
+        f"/admin/territories/{second_territory}/assignments",
+        json={"user_id": str(maria.id)},
+        headers=bearer(token),
+    )
+
+    response = await client.get("/admin/assignments", headers=bearer(token))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [entry["territory"]["name"] for entry in body] == ["Vila Nova", "Centro"]
+    assert [entry["user"]["name"] for entry in body] == ["Irmã Maria", "Irmão João"]
+    assert body[0]["territory"]["id"] == second_territory
+    assert body[0]["completed_at"] is None
+
+
+async def test_the_general_listing_keeps_open_and_completed_records_together(
+    client, make_admin, make_publisher
+):
+    congregation, token = make_admin()
+    territory_id = await draw_territory(client, token)
+    joao = make_publisher(congregation.id, name="Irmão João")
+    maria = make_publisher(congregation.id, name="Irmã Maria")
+    for publisher in (joao, maria):
+        await client.post(
+            f"/admin/territories/{territory_id}/assignments",
+            json={"user_id": str(publisher.id)},
+            headers=bearer(token),
+        )
+
+    response = await client.get("/admin/assignments", headers=bearer(token))
+
+    body = response.json()
+    assert [entry["user"]["name"] for entry in body] == ["Irmã Maria", "Irmão João"]
+    assert body[0]["completed_at"] is None
+    assert body[1]["completed_at"] is not None
+
+
+async def test_a_congregation_without_assignments_lists_nothing(client, make_admin):
+    _, token = make_admin()
+    await draw_territory(client, token)
+
+    response = await client.get("/admin/assignments", headers=bearer(token))
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+async def test_the_general_listing_never_shows_another_congregations_record(
+    client, make_admin, make_publisher
+):
+    _, token = make_admin(name="Central", city="Uberlândia")
+    other, other_token = make_admin(name="Norte", city="Contagem")
+    stranger_territory = await draw_territory(client, other_token, name="Vila Rica")
+    stranger = make_publisher(other.id, name="Irmão Pedro")
+    await client.post(
+        f"/admin/territories/{stranger_territory}/assignments",
+        json={"user_id": str(stranger.id)},
+        headers=bearer(other_token),
+    )
+
+    response = await client.get("/admin/assignments", headers=bearer(token))
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+async def test_the_general_listing_is_not_reachable_without_an_admin_token(client):
+    response = await client.get("/admin/assignments")
+
+    assert response.status_code == 401

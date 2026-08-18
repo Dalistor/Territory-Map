@@ -49,6 +49,7 @@ const api: IpcApi = {
   assignments: {
     listFor: (territoryId: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.assignmentsListFor, territoryId),
+    listAll: () => ipcRenderer.invoke(IPC_CHANNELS.assignmentsListAll),
     designate: (territoryId: string, publisherId: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.assignmentsDesignate, territoryId, publisherId),
     complete: (territoryId: string) =>

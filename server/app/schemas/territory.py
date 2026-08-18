@@ -45,3 +45,10 @@ class TerritoryOut(OutSchema):
     boundary: RingOut
     blocks: list[BlockOut] = []
     assigned_user: UserBriefOut | None = None
+
+
+class TerritoryBriefOut(OutSchema):
+    """Just enough of a territory to name it inside a listing of something else."""
+
+    id: UUID
+    name: str

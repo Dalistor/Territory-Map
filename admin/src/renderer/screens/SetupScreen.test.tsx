@@ -45,6 +45,7 @@ function fakeApi(overrides: Partial<IpcApi['session']> = {}): IpcApi {
       setActive: vi.fn()
     },
     assignments: {
+      listAll: vi.fn().mockResolvedValue([]),
       listFor: vi.fn(),
       designate: vi.fn(),
       complete: vi.fn(),

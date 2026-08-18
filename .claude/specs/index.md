@@ -11,6 +11,7 @@ Planejamentos de implementações complexas, decompostos em tasks para subagente
 | [0005](0005/README.md) | App do publicador em React Native, com designação de território | 2026-08-17 | Concluída | 27 tasks |
 | [0006](0006/README.md) | Redesign do admin: sidebar, página de Designações e fluxos de quadra/publicadores | 2026-08-17 | Concluída | 8 tasks |
 | [0007](0007/README.md) | Designação como registro histórico (estilo S-13) e exportação para Excel | 2026-08-18 | Concluída | 12 tasks |
+| [0008](0008/README.md) | Página de histórico de designações e formatação da planilha | 2026-08-18 | Concluída | 10 tasks |
 
 ---
 

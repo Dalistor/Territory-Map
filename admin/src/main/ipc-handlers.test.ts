@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IPC_CHANNELS } from '../shared/ipc-contract'
-import type { Assignment, Territory } from '../shared/models'
+import type { Assignment, AssignmentWithTerritory, Territory } from '../shared/models'
 import type { ApiClient } from './api-client'
 import type { Session } from './session'
 import type { Geocoder } from './geocode'
@@ -54,11 +54,17 @@ const ASSIGNMENT: Assignment = {
   startedAt: new Date(Date.UTC(2026, 0, 10))
 }
 
+const ASSIGNMENT_WITH_TERRITORY: AssignmentWithTerritory = {
+  ...ASSIGNMENT,
+  territory: { id: TERRITORY.id, name: TERRITORY.name }
+}
+
 function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
     listTerritories: vi.fn(async () => [TERRITORY]),
     getTerritory: vi.fn(async () => TERRITORY),
     listAssignments: vi.fn(async () => [ASSIGNMENT]),
+    listAllAssignments: vi.fn(async () => [ASSIGNMENT_WITH_TERRITORY]),
     ...overrides
   } as unknown as ApiClient
 }
@@ -125,5 +131,24 @@ describe('export:assignments', () => {
         filters: [{ name: 'Planilha do Excel', extensions: ['xlsx'] }]
       })
     )
+  })
+})
+
+describe('assignments:listAll', () => {
+  it('returns the whole congregation history through the session', async () => {
+    const api = fakeApi()
+    const session = fakeSession()
+    registerIpcHandlers({
+      session,
+      api,
+      geocoder: fakeGeocoder,
+      dialog: { showSaveDialog: vi.fn() }
+    })
+
+    await expect(invoke(IPC_CHANNELS.assignmentsListAll)).resolves.toEqual([
+      ASSIGNMENT_WITH_TERRITORY
+    ])
+    expect(api.listAllAssignments).toHaveBeenCalledOnce()
+    expect(session.run).toHaveBeenCalledOnce()
   })
 })

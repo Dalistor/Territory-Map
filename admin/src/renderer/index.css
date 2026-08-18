@@ -179,7 +179,9 @@ main > div:has(> .leaflet-container) {
 }
 
 .territory-row {
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .territory-row:hover {
@@ -537,7 +539,9 @@ button[type='submit']:hover:not(:disabled),
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
 .assign-options label:hover {
@@ -949,4 +953,44 @@ button[type='submit']:hover:not(:disabled),
   height: 100%;
   min-height: 0;
   flex: 1;
+}
+
+/* HistoryScreen (spec 0008, Task 07): the whole congregation's assignment
+   history, read either by leader or by territory. The lines reuse
+   `.assignment-history`'s row look -- name, period and the delete button on
+   one row -- and only drop its scroll cap, which exists to keep the
+   Designations panel from growing past the dialog. Here the page scrolls. */
+.history-list {
+  max-height: none;
+  overflow-y: visible;
+}
+
+.history-group {
+  margin-bottom: 20px;
+}
+
+.history-group h2 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
+/* The two-button view toggle in the header. `is-active` marks the view in
+   force -- the same state `aria-pressed` carries for screen readers. */
+.history-views {
+  display: flex;
+  gap: 6px;
+}
+
+.history-views button.is-active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+/* The name filter, matching the one on PublishersScreen. */
+.history-search {
+  display: block;
+  width: 100%;
+  max-width: 360px;
+  margin: 4px 0 12px;
 }

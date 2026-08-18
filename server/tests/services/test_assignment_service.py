@@ -376,3 +376,71 @@ def test_delete_of_an_assignment_of_another_congregation_is_not_found(
         service.delete(ours.id, stranger.id)
 
     assert service.list(theirs.id, stranger_territory.id) == [stranger]
+
+
+def test_list_all_gives_every_assignment_of_the_congregation_most_recent_first(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+    make_user,
+) -> None:
+    """The History page reads the congregation whole, not one territory at a time."""
+    congregation = make_congregation()
+    centro = make_territory(congregation.id, "Centro")
+    bairro = make_territory(congregation.id, "Bairro")
+    publisher = make_user(congregation.id)
+    older = service.designate(congregation.id, centro.id, publisher.id, now=EARLIER)
+    newer = service.designate(congregation.id, bairro.id, publisher.id)
+
+    history = service.list_all(congregation.id)
+
+    assert [a.id for a in history] == [newer.id, older.id]
+
+
+def test_list_all_mixes_open_and_completed_assignments_in_the_same_list(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+    make_user,
+) -> None:
+    """The listing is the history, not the archive: what is in force belongs in it too."""
+    congregation = make_congregation()
+    centro = make_territory(congregation.id, "Centro")
+    bairro = make_territory(congregation.id, "Bairro")
+    publisher = make_user(congregation.id)
+    completed = service.designate(congregation.id, centro.id, publisher.id, now=EARLIER)
+    service.complete(congregation.id, centro.id, now=NOW - timedelta(days=20))
+    still_open = service.designate(congregation.id, bairro.id, publisher.id)
+
+    history = service.list_all(congregation.id)
+
+    assert [a.id for a in history] == [still_open.id, completed.id]
+    assert history[0].completed_at is None
+    assert history[1].completed_at == NOW - timedelta(days=20)
+
+
+def test_list_all_of_a_congregation_without_assignments_is_empty(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+) -> None:
+    congregation = make_congregation()
+    make_territory(congregation.id)
+
+    assert service.list_all(congregation.id) == []
+
+
+def test_list_all_does_not_show_the_assignment_of_another_congregation(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+    make_user,
+) -> None:
+    ours = make_congregation("Central", "São Paulo")
+    theirs = make_congregation("Norte", "São Paulo")
+    our_territory = make_territory(ours.id)
+    their_territory = make_territory(theirs.id)
+    mine = service.designate(ours.id, our_territory.id, make_user(ours.id).id)
+    service.designate(theirs.id, their_territory.id, make_user(theirs.id).id)
+
+    assert [a.id for a in service.list_all(ours.id)] == [mine.id]

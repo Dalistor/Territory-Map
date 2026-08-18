@@ -3,7 +3,7 @@
 // `window.api` is never the real IPC bridge here, per the spec 0003
 // convention already used by `HomeScreen.test.tsx`/`session.test.ts`.
 import type { ReactNode } from 'react'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
@@ -132,6 +132,7 @@ function fakeApi(overrides: Partial<IpcApi> = {}): IpcApi {
     },
     assignments: {
       listFor: vi.fn().mockResolvedValue([]),
+      listAll: vi.fn().mockResolvedValue([]),
       designate: vi.fn(),
       complete: vi.fn(),
       delete: vi.fn(),
@@ -165,6 +166,14 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  // Unmount before unstubbing, not after. RTL's automatic cleanup is
+  // registered when this file imports `@testing-library/react`, so it runs
+  // *after* this hook (Vitest unwinds `afterEach` in reverse registration
+  // order) -- which used to leave a boot promise still in flight resolving
+  // into a `HomeScreen` mount whose `window.api` had already been removed.
+  // The failure surfaced only under load, and landed on whichever test
+  // happened to be running.
+  cleanup()
   vi.unstubAllGlobals()
   confirmSpy.mockRestore()
 })
@@ -455,10 +464,11 @@ function authedApi(overrides: Partial<IpcApi> = {}): IpcApi {
 }
 
 // The permanent navigation shell (spec 0006, Task 04): a fixed sidebar with
-// the congregation at the top, the three sections, and sign-out at the
-// bottom, with every route rendering in the content area beside it.
+// the congregation at the top, the four sections (spec 0008 added
+// "Histórico"), and sign-out at the bottom, with every route rendering in
+// the content area beside it.
 describe('AuthenticatedApp sidebar shell', () => {
-  it('shows the sidebar with the congregation, the three sections, and "Mapa" initially active', async () => {
+  it('shows the sidebar with the congregation, the four sections, and "Mapa" initially active', async () => {
     vi.stubGlobal('api', authedApi())
 
     render(<App />)
@@ -472,10 +482,58 @@ describe('AuthenticatedApp sidebar shell', () => {
     expect(within(nav).getByRole('button', { name: 'Designações' })).not.toHaveAttribute(
       'aria-current'
     )
+    expect(within(nav).getByRole('button', { name: 'Histórico' })).not.toHaveAttribute(
+      'aria-current'
+    )
     expect(within(nav).getByRole('button', { name: 'Publicadores' })).not.toHaveAttribute(
       'aria-current'
     )
     expect(within(nav).getByRole('button', { name: 'Sair da congregação' })).toBeInTheDocument()
+  })
+
+  // The order matters to the admin reading the sidebar top to bottom:
+  // "Histórico" belongs beside "Designações", the page it complements, not
+  // tacked on at the end.
+  it('places "Histórico" between "Designações" and "Publicadores"', async () => {
+    vi.stubGlobal('api', authedApi())
+
+    render(<App />)
+
+    const nav = await screen.findByRole('navigation')
+    const labels = within(nav)
+      .getAllByRole('button')
+      .map((button) => button.textContent)
+    expect(labels).toEqual([
+      'Mapa',
+      'Designações',
+      'Histórico',
+      'Publicadores',
+      'Sair da congregação'
+    ])
+  })
+
+  it('shows the History screen when "Histórico" is clicked, and "Mapa" returns home', async () => {
+    vi.stubGlobal('api', authedApi())
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    const nav = await screen.findByRole('navigation')
+    await user.click(within(nav).getByRole('button', { name: 'Histórico' }))
+
+    expect(await screen.findByRole('heading', { name: 'Histórico' })).toBeInTheDocument()
+    const historyButton = within(nav).getByRole('button', { name: 'Histórico' })
+    expect(historyButton).toHaveClass('is-active')
+    expect(historyButton).toHaveAttribute('aria-current', 'page')
+    expect(within(nav).getByRole('button', { name: 'Mapa' })).not.toHaveAttribute('aria-current')
+    expect(within(nav).getByRole('button', { name: 'Designações' })).not.toHaveAttribute(
+      'aria-current'
+    )
+
+    await user.click(within(nav).getByRole('button', { name: 'Mapa' }))
+
+    expect(await screen.findByRole('button', { name: 'Novo território' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Histórico' })).not.toBeInTheDocument()
   })
 
   it('falls back to "Territory Map" in the sidebar header when the congregation is unknown', async () => {

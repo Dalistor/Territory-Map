@@ -119,6 +119,17 @@ class AssignmentService:
         territory = self._territory_of_congregation(congregation_id, territory_id)
         return self._assignments.list_by_territory(territory.id)
 
+    def list_all(self, congregation_id: UUID) -> list[TerritoryAssignment]:
+        """The whole history of the congregation, most recent assignment first.
+
+        This is what the admin's History page reads: every assignment at once,
+        open and completed alike, instead of one territory at a time. There is no
+        rule of its own to apply here -- the congregation scope, the only rule this
+        listing has, is the repository's `WHERE`, so filtering again in Python
+        would be a second place to get it wrong rather than a second barrier.
+        """
+        return self._assignments.list_by_congregation(congregation_id)
+
     def _territory_of_congregation(self, congregation_id: UUID, territory_id: UUID) -> Territory:
         """Return the territory, provided it belongs to this congregation.
 

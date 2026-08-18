@@ -100,6 +100,7 @@ function makeApi(overrides: Partial<IpcApi> = {}): IpcApi {
       ...overrides.publishers
     },
     assignments: {
+      listAll: vi.fn().mockResolvedValue([]),
       listFor: vi.fn().mockResolvedValue([]),
       designate: vi.fn().mockResolvedValue(makeAssignment()),
       complete: vi.fn().mockResolvedValue(makeAssignment()),
@@ -248,6 +249,7 @@ describe('DesignationsScreen assignment history panel', () => {
         ...overrides.publishers
       },
       assignments: {
+        listAll: vi.fn().mockResolvedValue([]),
         listFor: vi.fn().mockResolvedValue([open, closed]),
         designate: vi.fn().mockResolvedValue(open),
         complete: vi.fn().mockResolvedValue(closed),

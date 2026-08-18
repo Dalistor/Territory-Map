@@ -11,6 +11,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from app.schemas.common import OutSchema
+from app.schemas.territory import TerritoryBriefOut
 from app.schemas.user import UserBriefOut
 
 
@@ -45,3 +46,15 @@ class AssignmentOut(OutSchema):
     user: UserBriefOut
     started_at: datetime
     completed_at: datetime | None = None
+
+
+class AssignmentWithTerritoryOut(AssignmentOut):
+    """One row of the congregation-wide listing (`GET /admin/assignments`).
+
+    Same record as `AssignmentOut`, plus the territory it belongs to. The per-territory
+    listing can leave it out because the territory is already in the URL that asked for
+    it; here every row comes from a different card, so each one has to say which
+    territory it is from or the list cannot be grouped or read.
+    """
+
+    territory: TerritoryBriefOut
