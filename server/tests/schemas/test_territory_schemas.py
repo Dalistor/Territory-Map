@@ -84,7 +84,7 @@ def test_territory_out_carries_the_boundary_and_the_blocks_inside_it():
         blocks=[BlockOut(id=uuid4(), number=1, polygon=SQUARE, last_worked_at=None)],
     )
 
-    assert set(dto.model_dump()) == {"id", "name", "boundary", "blocks"}
+    assert set(dto.model_dump()) == {"id", "name", "boundary", "blocks", "assigned_user"}
     assert dto.blocks[0].number == 1
 
 

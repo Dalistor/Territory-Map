@@ -4,7 +4,12 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from app.core.exceptions import DomainError, InvalidWorkedAtError, NotFoundError
+from app.core.exceptions import (
+    DomainError,
+    InvalidWorkedAtError,
+    NotFoundError,
+    TerritoryNotAssignedError,
+)
 from app.models.block import Block
 from app.models.block_work_log import BlockWorkLog
 from app.models.user import User
@@ -56,12 +61,13 @@ class WorkLogService:
         Returns the log together with whether it was created now -- the router answers
         201 for a new visit and 200 for a resend the server had already stored.
 
-        The order of the three checks is deliberate. Ownership comes first, so a block
-        of another congregation is never even acknowledged. The already-stored log
-        comes next, so a retry is confirmed rather than judged again: the visit is
-        already a fact, and re-running the clock rule against it could refuse what was
-        accepted before, leaving the phone retrying a marking the server will never
-        take. Only a genuinely new visit is measured against the clock.
+        The order of the checks is deliberate. Ownership comes first, so a block of
+        another congregation is never even acknowledged. The already-stored log comes
+        next, so a retry is confirmed rather than judged again: the visit is already a
+        fact, and re-running the designation or the clock rule against it could refuse
+        what was accepted before, leaving the phone retrying a marking the server will
+        never take. Only a genuinely new visit is measured against the designation and
+        the clock.
         """
         now = now if now is not None else self._now_provider()
         block = self._block_of_congregation(user.congregation_id, block_id)
@@ -71,6 +77,7 @@ class WorkLogService:
             self._refuse_resend_for_another_block(stored, block_id)
             return stored, False
 
+        self._refuse_unassigned_territory(block, user)
         self._refuse_implausible_moment(worked_at, now)
         log = self._work_logs.create(
             log_id=log_id,
@@ -85,6 +92,10 @@ class WorkLogService:
         """The visits recorded for one block, most recent first."""
         block = self._block_of_congregation(congregation_id, block_id)
         return self._work_logs.list_by_block(block.id)
+
+    def list_worked_territories(self, user: User) -> list[tuple[UUID, str, datetime]]:
+        """Every territory this publisher has worked in -- the app dashboard's list."""
+        return self._work_logs.list_worked_territories(user.id)
 
     def delete(self, congregation_id: UUID, log_id: UUID) -> None:
         """Remove one recorded visit, on the admin's word.
@@ -127,6 +138,18 @@ class WorkLogService:
                 "Esta marcação já foi registrada para outra quadra. "
                 "Reinstale ou atualize o aplicativo e marque a quadra de novo."
             )
+
+    def _refuse_unassigned_territory(self, block: Block, user: User) -> None:
+        """Reject a first-time marking outside the territory designated to this publisher.
+
+        A territory has at most one publisher designated to it at a time, so this is a
+        plain identity check. It only ever runs for a genuinely new visit -- a resend
+        of an already-stored log returns before reaching here, on purpose: the visit
+        was accepted under whatever designation held at the time, and a later change
+        by the admin must not retroactively undo it.
+        """
+        if block.territory.assigned_user_id != user.id:
+            raise TerritoryNotAssignedError
 
     def _refuse_implausible_moment(self, worked_at: datetime, now: datetime) -> None:
         """Reject a moment the device's clock cannot honestly have produced.

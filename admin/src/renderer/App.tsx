@@ -182,9 +182,17 @@ function AuthenticatedApp({ congregation, onSignedOut }: AuthenticatedAppProps):
         </PushedScreen>
       )
     case 'block-editor':
+      // No `onSaved={goHome}` here on purpose, unlike the territory editor
+      // above: `BlockEditorScreen` (spec 0004, Task 04) now stays open and
+      // resets itself to create-mode after a successful save, precisely so
+      // the admin can keep adding blocks to the same territory without
+      // leaving. Wiring `onSaved` to `goHome` would navigate away the
+      // instant the save resolves, unmounting the screen before that reset
+      // was ever visible -- which is exactly the bug this comment is here
+      // to stop someone from reintroducing.
       return (
         <PushedScreen onBack={goHome}>
-          <BlockEditorScreen territory={route.territory} block={route.block} onSaved={goHome} />
+          <BlockEditorScreen territory={route.territory} block={route.block} />
         </PushedScreen>
       )
     case 'publishers':

@@ -338,6 +338,47 @@ describe('createApiClient', () => {
       expect(url).toBe(`${BASE_URL}/admin/territories/terr-1`)
       expect(init.method).toBe('DELETE')
     })
+
+    it('listTerritories parses assigned_user into assignedUser when present', async () => {
+      const { client } = makeClient(
+        jsonResponse(200, [{ ...TERRITORY_JSON, assigned_user: { id: 'pub-1', name: 'Ana' } }])
+      )
+
+      const [territory] = await client.listTerritories()
+
+      expect(territory.assignedUser).toEqual({ id: 'pub-1', name: 'Ana' })
+    })
+
+    it('listTerritories parses a territory whose assigned_user is absent as undefined', async () => {
+      const { client } = makeClient(jsonResponse(200, [TERRITORY_JSON]))
+
+      const [territory] = await client.listTerritories()
+
+      expect(territory.assignedUser).toBeUndefined()
+    })
+
+    it('assignTerritory PATCHes /admin/territories/{id}/assignment with {user_id} and returns the parsed territory', async () => {
+      const { client, fetchImpl } = makeClient(
+        jsonResponse(200, { ...TERRITORY_JSON, assigned_user: { id: 'pub-1', name: 'Ana' } })
+      )
+
+      const territory = await client.assignTerritory('terr-1', 'pub-1')
+
+      const [url, init] = fetchImpl.mock.calls[0]
+      expect(url).toBe(`${BASE_URL}/admin/territories/terr-1/assignment`)
+      expect(init.method).toBe('PATCH')
+      expect(JSON.parse(init.body as string)).toEqual({ user_id: 'pub-1' })
+      expect(territory).toEqual({ ...PARSED_TERRITORY, assignedUser: { id: 'pub-1', name: 'Ana' } })
+    })
+
+    it('assignTerritory sends {user_id: null} to remove the assignment', async () => {
+      const { client, fetchImpl } = makeClient(jsonResponse(200, TERRITORY_JSON))
+
+      await client.assignTerritory('terr-1', null)
+
+      const [, init] = fetchImpl.mock.calls[0]
+      expect(JSON.parse(init.body as string)).toEqual({ user_id: null })
+    })
   })
 
   describe('blocks', () => {

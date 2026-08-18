@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from app.schemas.block import BlockOut
 from app.schemas.common import OutSchema, ShortText
 from app.schemas.geo import RingIn, RingOut
+from app.schemas.user import UserBriefOut
 
 
 class TerritoryCreateIn(BaseModel):
@@ -33,9 +34,25 @@ class TerritoryOut(OutSchema):
     `blocks` defaults to empty so the same model serves the listing (areas only) and
     the detail endpoint (areas with their numbered blocks), without a second DTO whose
     only difference would be one field.
+
+    `assigned_user` is `None` when the territory has no publisher currently responsible
+    for it -- nested rather than flattened to a name string for the same reason as
+    `WorkLogOut.user`: it lets a client tell two people with the same first name apart.
     """
 
     id: UUID
     name: str
     boundary: RingOut
     blocks: list[BlockOut] = []
+    assigned_user: UserBriefOut | None = None
+
+
+class TerritoryAssignmentIn(BaseModel):
+    """The admin setting who is responsible for a territory.
+
+    `user_id` has no default: this endpoint exists to set the assignment, and a body
+    without the field is a request that means nothing -- `null` explicitly clears the
+    assignment, same reasoning as `UserPatchIn.is_active`.
+    """
+
+    user_id: UUID | None

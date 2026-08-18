@@ -258,6 +258,18 @@ class Api:
             headers=bearer(admin_token),
         )
 
+    async def assign_territory(
+        self,
+        admin_token: str,
+        territory_id: UUID | str,
+        user_id: UUID | str | None,
+    ) -> httpx.Response:
+        return await self.client.patch(
+            f"/admin/territories/{territory_id}/assignment",
+            json={"user_id": str(user_id) if user_id is not None else None},
+            headers=bearer(admin_token),
+        )
+
     # -- what the phone does --------------------------------------------------
 
     async def read_map(self, app_token: str) -> httpx.Response:

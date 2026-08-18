@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import type { IpcApi } from '../shared/ipc-contract'
 import type { Block, Congregation, Territory } from '../shared/models'
+import type { PolygonEditor } from './map/usePolygonEditor'
 import App from './App'
 
 // `TerritoryEditorScreen`/`BlockEditorScreen` (real here, reached by
@@ -21,8 +22,25 @@ vi.mock('react-leaflet', () => ({
   TileLayer: () => null
 }))
 
+// Exposes the real `usePolygonEditor` controller it is handed through three
+// buttons that always draw a valid triangle -- lets the "save a block, stay
+// on the screen" regression test (below) actually get `canSave` to `true`
+// without a real Leaflet/Geoman layout, the same technique
+// `BlockEditorScreen.test.tsx` uses.
 vi.mock('./map/PolygonEditorLayers', () => ({
-  PolygonEditorLayers: () => null
+  PolygonEditorLayers: ({ controller }: { controller: PolygonEditor }) => (
+    <div>
+      <button type="button" onClick={() => controller.addPoint({ lat: 1, lng: 1 })}>
+        add-a
+      </button>
+      <button type="button" onClick={() => controller.addPoint({ lat: 1, lng: 2 })}>
+        add-b
+      </button>
+      <button type="button" onClick={() => controller.addPoint({ lat: 2, lng: 2 })}>
+        add-c
+      </button>
+    </div>
+  )
 }))
 
 // `HomeScreen` (rendered for real here, not mocked) pulls in `TerritoryMap`,
@@ -97,6 +115,7 @@ function fakeApi(overrides: Partial<IpcApi> = {}): IpcApi {
       create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
+      assign: vi.fn(),
       ...overrides.territories
     },
     blocks: {
@@ -206,7 +225,8 @@ describe('App', () => {
         listWithBlocks: vi.fn().mockResolvedValue([]),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn()
+        delete: vi.fn(),
+        assign: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -235,7 +255,8 @@ describe('App', () => {
           .mockRejectedValue({ name: 'CredentialsRejectedException', message: rejectedMessage }),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn()
+        delete: vi.fn(),
+        assign: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -260,7 +281,8 @@ describe('App', () => {
         listWithBlocks: vi.fn().mockRejectedValue(rejected),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn()
+        delete: vi.fn(),
+        assign: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -285,7 +307,8 @@ describe('App', () => {
         listWithBlocks: vi.fn().mockRejectedValue(networkError),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn()
+        delete: vi.fn(),
+        assign: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -313,7 +336,8 @@ describe('App', () => {
         listWithBlocks: vi.fn().mockRejectedValue(new Error('boom')),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn()
+        delete: vi.fn(),
+        assign: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -337,7 +361,8 @@ describe('App', () => {
         listWithBlocks: vi.fn().mockResolvedValue([]),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn()
+        delete: vi.fn(),
+        assign: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -368,7 +393,8 @@ describe('App', () => {
         listWithBlocks: vi.fn().mockRejectedValue({ name: 'CredentialsRejectedException' }),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn()
+        delete: vi.fn(),
+        assign: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -395,7 +421,8 @@ describe('App', () => {
         listWithBlocks: vi.fn().mockRejectedValue('boom'),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn()
+        delete: vi.fn(),
+        assign: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -438,7 +465,8 @@ describe('AuthenticatedApp navigation', () => {
           listWithBlocks: vi.fn().mockResolvedValue([]),
           create: vi.fn(),
           update: vi.fn(),
-          delete: vi.fn()
+          delete: vi.fn(),
+          assign: vi.fn()
         }
       })
     )
@@ -468,7 +496,8 @@ describe('AuthenticatedApp navigation', () => {
           listWithBlocks: vi.fn().mockResolvedValue([territory]),
           create: vi.fn(),
           update: vi.fn(),
-          delete: vi.fn()
+          delete: vi.fn(),
+          assign: vi.fn()
         }
       })
     )
@@ -481,6 +510,65 @@ describe('AuthenticatedApp navigation', () => {
     expect(
       await screen.findByRole('heading', { name: `Nova quadra em ${territory.name}` })
     ).toBeInTheDocument()
+  })
+
+  it('stays on the block editor after saving, instead of navigating back to Home', async () => {
+    // Regression test: `BlockEditorScreen` (spec 0004, Task 04) resets itself
+    // to create-mode after a successful save specifically so the admin can
+    // keep adding blocks to the same territory without leaving -- but
+    // `AuthenticatedApp` used to wire `onSaved={goHome}` on this route
+    // anyway, which navigated away the instant the save resolved, before
+    // that reset was ever visible. Neither `BlockEditorScreen.test.tsx` (it
+    // knows nothing about `App.tsx`'s routing) nor the earlier "opens the
+    // block editor" test above (it never saves) could catch that -- only an
+    // end-to-end render through `App` can.
+    const user = userEvent.setup()
+    const territory = makeTerritory()
+    const created: Block = {
+      id: 'block-99',
+      number: 1,
+      polygon: [
+        { lat: 1, lng: 1 },
+        { lat: 1, lng: 2 },
+        { lat: 2, lng: 2 }
+      ]
+    }
+    const create = vi.fn().mockResolvedValue(created)
+    await renderHome(
+      fakeApi({
+        session: {
+          isConfigured: vi.fn().mockResolvedValue(true),
+          configure: vi.fn(),
+          signOut: vi.fn(),
+          getCongregation: vi.fn().mockResolvedValue(CONGREGATION)
+        },
+        territories: {
+          listWithBlocks: vi.fn().mockResolvedValue([territory]),
+          create: vi.fn(),
+          update: vi.fn(),
+          delete: vi.fn(),
+          assign: vi.fn()
+        },
+        blocks: { create, update: vi.fn(), delete: vi.fn() }
+      })
+    )
+
+    await user.click(screen.getByRole('button', { name: `Opções de ${territory.name}` }))
+    await user.click(
+      screen.getByRole('menuitem', { name: `Adicionar quadra em ${territory.name}` })
+    )
+    await screen.findByRole('heading', { name: `Nova quadra em ${territory.name}` })
+
+    await user.click(screen.getByRole('button', { name: 'add-a' }))
+    await user.click(screen.getByRole('button', { name: 'add-b' }))
+    await user.click(screen.getByRole('button', { name: 'add-c' }))
+    await user.click(screen.getByRole('button', { name: /salv/i }))
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+    expect(
+      screen.getByRole('heading', { name: `Nova quadra em ${territory.name}` })
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Recarregar' })).not.toBeInTheDocument()
   })
 
   it('opens the block history sheet after tapping a block and choosing "Ver histórico"', async () => {
@@ -499,7 +587,8 @@ describe('AuthenticatedApp navigation', () => {
           listWithBlocks: vi.fn().mockResolvedValue([territory]),
           create: vi.fn(),
           update: vi.fn(),
-          delete: vi.fn()
+          delete: vi.fn(),
+          assign: vi.fn()
         },
         workLogs: {
           listFor: vi.fn().mockResolvedValue([]),
@@ -531,7 +620,8 @@ describe('AuthenticatedApp navigation', () => {
           listWithBlocks: vi.fn().mockResolvedValue([]),
           create: vi.fn(),
           update: vi.fn(),
-          delete: vi.fn()
+          delete: vi.fn(),
+          assign: vi.fn()
         },
         publishers: {
           list: vi.fn().mockResolvedValue([]),

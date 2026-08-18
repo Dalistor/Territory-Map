@@ -51,6 +51,7 @@ async def worked_block(api, register_congregation, square):
         square(-18.899, -48.299, side=0.002),
     )
     block_id = block.json()["id"]
+    await api.assign_territory(admin_token, territory.json()["id"], user_id)
 
     worked_at = an_hour_ago()
     marked = await api.mark_worked(app_token, block_id, worked_at)

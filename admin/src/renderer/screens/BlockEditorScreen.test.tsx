@@ -97,7 +97,8 @@ function makeApi(overrides: Partial<IpcApi['blocks']> = {}): IpcApi {
       listWithBlocks: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
-      delete: vi.fn()
+      delete: vi.fn(),
+      assign: vi.fn()
     },
     blocks: {
       create: vi.fn(),
@@ -464,6 +465,45 @@ describe('BlockEditorScreen', () => {
 
     await screen.findByRole('status')
     expect(numberField().value).toBe('')
+  })
+
+  it('adds the newly created block to the map context, so drawing the next one shows it', async () => {
+    const created: Block = { id: 'new-block', number: 9, polygon: [{ lat: 1, lng: 1 }] }
+    const create = vi.fn().mockResolvedValue(created)
+    window.api = makeApi({ create })
+    const user = userEvent.setup()
+    render(<BlockEditorScreen territory={makeTerritory([EXISTING_BLOCK])} onSaved={vi.fn()} />)
+
+    await drawValidRing(user)
+    await user.type(numberField(), '9')
+    await user.click(saveButton())
+    await screen.findByRole('status')
+
+    const context = JSON.parse(screen.getByTestId('context-json').textContent ?? '[]')
+    expect(context).toEqual([TERRITORY_BOUNDARY, EXISTING_BLOCK.polygon, created.polygon])
+  })
+
+  it('replaces, not duplicates, the map context entry after saving an edit to an existing block', async () => {
+    const updated: Block = { ...EXISTING_BLOCK, polygon: [{ lat: 9, lng: 9 }] }
+    const update = vi.fn().mockResolvedValue(updated)
+    window.api = makeApi({ update })
+    const user = userEvent.setup()
+    render(
+      <BlockEditorScreen
+        territory={makeTerritory([EXISTING_BLOCK, OTHER_BLOCK])}
+        block={EXISTING_BLOCK}
+        onSaved={vi.fn()}
+      />
+    )
+
+    await user.click(saveButton())
+    await screen.findByRole('status')
+
+    // Now drawing a brand-new block (mode returned to 'create'): the context
+    // should show the *updated* shape of the edited block exactly once, not
+    // the stale one it opened with and not both.
+    const context = JSON.parse(screen.getByTestId('context-json').textContent ?? '[]')
+    expect(context).toEqual([TERRITORY_BOUNDARY, OTHER_BLOCK.polygon, updated.polygon])
   })
 
   it('returns to create mode after successfully saving an edit to an existing block', async () => {

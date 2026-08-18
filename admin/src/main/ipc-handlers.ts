@@ -100,6 +100,9 @@ export function registerIpcHandlers({ session, api, geocoder }: RegisterIpcHandl
   handle(IPC_CHANNELS.territoriesDelete, (territoryId: string) =>
     session.run(() => api.deleteTerritory(territoryId))
   )
+  handle(IPC_CHANNELS.territoriesAssign, (territoryId: string, userId: string | null) =>
+    session.run(() => api.assignTerritory(territoryId, userId))
+  )
 
   handle(IPC_CHANNELS.blocksCreate, (input: BlockCreateInput) =>
     session.run(() => api.createBlock(input))

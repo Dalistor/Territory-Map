@@ -83,6 +83,7 @@ export const IPC_CHANNELS = {
   territoriesCreate: 'territories:create',
   territoriesUpdate: 'territories:update',
   territoriesDelete: 'territories:delete',
+  territoriesAssign: 'territories:assign',
   blocksCreate: 'blocks:create',
   blocksUpdate: 'blocks:update',
   blocksDelete: 'blocks:delete',
@@ -126,6 +127,8 @@ export interface IpcApi {
     create(input: TerritoryCreateInput): Promise<Territory>
     update(territoryId: string, input: TerritoryUpdateInput): Promise<Territory>
     delete(territoryId: string): Promise<void>
+    /** `userId: null` removes the assignment instead of setting a new one. */
+    assign(territoryId: string, userId: string | null): Promise<Territory>
   }
   readonly blocks: {
     create(input: BlockCreateInput): Promise<Block>

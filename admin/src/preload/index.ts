@@ -30,7 +30,10 @@ const api: IpcApi = {
       ipcRenderer.invoke(IPC_CHANNELS.territoriesCreate, input),
     update: (territoryId: string, input: TerritoryUpdateInput) =>
       ipcRenderer.invoke(IPC_CHANNELS.territoriesUpdate, territoryId, input),
-    delete: (territoryId: string) => ipcRenderer.invoke(IPC_CHANNELS.territoriesDelete, territoryId)
+    delete: (territoryId: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.territoriesDelete, territoryId),
+    assign: (territoryId: string, userId: string | null) =>
+      ipcRenderer.invoke(IPC_CHANNELS.territoriesAssign, territoryId, userId)
   },
   blocks: {
     create: (input: BlockCreateInput) => ipcRenderer.invoke(IPC_CHANNELS.blocksCreate, input),

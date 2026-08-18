@@ -72,6 +72,8 @@ export interface ApiClient {
     input: { name?: string; boundary?: LatLng[] }
   ): Promise<Territory>
   deleteTerritory(territoryId: string): Promise<void>
+  /** `userId: null` removes the assignment instead of setting a new one. */
+  assignTerritory(territoryId: string, userId: string | null): Promise<Territory>
 
   /** `number` left out asks the server for the lowest free integer. */
   createBlock(input: { territoryId: string; polygon: LatLng[]; number?: number }): Promise<Block>
@@ -180,11 +182,13 @@ function parseBlock(json: Record<string, unknown>): Block {
 
 function parseTerritory(json: Record<string, unknown>): Territory {
   const blocks = (json.blocks as Record<string, unknown>[] | undefined) ?? []
+  const assignedUserJson = json.assigned_user as Record<string, unknown> | null | undefined
   return {
     id: json.id as string,
     name: json.name as string,
     boundary: ringFromJson(json.boundary as { lat: number; lng: number }[]),
-    blocks: blocks.map(parseBlock)
+    blocks: blocks.map(parseBlock),
+    assignedUser: assignedUserJson ? parsePublisherBrief(assignedUserJson) : undefined
   }
 }
 
@@ -299,6 +303,13 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
 
     async deleteTerritory(territoryId) {
       await request('DELETE', `/admin/territories/${territoryId}`)
+    },
+
+    async assignTerritory(territoryId, userId) {
+      const json = await request('PATCH', `/admin/territories/${territoryId}/assignment`, {
+        user_id: userId
+      })
+      return parseTerritory(json as Record<string, unknown>)
     },
 
     async createBlock({ territoryId, polygon, number }) {

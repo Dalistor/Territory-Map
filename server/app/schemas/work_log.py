@@ -45,3 +45,16 @@ class WorkLogOut(OutSchema):
     user: UserBriefOut
     worked_at: datetime
     created_at: datetime
+
+
+class WorkedTerritoryOut(OutSchema):
+    """One territory the publisher has worked at least once, for their dashboard.
+
+    `last_worked_at` is never null -- this schema only ever describes a territory that
+    has at least one `BlockWorkLog` for the publisher; a territory with none is simply
+    absent from the list, not present with a null date.
+    """
+
+    id: UUID
+    name: str
+    last_worked_at: datetime

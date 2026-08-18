@@ -129,3 +129,13 @@ class InvalidWorkedAtError(DomainError):
         "A data em que a quadra foi trabalhada é inválida: não pode estar no futuro "
         "nem ter mais de 90 dias. Verifique o relógio do aparelho."
     )
+
+
+class TerritoryNotAssignedError(DomainError):
+    """Publisher tried to mark a block whose territory is not assigned to them."""
+
+    code = "territory_not_assigned"
+    default_message = (
+        "Este território não está designado a você. Peça a quem cuida dos territórios "
+        "na congregação para atribuí-lo antes de marcar quadras."
+    )

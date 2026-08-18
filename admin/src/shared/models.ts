@@ -45,6 +45,8 @@ export interface Territory {
   readonly boundary: LatLng[]
   /** Empty on the listing endpoint, populated on the detail one. */
   readonly blocks: Block[]
+  /** `undefined` (absent) means the territory has no publisher assigned. */
+  readonly assignedUser?: PublisherBrief
 }
 
 export interface WorkLog {

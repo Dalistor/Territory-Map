@@ -6,7 +6,9 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.models.block import Block
 from app.models.block_work_log import BlockWorkLog
+from app.models.territory import Territory
 
 
 class BlockWorkLogRepository:
@@ -81,3 +83,20 @@ class BlockWorkLogRepository:
         return self.session.scalar(
             select(func.max(BlockWorkLog.worked_at)).where(BlockWorkLog.block_id == block_id)
         )
+
+    def list_worked_territories(self, user_id: UUID) -> list[tuple[UUID, str, datetime]]:
+        """Every territory this publisher has worked in, most recently visited first.
+
+        Joins the log up through the block to the territory it belongs to, then
+        aggregates per territory -- one row per territory, not per log, with the most
+        recent `worked_at` among all of the publisher's logs in it.
+        """
+        statement = (
+            select(Territory.id, Territory.name, func.max(BlockWorkLog.worked_at))
+            .join(Block, Block.id == BlockWorkLog.block_id)
+            .join(Territory, Territory.id == Block.territory_id)
+            .where(BlockWorkLog.user_id == user_id)
+            .group_by(Territory.id, Territory.name)
+            .order_by(func.max(BlockWorkLog.worked_at).desc())
+        )
+        return [(row[0], row[1], row[2]) for row in self.session.execute(statement)]

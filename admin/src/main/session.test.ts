@@ -24,6 +24,7 @@ function fakeApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     createTerritory: vi.fn(),
     updateTerritory: vi.fn(),
     deleteTerritory: vi.fn(),
+    assignTerritory: vi.fn(),
     createBlock: vi.fn(),
     updateBlock: vi.fn(),
     deleteBlock: vi.fn(),

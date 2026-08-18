@@ -12,7 +12,7 @@ São três partes:
 | Parte | Público | O que faz |
 |-------|---------|-----------|
 | **Servidor** | — | API REST, dono das regras de negócio e da validação geométrica |
-| **App Android** (Flutter) | Publicadores em campo | Abre e já mostra a posição do usuário no mapa, com os territórios e quadras da congregação desenhados por cima. Permite **marcar uma quadra como trabalhada**. |
+| **App Android** (React Native) | Publicadores em campo | Abre e já mostra a posição do usuário no mapa, com os territórios e quadras da congregação desenhados por cima. Permite **marcar uma quadra como trabalhada**, sempre dentro de um território designado a quem está usando. |
 | **Admin** (Electron desktop) | Responsável pelos territórios na congregação | Desenha as demarcações dos territórios, marca, numera e **apaga** as quadras, cadastra os publicadores e acompanha o que já foi trabalhado. Fala direto com o servidor. Roda em Windows, Linux e macOS. |
 
 Duas ações do admin merecem destaque porque destroem dado:
@@ -52,12 +52,11 @@ usuário e quem trabalhou cada quadra. Só o admin tem senha.
 | Banco | PostgreSQL 16 + **PostGIS** |
 | Geometria (Python) | Shapely / GeoAlchemy2 |
 | Auth | JWT (`python-jose`) + hash de senha com **bcrypt** (`passlib`) |
-| Mapas | **OpenStreetMap** — `flutter_map` no app; `react-leaflet`/Leaflet no admin. Sem chave de API, sem billing. |
-| App (Android) | Flutter (Dart), Riverpod para estado, Drift/SQLite para cache offline |
+| Mapas | **OpenStreetMap** — `@maplibre/maplibre-react-native` (MapLibre Native) no app; `react-leaflet`/Leaflet no admin. Sem chave de API, sem billing. |
+| App (Android) | **React Native (CLI puro, sem Expo) + TypeScript**, React Navigation para navegação, `react-native-keychain` (token) e `AsyncStorage` (fila offline, cache de mapa) |
 | Admin (desktop) | **Electron + React + TypeScript**, Leaflet + **Leaflet-Geoman** para desenhar/editar polígono, `safeStorage` (Electron) para as credenciais |
-| Código compartilhado (Dart) | Pacote Dart local `packages/core`, usado hoje só pelo `app/` — modelos, cliente da API, conversões geométricas |
 | Infra | Docker + Docker Compose em um Ubuntu |
-| CI/CD | GitHub Actions → deploy do servidor por SSH. O admin não tem CI: o build (`electron-builder`) é sempre local |
+| CI/CD | GitHub Actions → deploy do servidor por SSH. Admin e app não têm CI: os builds (`electron-builder`, `./gradlew assembleRelease`) são sempre locais |
 
 > O admin trocou de Flutter para Electron em 2026-08-08 porque esta máquina não compila
 > `flutter build macos` sem o Xcode completo, e o build local em Electron já era um caminho
@@ -66,14 +65,27 @@ usuário e quem trabalhou cada quadra. Só o admin tem senha.
 > token — só chama `window.api.*`, exposto pelo **preload** via `contextBridge`, com
 > `contextIsolation: true`, `nodeIntegration: false` e `sandbox: true`.
 
+> **O app trocou de Flutter para React Native na spec 0005 (2026-08-17), por escolha do dono do
+> projeto** — não por uma limitação técnica encontrada, como no caso do admin. Consequência direta:
+> `packages/core`, o pacote Dart compartilhado que só o app Flutter usava, perdeu o único cliente e
+> foi removido do monorepo na mesma spec (Task 12), junto com `.github/workflows/core.yml`. O app em
+> TypeScript não tem com quem compartilhar código Dart; sua lógica própria vive em
+> `app/src/domain/` e `app/src/data/`, sem pacote separado — mesma decisão de fundo já tomada para o
+> admin (`admin/src/shared/` em vez de depender de `packages/core`), agora estendida ao segundo
+> cliente.
+
 ## Estrutura do Projeto
 
-Monorepo. O servidor e `packages/core` estão completos. O `admin/` está implementado — configuração
-inicial, mapa, editor de polígono, quadras (criar, editar e apagar), publicadores, histórico e saída
-da congregação —, com as seis telas cobertas por teste (Vitest + React Testing Library). O `app/`
-Android ainda não existe. No servidor existem o scaffold (config,
-`/health`, Docker e Compose), a base ORM com a sessão do banco, as exceções de domínio e o Alembic
-— o resto abaixo é a estrutura alvo.
+Monorepo. O servidor está completo. O `admin/` está implementado — configuração inicial, mapa,
+editor de polígono, quadras (criar, editar e apagar), publicadores, designação de território,
+histórico e saída da congregação —, com as telas cobertas por teste (Vitest + React Testing
+Library). O `app/` (React Native) também está implementado — ativação por código, dashboard,
+mapa com MapLibre e localização em tempo real, marcação de quadra restrita ao território designado,
+fila offline e cache local —, com as telas de `presentation/` e as camadas de `domain/`/`data/`
+cobertas por teste (Jest + `@testing-library/react-native`); só o componente que efetivamente
+desenha o MapLibre nativo (`presentation/map/TerritoryMapView.tsx` e a tela que o compõe,
+`presentation/screens/MapScreen.tsx`) não tem teste automatizado — ver "Testes" mais abaixo para o
+porquê, e `app/README.md` para o passo de verificação manual em emulador/aparelho ainda pendente.
 
 ```
 Territory map/
@@ -103,20 +115,16 @@ Territory map/
 │   ├── tests/
 │   ├── pyproject.toml
 │   └── Dockerfile
-├── packages/
-│   └── core/                   # pacote Dart compartilhado, hoje usado só pelo app/
-│       ├── lib/
-│       │   ├── models/         # Territory, Block, User, LatLng…
-│       │   ├── api/            # cliente HTTP da API, DTOs, erros
-│       │   └── geo/            # conversões lat/lng ↔ GeoJSON, validações locais
-│       └── test/
-├── app/                        # Flutter — Android
-│   ├── lib/
-│   │   ├── main.dart
-│   │   ├── data/               # cache local (Drift), repositórios
-│   │   ├── domain/             # casos de uso
-│   │   └── presentation/       # telas, widgets, providers
-│   └── test/
+├── app/                         # React Native (CLI puro) + TypeScript — Android
+│   ├── README.md               # como instalar, configurar o .env, rodar e gerar o .apk
+│   ├── .env.example             # API_BASE_URL e APP_KEY, lidos em tempo de build via react-native-config
+│   ├── android/                 # projeto nativo Android (único alvo; não há pasta ios/)
+│   └── src/
+│       ├── domain/              # entidades e funções puras: models.ts, blockColor.ts, assignment.ts
+│       ├── data/                # api-client.ts, session-store.ts (react-native-keychain),
+│       │                        # territory-cache.ts e work-log-queue.ts (AsyncStorage)
+│       └── presentation/        # screens/ (ActivationScreen, DashboardScreen, MapScreen), map/
+│                                # (TerritoryMapView com MapLibre, territoryFilter.ts), App.tsx
 └── admin/                      # Electron + React + TypeScript — desktop (sem domain/; veja Arquitetura de Camadas)
     ├── README.md               # como rodar, como configurar o .env e o aviso do SmartScreen/Gatekeeper
     ├── electron-builder.yml    # empacotamento local: dmg/zip (mac), nsis (Windows), AppImage/tar.gz (Linux)
@@ -134,9 +142,9 @@ Territory map/
 Testes ficam co-localizados dentro de `src/` (`*.test.ts`/`*.test.tsx`), não numa pasta `test/` à
 parte — ver "Testes" mais abaixo para o porquê.
 
-`app/` depende de `packages/core` por `path:` no `pubspec.yaml`; nada de duplicar modelo ou cliente
-da API dentro do próprio Dart. O `admin/` não depende de `packages/core` — é outra linguagem
-(TypeScript) — e tem sua própria pasta `admin/src/shared/` para o equivalente.
+`app/` e `admin/` são dois projetos TypeScript independentes, sem pacote compartilhado entre eles —
+cada um tem sua própria cópia da lógica que só ele usa (`app/src/domain/` e `admin/src/shared/`).
+Nenhum dos dois depende de `packages/core`, que não existe mais no monorepo.
 
 ## Modelo de Dados
 
@@ -192,7 +200,13 @@ que cumpre a função. O que dura é o token do app guardado no aparelho. Índic
 | `congregation_id` | UUID | FK → Congregation |
 | `name` | str | único dentro da congregação |
 | `boundary` | `GEOMETRY(POLYGON, 4326)` | a demarcação do território |
+| `assigned_user_id` | UUID? | FK → User, nullable, `ON DELETE SET NULL` |
 | `created_at` | datetime | |
+
+`assigned_user_id` é **1:N do lado do publicador, não do território**: um território tem no máximo
+um publicador designado por vez, mas um publicador pode ter vários territórios designados ao mesmo
+tempo (ex.: quem dirige um grupo). `SET NULL`, não `CASCADE` — apagar ou desativar o publicador
+nunca apaga o território, só solta a designação.
 
 ### Block
 | Campo | Tipo | Notas |
@@ -262,8 +276,9 @@ Registro de que uma quadra foi trabalhada. Append-only pelo app.
   permanente com `user_id` e `congregation_id`. Na mesma transação o servidor grava `activated_at`
   e **apaga o `access_code`** (`NULL`). A partir daí o código não existe mais — nem para quem
   digitou de novo, nem no banco.
-- O app guarda o **token** em armazenamento seguro (`flutter_secure_storage`) e nunca guarda o
-  código. O token não expira; só deixa de valer se o admin desativar o usuário.
+- O app guarda o **token** em armazenamento seguro (`react-native-keychain`,
+  `app/src/data/session-store.ts`) e nunca guarda o código. O token não expira; só deixa de valer se
+  o admin desativar o usuário.
 - Código inexistente, expirado e já usado retornam **a mesma resposta genérica**. Não dizer qual
   dos três é — a diferença entregaria a existência de códigos válidos.
 - Uma rotina periódica limpa os códigos vencidos e não usados (`access_code = NULL` onde
@@ -296,6 +311,23 @@ Registro de que uma quadra foi trabalhada. Append-only pelo app.
 - `worked_at` no futuro é rejeitado. Muito antigo (ex.: > 90 dias) também — provável relógio errado
   do aparelho.
 
+### Designação de território
+- Só o **admin** designa (ou remove a designação de) um publicador a um território —
+  `PATCH /admin/territories/{id}/assignment`, corpo `{"user_id": "<uuid>" | null}`. O app do
+  publicador nunca escreve nisso.
+- Um território tem **no máximo um publicador por vez**. Designar a outro simplesmente substitui —
+  não precisa "desdesignar" antes.
+- Um publicador com `is_active = false` ainda **pode** ser designado: desativação revoga o acesso ao
+  app, não o vínculo de responsabilidade registrado no admin.
+- O publicador só pode **marcar uma quadra de um território designado a ele**. Tentar marcar fora
+  disso responde **403** com o código `territory_not_assigned` — o bloco existe visivelmente na
+  congregação do publicador, então a barreira aqui é de permissão, não de existência (diferente do
+  404 de um bloco de outra congregação).
+- **Reenvio de uma marcação já aceita não é reavaliado contra a designação.** Um `log_id` que já
+  existe é confirmado direto (mesmo raciocínio já aplicado à checagem de relógio): a visita já é um
+  fato aceito antes, e uma designação removida ou trocada depois não pode fazer o aparelho ficar
+  retentando para sempre uma marcação que o servidor já gravou.
+
 ### Demarcação de território
 - O polígono precisa ser **válido e simples** (`ST_IsValid`, `ST_IsSimple`) — sem auto-interseção.
 - Mínimo de 3 vértices distintos.
@@ -316,8 +348,9 @@ Registro de que uma quadra foi trabalhada. Append-only pelo app.
 
 ### Chave de aplicação (`X-App-Key`)
 - Toda requisição precisa trazer o header `X-App-Key` com o valor de `APP_SECRET`. **Os dois
-  clientes mandam em toda chamada** — quando `packages/core` existir, o cliente HTTP compartilhado
-  injeta o header, e nenhum caso de uso deve precisar saber disso.
+  clientes mandam em toda chamada** — cada cliente HTTP (`admin/src/main/api-client.ts`,
+  `app/src/data/api-client.ts`) injeta o header sozinho, e nenhuma tela ou caso de uso precisa saber
+  disso.
 - **`GET /health` é isento**, por rota e não por fallback: o healthcheck do deploy e o runtime do
   container chamam sem chave e precisam funcionar antes de qualquer cliente existir.
 - Header ausente e header errado recebem **a mesma** resposta 401. Comparação com
@@ -352,6 +385,11 @@ Registro de que uma quadra foi trabalhada. Append-only pelo app.
   polígonos, marcadores e rótulos numerados — tudo que o caso de uso pede. Respeitar a
   [política de uso dos tiles](https://operations.osmfoundation.org/policies/tiles/) do OSM:
   definir um User-Agent identificando o app e não fazer *bulk download*.
+- **MapLibre Native (`@maplibre/maplibre-react-native`) no app, não `react-native-maps`.** Mesma
+  decisão de fundo do Leaflet no admin: `react-native-maps` é feito para o Google Maps SDK (chave de
+  API, billing, dependência de Google Play Services), o oposto do que o projeto escolheu. MapLibre
+  Native desenha tiles raster crus (a mesma URL de tile do OSM que o admin usa) sem depender de
+  nenhum provedor comercial.
 - **Monorepo.** Os três projetos compartilham o contrato da API; versionar junto evita que o app e
   o admin fiquem fora de sincronia com o servidor.
 - **Electron no admin, não mais Flutter.** Decisão revertida em 2026-08-08 (ver a nota no início da
@@ -359,8 +397,12 @@ Registro de que uma quadra foi trabalhada. Append-only pelo app.
   completo, e o dono do projeto já tinha um caminho de build local em Electron validado em outro
   projeto próprio. O argumento original a favor do Flutter (uma linguagem só, pacote compartilhado,
   sem a superfície de segurança do Electron) parou de valer quando o build passou a ser local e sem
-  CI — o preço do `contextIsolation`/preload/IPC deixou de ser opcional. O admin em TypeScript não
-  compartilha código com `packages/core` (Dart); tem sua própria pasta `admin/src/shared/`.
+  CI — o preço do `contextIsolation`/preload/IPC deixou de ser opcional.
+- **React Native no app, não mais Flutter.** Decisão da spec 0005 (2026-08-17, ver a nota no início
+  da Stack Técnica) — escolha do dono do projeto, não uma limitação técnica como no caso do admin.
+  `packages/core`, o pacote Dart que só o app Flutter usava, foi removido em consequência: o app em
+  TypeScript não tem com quem compartilhar código Dart, e sua lógica própria fica em
+  `app/src/domain/` sem pacote separado, mesma decisão já tomada para `admin/src/shared/`.
 - **Risco assumido na lib de edição de mapa.** Leaflet-Geoman é a lib de terceiro para
   desenhar/editar o polígono (arrastar vértice, arrastar ponto intermediário para inserir, remover
   vértice). O editor está confinado a `admin/src/renderer/map/PolygonEditorLayers.tsx`, o único
@@ -411,15 +453,18 @@ permitido; o service recebe a leitura por `now_provider`.
 DTOs só nas bordas (router ↔ service); repositório trabalha com models.
 Serviço não conhece HTTP: sinaliza erro com exceção de domínio, e o router traduz para status code.
 
-### App (Flutter)
+### App (React Native)
 
 | Camada | Pasta | Responsabilidade | Proibido |
 |--------|-------|------------------|----------|
-| Presentation | `app/lib/presentation/` | Telas, widgets, providers Riverpod | Chamada HTTP direta, regra de negócio |
-| Domain | `app/lib/domain/` | Entidades e casos de uso | Dependência de Flutter, HTTP ou banco |
-| Data | `app/lib/data/` | Cliente da API, cache SQLite, implementação dos repositórios | Widget, lógica de apresentação |
+| Presentation | `app/src/presentation/` | Telas, navegação (React Navigation), o componente de mapa (MapLibre) | Chamada HTTP direta, regra de negócio |
+| Domain | `app/src/domain/` | Entidades e funções puras (cor da quadra, "é meu território?", filtro do mapa) | Dependência de React Native, HTTP ou armazenamento |
+| Data | `app/src/data/` | Cliente HTTP (`api-client.ts`), `react-native-keychain` (token, `session-store.ts`), `AsyncStorage` (fila offline `work-log-queue.ts`, cache do mapa `territory-cache.ts`) | Widget, lógica de apresentação |
 
-**Direção:** `presentation → domain ← data`. O domínio não depende de ninguém.
+**Direção:** `presentation → domain ← data`. O domínio não depende de ninguém — mesma direção já
+documentada quando o app era Flutter; a troca de stack na spec 0005 não mudou essa decisão, só a
+linguagem. Sem gerenciador de estado externo (Redux/Zustand): o volume de telas é pequeno e o estado
+é quase todo "o que o servidor respondeu", então hooks + Context bastam.
 
 ### Admin (Electron)
 
@@ -450,35 +495,21 @@ expira. O caminho é `ApiErrorException.isUnauthorized` → refaz o login com as
 serializa para o renderer poder distinguir do resto e voltar à tela de configuração inicial —
 provavelmente a senha mudou no servidor.
 
-### Pacote compartilhado (`packages/core`)
-
-| Pasta | Responsabilidade | Proibido |
-|-------|------------------|----------|
-| `lib/models/` | Entidades do domínio, imutáveis | Chamada de rede, dependência de Flutter |
-| `lib/api/` | Cliente HTTP, DTOs, mapeamento de erro da API | Estado de UI, cache |
-| `lib/geo/` | Conversão `LatLng` ↔ GeoJSON, pré-validação de polígono | Rede, banco |
-
-`packages/core` **não depende de `flutter`**, só de `dart:core` e do pacote HTTP — assim roda em
-teste puro (`dart test`), rápido e sem emulador. É usado hoje só pelo `app/`: o `admin/` é
-TypeScript e não importa Dart, então tem a sua própria pasta `admin/src/shared/` para o que aqui é
-`geo/`, `models/` e `api/`. Se um dia existir um segundo cliente Dart, o que for comum a ele e ao
-`app/` sobe para `core`.
-
 ## Testes
 
-| Item | Servidor | `packages/core` | App (Flutter) | Admin (Electron) |
-|------|----------|-----------------|----------------|-------------------|
-| Framework | pytest | `package:test` (Dart puro) | `flutter_test` | Vitest + React Testing Library |
-| Rodar tudo | `cd server && pytest` | `cd packages/core && dart test` | `cd app && flutter test` | `cd admin && npm test` |
-| Rodar um arquivo | `pytest tests/services/test_territory_service.py` | `dart test test/geo/latlng_test.dart` | `flutter test test/home_screen_test.dart` | `npx vitest run src/renderer/screens/HomeScreen.test.tsx` |
-| Cobertura | `pytest --cov=app --cov-report=term-missing` | `dart test --coverage=coverage` | `flutter test --coverage` | `npx vitest run --coverage` |
-| Local e nome | `server/tests/**/test_*.py` | `packages/core/test/**/*_test.dart` | `<projeto>/test/**/*_test.dart` | `admin/src/**/*.test.ts(x)`, co-localizado |
-| Meta | **100% nos services** (regras de negócio), 80% geral | **100%** em `geo/` | uma tela, um teste de widget; repositórios cobertos por fake de HTTP | uma tela, um teste de componente; `main/` coberto por fake das dependências do Electron (`safeStorage`, `fetch`, `ipcMain`) |
+| Item | Servidor | App (React Native) | Admin (Electron) |
+|------|----------|---------------------|-------------------|
+| Framework | pytest | Jest + `@testing-library/react-native` | Vitest + React Testing Library |
+| Rodar tudo | `cd server && pytest` | `cd app && npm test` | `cd admin && npm test` |
+| Rodar um arquivo | `pytest tests/services/test_territory_service.py` | `npx jest src/presentation/screens/DashboardScreen.test.tsx` | `npx vitest run src/renderer/screens/HomeScreen.test.tsx` |
+| Cobertura | `pytest --cov=app --cov-report=term-missing` | `npx jest --coverage` | `npx vitest run --coverage` |
+| Local e nome | `server/tests/**/test_*.py` | `app/src/**/*.test.ts(x)`, co-localizado | `admin/src/**/*.test.ts(x)`, co-localizado |
+| Meta | **100% nos services** (regras de negócio), 80% geral | uma tela, um teste; `domain/` e `data/` cobertos por fake de rede/armazenamento (nunca `AsyncStorage`/keychain reais); a view nativa do MapLibre (`presentation/map/TerritoryMapView.tsx`, `presentation/screens/MapScreen.tsx`) é risco assumido sem teste automatizado — mesmo caso do Leaflet-Geoman do admin, verificada rodando `npm run android` num emulador/aparelho | uma tela, um teste de componente; `main/` coberto por fake das dependências do Electron (`safeStorage`, `fetch`, `ipcMain`) |
 
-**Por que o admin foge do `test/` espelhado que o resto do projeto usa.** Arquivo `*.test.ts(x)` ao
-lado do código, não numa pasta paralela, é a convenção do próprio ecossistema Vitest/Vite — seguir
-o padrão da ferramenta em vez de forçar o espelhamento do servidor/Dart economiza atrito com
-qualquer gerador ou plugin que espere esse layout.
+**Por que o admin e o app fogem do `test/` espelhado que o servidor usa.** Arquivo `*.test.ts(x)` ao
+lado do código, não numa pasta paralela, é a convenção do próprio ecossistema Vitest/Vite (admin) e
+Jest/React Native (app) — seguir o padrão da ferramenta em vez de forçar o espelhamento à moda do
+servidor economiza atrito com qualquer gerador ou plugin que espere esse layout.
 
 **TDD é obrigatório em toda regra de negócio do servidor** — validação geométrica, login,
 numeração de quadras. Espelhe a estrutura de `app/` dentro de `tests/`.
@@ -497,9 +528,10 @@ comprovadamente não deixa nada gravado.
 abortar a coleta. Espelhar `app/` no nome, e não só na pasta: `tests/core/test_geo.py` e
 `tests/schemas/test_geo_schemas.py`, `tests/services/test_user_service.py`.
 
-`packages/core` é Dart puro justamente para que a lógica compartilhada (conversão de coordenadas,
-pré-validação de polígono, mapeamento de erro) seja testável em milissegundos, sem emulador nem
-janela. É onde o TDD do lado cliente vale a pena.
+`app/src/domain/` é código puro (sem `react-native`), pelo mesmo motivo que já valia para
+`packages/core` quando o app era Flutter: lógica compartilhada (cor da quadra, "é meu território?",
+filtro do mapa) testável em milissegundos, sem emulador nem janela. É onde o TDD do lado cliente
+vale a pena — mesmo padrão de `admin/src/shared/geo.ts` no admin.
 
 **Como mockar:**
 - **Banco**: as regras geométricas dependem do PostGIS de verdade — teste os services contra um
@@ -513,14 +545,16 @@ janela. É onde o TDD do lado cliente vale a pena.
   a mesma interface — não `MagicMock` solto.
 - **Relógio**: injete um provider de tempo; nunca chame `datetime.now()` direto no service.
 - **HTTP no app e no admin**: cliente da API por trás de interface, com implementação fake nos
-  testes — nunca uma janela Electron ou um emulador real. No `app/`, o cliente vive em
-  `packages/core` e o mesmo fake serve a qualquer futuro cliente Dart. No admin, o cliente
-  (`main/api-client.ts`) é local ao projeto, e os testes de `session.ts`/`ipc-handlers.ts` recebem
-  um fake dele por injeção.
+  testes — nunca um emulador Android ou uma janela Electron real. No `app/`, o cliente
+  (`data/api-client.ts`) é testado com um `fetch` fake injetado (`app/src/data/api-client.test.ts`).
+  No admin, o cliente (`main/api-client.ts`) é local ao projeto, e os testes de
+  `session.ts`/`ipc-handlers.ts` recebem um fake dele por injeção.
+- **Armazenamento no app**: `react-native-keychain` (token) e `AsyncStorage` (fila offline, cache do
+  mapa) são mockados nos testes de `data/` — nunca o keychain ou o armazenamento reais do aparelho.
 
 ## Como Rodar
 
-O servidor, `packages/core` e o admin já sobem; o `app/` Android ainda não existe (passos alvo).
+O servidor, o admin e o `app/` (React Native) já sobem.
 
 **Banco (necessário para servidor e testes):**
 ```bash
@@ -551,8 +585,15 @@ migração separado no deploy. Detalhes em `server/README.md`.
 
 **App (Android):**
 ```bash
-cd app && flutter pub get && flutter run
+cd app && npm install
+cp .env.example .env    # preencha API_BASE_URL e APP_KEY
+npm run android
 ```
+Exige um emulador Android já em execução ou um aparelho físico com depuração USB habilitada.
+Builda e instala o app de debug, e sobe o Metro (o bundler do RN) automaticamente. `.env` é lido em
+tempo de **build** via `react-native-config` — editar o arquivo exige parar e rodar `npm run
+android` de novo, não há *hot reload* dele. Alvo Android apenas, sem pasta `ios/`. Detalhes em
+`app/README.md`.
 
 **Admin (desktop):**
 ```bash
@@ -562,11 +603,6 @@ Sobe uma janela Electron de verdade com hot reload: `main`/`preload` recompilam 
 quando esse código muda, e o `renderer` (React) atualiza por HMR do Vite. Antes da primeira vez,
 copie `admin/.env.example` para `admin/.env` e preencha `API_BASE_URL` e `APP_KEY` — ver "Chave de
 aplicação" mais abaixo para o que `APP_KEY` precisa valer.
-
-**Pacote compartilhado:**
-```bash
-cd packages/core && dart pub get && dart test
-```
 
 ## Como Fazer Deploy
 
@@ -661,25 +697,35 @@ testes (Vitest + React Testing Library), que existem e cobrem as seis telas (con
 roteamento, `HomeScreen` e as cores do mapa, publicadores, os dois editores e o histórico), mais o
 que se abre com `npm run dev` durante o desenvolvimento.
 
-**App Android** — build de APK/AAB também por tag, distribuído fora da Play Store no começo.
+**App Android** — sem CI, mesmo caminho do admin: build sempre **local**.
+
+```bash
+cd app/android && ./gradlew assembleRelease
+```
+
+Gera o `.apk` em `app/android/app/build/outputs/apk/release/`, distribuído fora da Play Store por
+enquanto. Sem assinatura de código configurada — mesmo aviso do admin: o Android vai reclamar de
+"fonte desconhecida" ao instalar fora da Play Store, e isso é esperado. `API_BASE_URL`/`APP_KEY`
+vêm de `app/.env` (via `react-native-config`), lido em tempo de **build**, não de execução — editar
+o `.env` exige gerar o `.apk` de novo. Detalhes em `app/README.md`.
 
 ## Regras e Convenções
 
 - **Idioma**: código, nomes de arquivo, commits e comentários em **inglês**. Documentação em
   `.claude/` e conversa em **português**.
-- **Naming**: Python `snake_case` (classes `PascalCase`); Dart `lowerCamelCase` com arquivos
-  `snake_case.dart` e classes `PascalCase`; TypeScript (admin) `lowerCamelCase` para
-  variáveis/funções e `PascalCase` para classes/componentes React, arquivos `kebab-case.ts` em
-  `main/`/`preload/`/`shared/` e `PascalCase.tsx` para componentes de tela em `renderer/`.
+- **Naming**: Python `snake_case` (classes `PascalCase`); TypeScript (admin e app) `lowerCamelCase`
+  para variáveis/funções e `PascalCase` para classes/componentes React, arquivos `kebab-case.ts` em
+  `admin/src/main/`/`preload/`/`shared/` e `PascalCase.tsx` para componentes de tela em
+  `admin/src/renderer/` e `app/src/presentation/screens/`.
 - **Um arquivo por entidade** em cada camada — `models/territory.py`, `services/territory_service.py`.
-- **Nada de coordenada como float solto**: use o tipo `LatLng` — `packages/core/lib/geo/lat_lng.dart`
-  no lado Dart (`app/`), `admin/src/shared/geo.ts` no admin — para não trocar latitude com
-  longitude. Cada um é a única fonte da conversão para GeoJSON do seu lado.
-- **Lógica que serve a mais de um cliente Dart vive em `packages/core`.** Hoje é só o `app/`; se
-  isso mudar, evite copiar um arquivo entre eles — suba para `core`. O admin (TypeScript) não entra
-  nessa regra: sua lógica compartilhada entre `main/` e `renderer/` vive em `admin/src/shared/`.
-- **Lint**: `flutter_lints` no `app/` e `lints/recommended` em `core`; ESLint com
-  `typescript-eslint` recomendado no admin. Sem warning ignorado em nenhum dos três.
+- **Nada de coordenada como float solto**: use o tipo `LatLng` — `admin/src/shared/geo.ts` no admin,
+  `app/src/domain/models.ts` no app (`{lat, lng}` nomeado, mesmo formato do admin) — para não trocar
+  latitude com longitude. Cada um é a única fonte da conversão para GeoJSON do seu lado.
+- **Lógica que serve a mais de um cliente TypeScript não existe hoje.** `admin/` e `app/` são dois
+  projetos independentes, cada um com sua própria pasta de lógica compartilhada interna
+  (`admin/src/shared/`, `app/src/domain/`) — nenhum pacote é compartilhado entre os dois.
+- **Lint**: ESLint com `typescript-eslint` recomendado no admin e no app. Sem warning ignorado em
+  nenhum dos três projetos.
 - **Migrações sempre via Alembic**, nunca DDL manual no banco.
 - **Erros de domínio** são exceções próprias (`TerritoryOverlapError`, `BlockOutsideTerritoryError`),
   traduzidas para HTTP só no router.
@@ -708,9 +754,9 @@ que se abre com `npm run dev` durante o desenvolvimento.
 - **O log de trabalho identifica pessoas.** Guarda quem esteve em qual quadra e quando. Guardar só
   isso — nada de posição GPS, rota ou horário de deslocamento no `BlockWorkLog`.
 - **Ordem das coordenadas** é a fonte clássica de bug aqui: PostGIS/GeoJSON usam `(lon, lat)` e o
-  `flutter_map`/Leaflet usam `(lat, lon)`. A conversão mora numa única função por lado —
-  `packages/core/lib/geo/` no Dart, `admin/src/shared/geo.ts` no admin —, cada uma com teste. Não
-  converter à mão em nenhum outro lugar.
+  Leaflet (admin) e o MapLibre Native (app) usam `(lat, lon)`. A conversão mora numa única função
+  por lado — `admin/src/shared/geo.ts` no admin, `app/src/domain/models.ts` no app —, cada uma com
+  teste. Não converter à mão em nenhum outro lugar.
 - **O admin guarda a senha da congregação no desktop**, não só o token — é o preço do login
   automático. Usar o `safeStorage` do Electron (criptografa com o keychain do sistema operacional) e
   nunca gravar as credenciais em texto puro. Nunca logar essas credenciais, nem em modo debug.
@@ -739,9 +785,10 @@ que se abre com `npm run dev` durante o desenvolvimento.
 
 ## Pontos em Aberto
 
-- Estratégia de **sincronização offline** do app (pull completo vs. delta por timestamp).
+- Estratégia de **sincronização offline** do app (pull completo vs. delta por timestamp) — hoje é
+  pull completo a cada abertura bem-sucedida (`app/src/presentation/App.tsx` recarrega e
+  sobrescreve o cache inteiro via `saveTerritories`); delta por timestamp não foi avaliado.
 - Se o admin precisa **exportar** territórios (PDF/imagem) para uso impresso.
-- Se existe fluxo de **atribuição** de território a publicador, ou se isso segue fora do sistema.
 - **Reinstalar o app custa um código novo.** Limpar os dados ou trocar de celular apaga o token, e
   só o admin consegue devolver o acesso. Se isso virar chamado frequente, o remédio é o admin poder
   gerar o código em lote e a tela deixar isso a dois cliques — não afrouxar a regra.
@@ -751,8 +798,10 @@ que se abre com `npm run dev` durante o desenvolvimento.
 
 **Resolvidos, para não voltarem à mesa:** o desfazer do editor de polígono existe — é o controller
 próprio `usePolygonEditor` (`admin/src/renderer/map/usePolygonEditor.ts`), com o Leaflet-Geoman só
-traduzindo eventos para ele, não mutando estado direto —, e o admin já apaga quadra e sai da
-congregação pela interface.
+traduzindo eventos para ele, não mutando estado direto —, o admin já apaga quadra e sai da
+congregação pela interface, e o fluxo de **atribuição de território a publicador** existe de ponta a
+ponta (spec 0005): o admin designa pela `HomeScreen`, o servidor restringe a marcação de quadra ao
+território designado, e o app do publicador em React Native já existe.
 
 ## Implementações
 

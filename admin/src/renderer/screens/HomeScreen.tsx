@@ -7,7 +7,7 @@
 // need to know those screens exist yet.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { LatLngTuple } from 'leaflet'
-import type { Block, Congregation, Territory } from '../../shared/models'
+import type { Block, Congregation, Publisher, Territory } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
 import { TerritoryMap } from '../map/TerritoryMap'
 
@@ -111,6 +111,14 @@ export function HomeScreen({
     null
   )
   const [openTerritoryMenuId, setOpenTerritoryMenuId] = useState<string | null>(null)
+  // The "Atribuir a publicador" dialog. `assignTarget` doubles as "is the
+  // dialog open" -- non-null means it is, for this one territory.
+  // `assignPublishers` is fetched fresh (filtered to active ones) every time
+  // the dialog opens, since the admin may have deactivated someone since the
+  // territory list last loaded.
+  const [assignTarget, setAssignTarget] = useState<Territory | null>(null)
+  const [assignPublishers, setAssignPublishers] = useState<Publisher[]>([])
+  const [selectedPublisherId, setSelectedPublisherId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setIsLoading(true)
@@ -151,14 +159,12 @@ export function HomeScreen({
   }, [])
 
   /**
-   * The shape every destructive action shares: ask first, run only on "yes",
-   * and turn a rejection into a message on screen instead of an unhandled
-   * rejection. `window.confirm` is a deliberately small choice here -- the
-   * admin has no modal component of its own yet, and the text it shows is
-   * exactly what each acceptance criterion asks for.
+   * The shape every write against `window.api` shares: turn a rejection into
+   * a message on screen (`actionError`, rendered as the same `role="alert"`
+   * every action on this screen already uses) instead of an unhandled
+   * rejection.
    */
-  const runConfirmed = useCallback(async (message: string, action: () => Promise<void>) => {
-    if (!window.confirm(message)) return
+  const runAction = useCallback(async (action: () => Promise<void>) => {
     setActionError(null)
     try {
       await action()
@@ -166,6 +172,56 @@ export function HomeScreen({
       setActionError(errorMessage(error))
     }
   }, [])
+
+  /**
+   * The shape every *destructive* action shares on top of {@link runAction}:
+   * ask first, run only on "yes". `window.confirm` is a deliberately small
+   * choice here -- the admin has no modal component of its own yet, and the
+   * text it shows is exactly what each acceptance criterion asks for.
+   */
+  const runConfirmed = useCallback(
+    (message: string, action: () => Promise<void>) => {
+      if (!window.confirm(message)) return Promise.resolve()
+      return runAction(action)
+    },
+    [runAction]
+  )
+
+  /**
+   * Opens the assign dialog for `territory` and loads the publisher options.
+   * Pre-selects whoever is already designated (or "Nenhum" if nobody is), so
+   * confirming without touching anything is a no-op rather than a surprise
+   * unassignment.
+   */
+  const openAssignDialog = useCallback(async (territory: Territory) => {
+    setOpenTerritoryMenuId(null)
+    setSelectedPublisherId(territory.assignedUser?.id ?? null)
+    setAssignTarget(territory)
+    try {
+      const list = await window.api.publishers.list()
+      setAssignPublishers(list.filter((publisher) => publisher.isActive))
+    } catch (error) {
+      setActionError(errorMessage(error))
+      setAssignPublishers([])
+    }
+  }, [])
+
+  /**
+   * Confirms the dialog's current selection: `null` when "Nenhum" is picked,
+   * a publisher's `id` otherwise. Closes the dialog immediately, independent
+   * of what the server answers -- same shape as `submitCreate` in
+   * `PublishersScreen.tsx`.
+   */
+  const confirmAssign = useCallback(() => {
+    if (assignTarget === null) return Promise.resolve()
+    const territoryId = assignTarget.id
+    const userId = selectedPublisherId
+    setAssignTarget(null)
+    return runAction(async () => {
+      await window.api.territories.assign(territoryId, userId)
+      await load()
+    })
+  }, [assignTarget, selectedPublisherId, load, runAction])
 
   const handleDeleteTerritory = useCallback(
     (territory: Territory) =>
@@ -232,6 +288,11 @@ export function HomeScreen({
                   {sortedTerritories.map((territory) => (
                     <li key={territory.id} className="territory-row">
                       <span>{territory.name}</span>
+                      {territory.assignedUser && (
+                        <span className="territory-assigned-user">
+                          Designado a {territory.assignedUser.name}
+                        </span>
+                      )}
                       <button
                         type="button"
                         className="icon-button"
@@ -267,6 +328,14 @@ export function HomeScreen({
                               }}
                             >
                               {`Editar demarcação de ${territory.name}`}
+                            </button>
+                          </li>
+                          <li>
+                            <button
+                              role="menuitem"
+                              onClick={() => void openAssignDialog(territory)}
+                            >
+                              {`Atribuir a publicador em ${territory.name}`}
                             </button>
                           </li>
                           <li>
@@ -344,6 +413,41 @@ export function HomeScreen({
             >
               Apagar quadra
             </button>
+          </div>
+        )}
+        {assignTarget !== null && (
+          <div role="dialog" aria-label={`Atribuir publicador a ${assignTarget.name}`}>
+            <h2>Atribuir publicador a {assignTarget.name}</h2>
+            <div className="field assign-options">
+              <label>
+                <input
+                  type="radio"
+                  name="assign-publisher"
+                  checked={selectedPublisherId === null}
+                  onChange={() => setSelectedPublisherId(null)}
+                />
+                Nenhum
+              </label>
+              {assignPublishers.map((publisher) => (
+                <label key={publisher.id}>
+                  <input
+                    type="radio"
+                    name="assign-publisher"
+                    checked={selectedPublisherId === publisher.id}
+                    onChange={() => setSelectedPublisherId(publisher.id)}
+                  />
+                  {publisher.name}
+                </label>
+              ))}
+            </div>
+            <div className="dialog-actions">
+              <button type="button" onClick={() => setAssignTarget(null)}>
+                Cancelar
+              </button>
+              <button type="button" className="button-primary" onClick={() => void confirmAssign()}>
+                Atribuir
+              </button>
+            </div>
           </div>
         )}
       </main>

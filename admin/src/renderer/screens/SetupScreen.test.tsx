@@ -31,7 +31,8 @@ function fakeApi(overrides: Partial<IpcApi['session']> = {}): IpcApi {
       listWithBlocks: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
-      delete: vi.fn()
+      delete: vi.fn(),
+      assign: vi.fn()
     },
     blocks: {
       create: vi.fn(),

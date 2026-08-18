@@ -19,6 +19,7 @@ from app.core.geo import LatLng, points_to_wkt, validate_polygon, wkt_to_points
 from app.models.territory import Territory
 from app.repositories.block import BlockRepository
 from app.repositories.territory import TerritoryRepository
+from app.repositories.user import UserRepository
 
 
 def _join_numbers(numbers: list[int]) -> str:
@@ -43,10 +44,12 @@ class TerritoryService:
         self,
         territories: TerritoryRepository,
         blocks: BlockRepository,
+        users: UserRepository,
         now_provider: Callable[[], datetime],
     ) -> None:
         self._territories = territories
         self._blocks = blocks
+        self._users = users
         # Held, not yet read: `created_at` is stamped by the database. It is part of
         # the constructor so every service is built the same way by the routers, and
         # so any future rule that needs the time reads an injected clock rather than
@@ -113,6 +116,31 @@ class TerritoryService:
         that owns it has no meaning, so there is nothing to keep.
         """
         self._territories.delete(self.get(congregation_id, territory_id))
+
+    def assign_to_user(
+        self,
+        congregation_id: UUID,
+        territory_id: UUID,
+        user_id: UUID | None,
+    ) -> Territory:
+        """Assign this territory to a publisher of the congregation, or clear it.
+
+        `None` removes the designation, even when one already existed -- there is
+        no "unassign first" step, reassigning to someone else is a plain overwrite.
+
+        An inactive publisher may still be assigned: deactivation revokes app
+        access, not the right to be registered as responsible for a territory in
+        the admin, and reactivating later must not require assigning again.
+        """
+        territory = self.get(congregation_id, territory_id)
+        if user_id is not None and not self._user_in_congregation(congregation_id, user_id):
+            raise NotFoundError
+        return self._territories.set_assigned_user(territory, user_id)
+
+    def _user_in_congregation(self, congregation_id: UUID, user_id: UUID) -> bool:
+        """Whether this id names a publisher of this congregation."""
+        user = self._users.get(user_id)
+        return user is not None and user.congregation_id == congregation_id
 
     def boundary_points(self, territory: Territory) -> list[LatLng]:
         """The stored demarcation as the ordered ring the admin drew.

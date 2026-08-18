@@ -76,6 +76,23 @@ def draw(session):
     return _draw
 
 
+@pytest.fixture
+def assign_territory(session):
+    """Designates a territory to a publisher, straight through the repository.
+
+    Since `WorkLogService.mark_worked` (spec 0005) refuses a marking whose territory
+    is not assigned to the caller, every test here that expects a mark to succeed
+    needs this first -- through the repository rather than the admin route, for the
+    same reason `draw` does: these tests are about the app's own two endpoints, not
+    about the admin's assignment endpoint (covered in its own tests).
+    """
+
+    def _assign(territory, user: User) -> None:
+        TerritoryRepository(session).set_assigned_user(territory, user.id)
+
+    return _assign
+
+
 def recent_moment() -> datetime:
     """A `worked_at` the service accepts: past, and well inside the 90-day window."""
     return (datetime.now(UTC) - timedelta(hours=1)).replace(microsecond=0)
@@ -128,16 +145,17 @@ async def test_a_territory_arrives_with_its_boundary_and_its_numbered_blocks(
 
 
 async def test_marking_a_block_creates_the_log_and_the_next_read_shows_it(
-    client, make_admin, make_publisher, draw
+    client, make_admin, make_publisher, draw, assign_territory
 ):
     congregation, _ = make_admin()
     user, token = make_publisher(congregation)
-    _, block = draw(
+    territory, block = draw(
         congregation,
         "Centro",
         square(-18.90, -48.30),
         block_ring=square(-18.898, -48.298, side=0.002),
     )
+    assign_territory(territory, user)
     worked_at = recent_moment()
 
     response = await mark(client, token, block.id, uuid4(), worked_at)
@@ -151,17 +169,18 @@ async def test_marking_a_block_creates_the_log_and_the_next_read_shows_it(
 
 
 async def test_resending_the_same_log_id_answers_200_and_stores_nothing_new(
-    client, make_admin, make_publisher, draw, session
+    client, make_admin, make_publisher, draw, assign_territory, session
 ):
     """The offline queue is flushed again after a lost reply; one visit, not two."""
     congregation, _ = make_admin()
-    _, token = make_publisher(congregation)
-    _, block = draw(
+    user, token = make_publisher(congregation)
+    territory, block = draw(
         congregation,
         "Centro",
         square(-18.90, -48.30),
         block_ring=square(-18.898, -48.298, side=0.002),
     )
+    assign_territory(territory, user)
     log_id = uuid4()
     worked_at = recent_moment()
     first = await mark(client, token, block.id, log_id, worked_at)

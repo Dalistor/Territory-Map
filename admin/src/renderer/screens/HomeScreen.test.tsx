@@ -6,7 +6,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { IpcApi } from '../../shared/ipc-contract'
-import type { Block, Territory } from '../../shared/models'
+import type { Block, Publisher, Territory } from '../../shared/models'
 import { HomeScreen } from './HomeScreen'
 
 // The real TerritoryMap pulls in react-leaflet, which needs a real DOM layout
@@ -62,6 +62,15 @@ function makeTerritory(overrides: Partial<Territory> = {}): Territory {
   }
 }
 
+function makePublisher(overrides: Partial<Publisher> = {}): Publisher {
+  return {
+    id: 'publisher-1',
+    name: 'Ana',
+    isActive: true,
+    ...overrides
+  }
+}
+
 function makeApi(overrides: Partial<IpcApi> = {}): IpcApi {
   return {
     session: {
@@ -76,6 +85,7 @@ function makeApi(overrides: Partial<IpcApi> = {}): IpcApi {
       create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn().mockResolvedValue(undefined),
+      assign: vi.fn(),
       ...overrides.territories
     },
     blocks: {
@@ -85,7 +95,7 @@ function makeApi(overrides: Partial<IpcApi> = {}): IpcApi {
       ...overrides.blocks
     },
     publishers: {
-      list: vi.fn(),
+      list: vi.fn().mockResolvedValue([]),
       create: vi.fn(),
       regenerateCode: vi.fn(),
       setActive: vi.fn(),
@@ -145,7 +155,8 @@ describe('HomeScreen loading and header', () => {
         listWithBlocks: vi.fn().mockRejectedValue(new Error('Falha de rede.')),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn()
+        delete: vi.fn(),
+        assign: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -161,7 +172,8 @@ describe('HomeScreen loading and header', () => {
         listWithBlocks: vi.fn().mockRejectedValue('boom'),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn()
+        delete: vi.fn(),
+        assign: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -201,7 +213,8 @@ describe('HomeScreen territory actions', () => {
         listWithBlocks: vi.fn().mockResolvedValue([territory]),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn()
+        delete: vi.fn(),
+        assign: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -221,7 +234,8 @@ describe('HomeScreen territory actions', () => {
         listWithBlocks: vi.fn().mockResolvedValue([territory]),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn()
+        delete: vi.fn(),
+        assign: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -243,7 +257,8 @@ describe('HomeScreen territory actions', () => {
         listWithBlocks: vi.fn().mockResolvedValue([territory, other]),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn()
+        delete: vi.fn(),
+        assign: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -281,7 +296,8 @@ describe('HomeScreen territory list ordering', () => {
         listWithBlocks: vi.fn().mockResolvedValue(territories),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn()
+        delete: vi.fn(),
+        assign: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -302,7 +318,8 @@ describe('HomeScreen territory list ordering', () => {
         listWithBlocks: vi.fn().mockResolvedValue(territories),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn()
+        delete: vi.fn(),
+        assign: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -330,7 +347,8 @@ describe('HomeScreen territory list ordering', () => {
         listWithBlocks: vi.fn().mockResolvedValue([zona, bairro]),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn()
+        delete: vi.fn(),
+        assign: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -351,7 +369,8 @@ describe('HomeScreen territory list ordering', () => {
         listWithBlocks: vi.fn().mockResolvedValue(territories),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn()
+        delete: vi.fn(),
+        assign: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -374,7 +393,8 @@ describe('HomeScreen territory list ordering', () => {
         listWithBlocks: vi.fn().mockResolvedValue(territories),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn()
+        delete: vi.fn(),
+        assign: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -397,7 +417,13 @@ describe('HomeScreen deleting a territory', () => {
     const deleteTerritory = vi.fn().mockResolvedValue(undefined)
     const listWithBlocks = vi.fn().mockResolvedValue([territory])
     const api = makeApi({
-      territories: { listWithBlocks, create: vi.fn(), update: vi.fn(), delete: deleteTerritory }
+      territories: {
+        listWithBlocks,
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: deleteTerritory,
+        assign: vi.fn()
+      }
     })
     vi.stubGlobal('api', api)
     const user = userEvent.setup()
@@ -426,7 +452,8 @@ describe('HomeScreen deleting a territory', () => {
         listWithBlocks: vi.fn().mockResolvedValue([territory]),
         create: vi.fn(),
         update: vi.fn(),
-        delete: deleteTerritory
+        delete: deleteTerritory,
+        assign: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -453,7 +480,8 @@ describe('HomeScreen deleting a territory', () => {
         listWithBlocks: vi.fn().mockResolvedValue([territory]),
         create: vi.fn(),
         update: vi.fn(),
-        delete: deleteTerritory
+        delete: deleteTerritory,
+        assign: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -475,7 +503,8 @@ describe('HomeScreen deleting a territory', () => {
         listWithBlocks: vi.fn().mockResolvedValue([territory]),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn().mockRejectedValue(new Error('O território tem uma pendência.'))
+        delete: vi.fn().mockRejectedValue(new Error('O território tem uma pendência.')),
+        assign: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -511,7 +540,13 @@ describe('HomeScreen reloading', () => {
       .mockResolvedValueOnce([])
       .mockRejectedValueOnce(new Error('Falha ao recarregar.'))
     const api = makeApi({
-      territories: { listWithBlocks, create: vi.fn(), update: vi.fn(), delete: vi.fn() }
+      territories: {
+        listWithBlocks,
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+        assign: vi.fn()
+      }
     })
     vi.stubGlobal('api', api)
     const user = userEvent.setup()
@@ -688,5 +723,223 @@ describe('HomeScreen tapping a block on the map', () => {
     expect(screen.queryByRole('menuitem', { name: 'Ver histórico' })).not.toBeInTheDocument()
     expect(onShowHistory).not.toHaveBeenCalled()
     expect(onEditBlock).not.toHaveBeenCalled()
+  })
+})
+
+/** Opens the "Atribuir a publicador" dialog for a territory row, via its "⋮" menu. */
+async function openAssignDialog(
+  user: ReturnType<typeof userEvent.setup>,
+  territoryName: string
+): Promise<HTMLElement> {
+  await openTerritoryMenu(user, territoryName)
+  await user.click(
+    await screen.findByRole('menuitem', {
+      name: new RegExp(`atribuir a publicador.*${territoryName}`, 'i')
+    })
+  )
+  return screen.findByRole('dialog', { name: new RegExp(territoryName, 'i') })
+}
+
+describe('HomeScreen assigning a territory to a publisher', () => {
+  it('lists active publishers as selectable options, plus "Nenhum", and excludes inactive ones', async () => {
+    const territory = makeTerritory({ name: 'Bairro Sul' })
+    const activePublisher = makePublisher({ id: 'p1', name: 'Ana', isActive: true })
+    const inactivePublisher = makePublisher({ id: 'p2', name: 'Beto', isActive: false })
+    const api = makeApi({
+      territories: {
+        listWithBlocks: vi.fn().mockResolvedValue([territory]),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+        assign: vi.fn()
+      },
+      publishers: {
+        list: vi.fn().mockResolvedValue([activePublisher, inactivePublisher]),
+        create: vi.fn(),
+        regenerateCode: vi.fn(),
+        setActive: vi.fn()
+      }
+    })
+    vi.stubGlobal('api', api)
+    const user = userEvent.setup()
+
+    render(<HomeScreen />)
+    const dialog = await openAssignDialog(user, 'Bairro Sul')
+
+    expect(within(dialog).getByRole('radio', { name: 'Nenhum' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('radio', { name: 'Ana' })).toBeInTheDocument()
+    expect(within(dialog).queryByRole('radio', { name: 'Beto' })).not.toBeInTheDocument()
+  })
+
+  it('assigns the selected publisher: calls assign with its id, reloads, and the row shows their name', async () => {
+    const territory = makeTerritory({ name: 'Bairro Sul' })
+    const assignedTerritory = { ...territory, assignedUser: { id: 'p1', name: 'Ana' } }
+    const publisher = makePublisher({ id: 'p1', name: 'Ana', isActive: true })
+    const listWithBlocks = vi
+      .fn()
+      .mockResolvedValueOnce([territory])
+      .mockResolvedValueOnce([assignedTerritory])
+    const assign = vi.fn().mockResolvedValue(assignedTerritory)
+    const api = makeApi({
+      territories: {
+        listWithBlocks,
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+        assign
+      },
+      publishers: {
+        list: vi.fn().mockResolvedValue([publisher]),
+        create: vi.fn(),
+        regenerateCode: vi.fn(),
+        setActive: vi.fn()
+      }
+    })
+    vi.stubGlobal('api', api)
+    const user = userEvent.setup()
+
+    render(<HomeScreen />)
+    const dialog = await openAssignDialog(user, 'Bairro Sul')
+    await user.click(within(dialog).getByRole('radio', { name: 'Ana' }))
+    await user.click(within(dialog).getByRole('button', { name: /^atribuir$/i }))
+
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('territory-1', 'p1'))
+    await waitFor(() => expect(listWithBlocks).toHaveBeenCalledTimes(2))
+    expect(await screen.findByText(/designado a ana/i)).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('choosing "Nenhum" removes the assignment: calls assign with null, and the row no longer shows a publisher', async () => {
+    const territory = makeTerritory({
+      name: 'Bairro Sul',
+      assignedUser: { id: 'p1', name: 'Ana' }
+    })
+    const unassignedTerritory = { ...territory, assignedUser: undefined }
+    const publisher = makePublisher({ id: 'p1', name: 'Ana', isActive: true })
+    const listWithBlocks = vi
+      .fn()
+      .mockResolvedValueOnce([territory])
+      .mockResolvedValueOnce([unassignedTerritory])
+    const assign = vi.fn().mockResolvedValue(unassignedTerritory)
+    const api = makeApi({
+      territories: {
+        listWithBlocks,
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+        assign
+      },
+      publishers: {
+        list: vi.fn().mockResolvedValue([publisher]),
+        create: vi.fn(),
+        regenerateCode: vi.fn(),
+        setActive: vi.fn()
+      }
+    })
+    vi.stubGlobal('api', api)
+    const user = userEvent.setup()
+
+    render(<HomeScreen />)
+    expect(await screen.findByText(/designado a ana/i)).toBeInTheDocument()
+    const dialog = await openAssignDialog(user, 'Bairro Sul')
+    await user.click(within(dialog).getByRole('radio', { name: 'Nenhum' }))
+    await user.click(within(dialog).getByRole('button', { name: /^atribuir$/i }))
+
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('territory-1', null))
+    await waitFor(() => expect(listWithBlocks).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByText(/designado a/i)).not.toBeInTheDocument())
+  })
+
+  it('shows a visible error message when assigning fails, without incorrectly reloading the list', async () => {
+    const territory = makeTerritory({ name: 'Bairro Sul' })
+    const publisher = makePublisher({ id: 'p1', name: 'Ana', isActive: true })
+    const listWithBlocks = vi.fn().mockResolvedValue([territory])
+    const assign = vi.fn().mockRejectedValue(new Error('Publicador não encontrado.'))
+    const api = makeApi({
+      territories: {
+        listWithBlocks,
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+        assign
+      },
+      publishers: {
+        list: vi.fn().mockResolvedValue([publisher]),
+        create: vi.fn(),
+        regenerateCode: vi.fn(),
+        setActive: vi.fn()
+      }
+    })
+    vi.stubGlobal('api', api)
+    const user = userEvent.setup()
+
+    render(<HomeScreen />)
+    const dialog = await openAssignDialog(user, 'Bairro Sul')
+    await user.click(within(dialog).getByRole('radio', { name: 'Ana' }))
+    await waitFor(() => expect(listWithBlocks).toHaveBeenCalledTimes(1))
+    await user.click(within(dialog).getByRole('button', { name: /^atribuir$/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Publicador não encontrado.')
+    expect(listWithBlocks).toHaveBeenCalledTimes(1)
+  })
+
+  it('"Cancelar" closes the dialog without calling assign', async () => {
+    const territory = makeTerritory({ name: 'Bairro Sul' })
+    const publisher = makePublisher({ id: 'p1', name: 'Ana', isActive: true })
+    const assign = vi.fn()
+    const api = makeApi({
+      territories: {
+        listWithBlocks: vi.fn().mockResolvedValue([territory]),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+        assign
+      },
+      publishers: {
+        list: vi.fn().mockResolvedValue([publisher]),
+        create: vi.fn(),
+        regenerateCode: vi.fn(),
+        setActive: vi.fn()
+      }
+    })
+    vi.stubGlobal('api', api)
+    const user = userEvent.setup()
+
+    render(<HomeScreen />)
+    const dialog = await openAssignDialog(user, 'Bairro Sul')
+    await user.click(within(dialog).getByRole('radio', { name: 'Ana' }))
+    await user.click(within(dialog).getByRole('button', { name: /^cancelar$/i }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(assign).not.toHaveBeenCalled()
+  })
+
+  it('shows a visible error message when loading the publisher options fails', async () => {
+    const territory = makeTerritory({ name: 'Bairro Sul' })
+    const api = makeApi({
+      territories: {
+        listWithBlocks: vi.fn().mockResolvedValue([territory]),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+        assign: vi.fn()
+      },
+      publishers: {
+        list: vi.fn().mockRejectedValue(new Error('Falha ao carregar publicadores.')),
+        create: vi.fn(),
+        regenerateCode: vi.fn(),
+        setActive: vi.fn()
+      }
+    })
+    vi.stubGlobal('api', api)
+    const user = userEvent.setup()
+
+    render(<HomeScreen />)
+    await openTerritoryMenu(user, 'Bairro Sul')
+    await user.click(
+      await screen.findByRole('menuitem', { name: /atribuir a publicador.*bairro sul/i })
+    )
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Falha ao carregar publicadores.')
   })
 })

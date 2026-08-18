@@ -89,6 +89,23 @@ class TerritoryRepository:
         self.session.flush()
         return territory
 
+    def set_assigned_user(self, territory: Territory, user_id: UUID | None) -> Territory:
+        """Assign (or clear) the publisher responsible for this territory.
+
+        The refresh runs whether `user_id` is `None` or not. Skipping it on the
+        `None` branch looks safe in isolation -- an unloaded relationship falls back
+        to `None` on its own once the FK is `None` -- but `territory` can already be
+        sitting in the session's identity map with `assigned_user` cached from an
+        earlier assignment in the same request (e.g. reassigning and then clearing in
+        one call chain reuses the same Python object). Without an explicit refresh
+        that stale reference survives the flush and the HTTP response would keep
+        serializing the previous publisher after the designation was removed.
+        """
+        territory.assigned_user_id = user_id
+        self.session.flush()
+        self.session.refresh(territory, attribute_names=["assigned_user"])
+        return territory
+
     def delete(self, territory: Territory) -> None:
         """Remove the territory; the FK cascade takes its blocks and their logs."""
         self.session.delete(territory)

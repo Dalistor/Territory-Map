@@ -15,6 +15,7 @@ from app.core.exceptions import (
     InvalidAccessCodeError,
     InvalidCredentialsError,
     NotFoundError,
+    TerritoryNotAssignedError,
 )
 from app.core.rate_limit import limiter, rate_limit_exceeded_handler
 from app.core.scheduler import lifespan
@@ -32,7 +33,10 @@ settings = get_settings()
 #: Only the errors that are *not* 422 need an entry. `NotFoundError` is 404 even
 #: when the resource belongs to another congregation -- 403 would confirm it exists.
 #: The three authentication failures share 401 and, by design, are told apart only
-#: by their `code`, never by the status.
+#: by their `code`, never by the status. `TerritoryNotAssignedError` is 403, not
+#: 404: the block visibly exists inside the publisher's own congregation, so the
+#: barrier here is permission over a resource they already know about, not
+#: existence.
 DOMAIN_ERROR_STATUS: dict[type[DomainError], int] = {
     NotFoundError: status.HTTP_404_NOT_FOUND,
     InvalidCredentialsError: status.HTTP_401_UNAUTHORIZED,
@@ -40,6 +44,7 @@ DOMAIN_ERROR_STATUS: dict[type[DomainError], int] = {
     InactiveUserError: status.HTTP_401_UNAUTHORIZED,
     DuplicateNameError: status.HTTP_409_CONFLICT,
     DuplicateBlockNumberError: status.HTTP_409_CONFLICT,
+    TerritoryNotAssignedError: status.HTTP_403_FORBIDDEN,
 }
 
 #: Everything else -- an invalid polygon, an overlap, a block outside its territory,

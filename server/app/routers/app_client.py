@@ -1,12 +1,14 @@
 """The whole surface the Android app talks to: read the map, mark a block worked.
 
-Two routes, and that is the point. The phone's token never expires, so the smaller
+Two verbs, and that is the point. The phone's token never expires, so the smaller
 the set of things it can reach, the smaller the damage a stolen device does -- the
 app reads its congregation's map and appends to the work log, and there is no third
 verb. Unmarking, redrawing, renumbering and registering people all live behind
 `current_congregation` in the `/admin/*` routers, which this token cannot satisfy.
+`GET /app/worked-territories` is still the read verb, just a different projection of
+the same log -- the dashboard's "where have I been" next to the map's "where can I go".
 
-Both routes take the congregation from `current_app_user`, never from the request:
+Every route takes the congregation from `current_app_user`, never from the request:
 the publisher's row decides which map they see, so there is no path or body here in
 which a client could name someone else's data.
 """
@@ -25,11 +27,13 @@ from app.models.user import User
 from app.repositories.block import BlockRepository
 from app.repositories.block_work_log import BlockWorkLogRepository
 from app.repositories.territory import TerritoryRepository
+from app.repositories.user import UserRepository
 from app.routers.auth import utc_now
 from app.schemas.block import BlockOut
 from app.schemas.geo import LatLngOut
 from app.schemas.territory import TerritoryOut
-from app.schemas.work_log import WorkedIn, WorkLogOut
+from app.schemas.user import UserBriefOut
+from app.schemas.work_log import WorkedIn, WorkedTerritoryOut, WorkLogOut
 from app.services.block import BlockService
 from app.services.territory import TerritoryService
 from app.services.work_log import WorkLogService
@@ -40,7 +44,9 @@ DbSession = Annotated[Session, Depends(get_session)]
 
 
 def get_territory_service(session: DbSession) -> TerritoryService:
-    return TerritoryService(TerritoryRepository(session), BlockRepository(session), utc_now)
+    return TerritoryService(
+        TerritoryRepository(session), BlockRepository(session), UserRepository(session), utc_now
+    )
 
 
 def get_block_service(session: DbSession) -> BlockService:
@@ -86,6 +92,9 @@ def _territory_out(
             LatLngOut.model_validate(point) for point in territories.boundary_points(territory)
         ],
         blocks=[_block_out(block, blocks) for block in blocks.list(congregation_id, territory.id)],
+        assigned_user=UserBriefOut.model_validate(territory.assigned_user)
+        if territory.assigned_user
+        else None,
     )
 
 
@@ -131,3 +140,17 @@ def mark_block_worked(
     if not created:
         response.status_code = status.HTTP_200_OK
     return WorkLogOut.model_validate(log)
+
+
+@router.get("/worked-territories")
+def list_worked_territories(user: AppUser, work_logs: WorkLogs) -> list[WorkedTerritoryOut]:
+    """Every territory this publisher has worked in, for the app's dashboard list.
+
+    Only territories with at least one log of this publisher's own show up here --
+    the point is "where have I been", not the congregation's whole map, which
+    `GET /app/territories` already answers.
+    """
+    return [
+        WorkedTerritoryOut(id=territory_id, name=name, last_worked_at=last_worked_at)
+        for territory_id, name, last_worked_at in work_logs.list_worked_territories(user)
+    ]

@@ -87,6 +87,15 @@ export function BlockEditorScreen({
   const [confirmation, setConfirmation] = useState<string | null>(null)
   const confirmationTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Seeded once from the `territory` prop, then kept in sync by hand after
+  // every successful save -- `territory` itself never changes (it is
+  // captured once by `AuthenticatedApp` when this screen opens, and this
+  // screen no longer navigates away on save, spec 0004 Task 04). Without
+  // this, drawing a second block right after the first would still show the
+  // map as if the first one had never been saved: its outline exists on the
+  // server, but nowhere the admin can see it here.
+  const [sessionBlocks, setSessionBlocks] = useState<Block[]>(territory.blocks)
+
   useEffect(
     () => () => {
       if (confirmationTimeout.current !== null) clearTimeout(confirmationTimeout.current)
@@ -111,11 +120,11 @@ export function BlockEditorScreen({
   const contextRings = useMemo<LatLng[][]>(
     () => [
       territory.boundary,
-      ...territory.blocks
+      ...sessionBlocks
         .filter((other) => other.id !== editingBlock?.id)
         .map((other) => other.polygon)
     ],
-    [territory, editingBlock]
+    [territory.boundary, sessionBlocks, editingBlock]
   )
 
   const center =
@@ -137,6 +146,11 @@ export function BlockEditorScreen({
             number: chosenNumber
           })
       onSaved?.(saved)
+
+      // Replaces the matching entry on an update, appends on a create --
+      // either way, the map shows this block's real, saved outline from now
+      // on, not the stale copy the screen opened with.
+      setSessionBlocks((previous) => [...previous.filter((other) => other.id !== saved.id), saved])
 
       if (editor.points.length > 0) editor.clear()
       setNumberText('')

@@ -48,6 +48,7 @@ async def test_redeeming_on_a_new_phone_takes_the_access_away_from_the_old_one(
         square(-18.899, -48.299, side=0.002),
     )
     block_id = block.json()["id"]
+    await api.assign_territory(admin_token, drawn.json()["id"], user_id)
 
     # The phone the publisher has today works.
     assert (await api.read_map(old_token)).status_code == 200

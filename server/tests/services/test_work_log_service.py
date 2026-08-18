@@ -15,9 +15,15 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
-from app.core.exceptions import DomainError, InvalidWorkedAtError, NotFoundError
+from app.core.exceptions import (
+    DomainError,
+    InvalidWorkedAtError,
+    NotFoundError,
+    TerritoryNotAssignedError,
+)
 from app.models.block import Block
 from app.models.block_work_log import BlockWorkLog
+from app.models.territory import Territory
 from app.models.user import User
 from app.services.work_log import MAX_WORKED_AT_AGE, WorkLogService
 
@@ -79,10 +85,26 @@ class FakeBlockRepository:
         block.last_worked_at = worked_at
 
 
-def draw_block(blocks: FakeBlockRepository, congregation_id: UUID, number: int = 1) -> Block:
-    """Put a block of this congregation on the map, in its own territory."""
+def draw_block(
+    blocks: FakeBlockRepository,
+    congregation_id: UUID,
+    number: int = 1,
+    assigned_user_id: UUID | None = None,
+) -> Block:
+    """Put a block of this congregation on the map, in its own territory.
+
+    `assigned_user_id` mirrors `Territory.assigned_user_id`: `None` (the default)
+    means the territory has nobody designated to it, same as a fresh territory the
+    admin never assigned.
+    """
     territory_id = uuid4()
+    territory = Territory(
+        id=territory_id,
+        congregation_id=congregation_id,
+        assigned_user_id=assigned_user_id,
+    )
     block = Block(id=uuid4(), territory_id=territory_id, number=number, last_worked_at=None)
+    block.territory = territory
     blocks.blocks[block.id] = block
     blocks.congregation_of_territory[territory_id] = congregation_id
     return block
@@ -128,8 +150,11 @@ def user(congregation_id: UUID) -> User:
 
 
 @pytest.fixture
-def block(blocks: FakeBlockRepository, congregation_id: UUID) -> Block:
-    return draw_block(blocks, congregation_id)
+def block(blocks: FakeBlockRepository, user: User) -> Block:
+    """A block whose territory is already designated to `user` -- the ordinary case
+    every test in this file other than the designation tests themselves cares about.
+    """
+    return draw_block(blocks, user.congregation_id, assigned_user_id=user.id)
 
 
 def test_marking_a_block_records_the_visit_as_a_new_log(
@@ -314,6 +339,59 @@ def test_a_refused_marking_leaves_no_log_and_no_trace_on_the_block(
     assert block.last_worked_at == worked_at
 
 
+def test_marking_a_block_whose_territory_has_no_designation_is_refused(
+    service: WorkLogService,
+    work_logs: FakeBlockWorkLogRepository,
+    blocks: FakeBlockRepository,
+    congregation_id: UUID,
+    user: User,
+) -> None:
+    """A publisher with no territory designated to them cannot mark any block."""
+    unassigned_block = draw_block(blocks, congregation_id, number=2)
+
+    with pytest.raises(TerritoryNotAssignedError):
+        service.mark_worked(uuid4(), unassigned_block.id, user, NOW, NOW)
+
+    assert work_logs.list_by_block(unassigned_block.id) == []
+    assert unassigned_block.last_worked_at is None
+
+
+def test_marking_a_block_of_a_territory_designated_to_someone_else_is_refused(
+    service: WorkLogService,
+    work_logs: FakeBlockWorkLogRepository,
+    blocks: FakeBlockRepository,
+    congregation_id: UUID,
+    user: User,
+    block: Block,
+) -> None:
+    """Being responsible for one territory does not open every block in the congregation."""
+    other_block = draw_block(blocks, congregation_id, number=2, assigned_user_id=uuid4())
+
+    with pytest.raises(TerritoryNotAssignedError):
+        service.mark_worked(uuid4(), other_block.id, user, NOW, NOW)
+
+    assert work_logs.list_by_block(other_block.id) == []
+    assert other_block.last_worked_at is None
+
+
+def test_a_resend_is_confirmed_even_after_the_territorys_designation_changed(
+    service: WorkLogService,
+    user: User,
+    block: Block,
+) -> None:
+    """A stored visit is a fact; revoking the designation afterward cannot undo it."""
+    log_id = uuid4()
+    worked_at = NOW - timedelta(hours=2)
+    service.mark_worked(log_id, block.id, user, worked_at, NOW)
+
+    block.territory.assigned_user_id = None
+
+    again, created = service.mark_worked(log_id, block.id, user, worked_at, NOW)
+
+    assert created is False
+    assert again.worked_at == worked_at
+
+
 def test_marking_a_block_of_another_congregation_is_not_found(
     service: WorkLogService,
     work_logs: FakeBlockWorkLogRepository,
@@ -355,7 +433,7 @@ def test_a_log_id_already_used_for_another_block_is_refused_instead_of_confirmed
     block: Block,
 ) -> None:
     """Confirming it would hand back a visit to a block the request never named."""
-    elsewhere = draw_block(blocks, congregation_id, number=2)
+    elsewhere = draw_block(blocks, congregation_id, number=2, assigned_user_id=user.id)
     log_id = uuid4()
     worked_at = NOW - timedelta(hours=1)
     service.mark_worked(log_id, elsewhere.id, user, worked_at, NOW)
@@ -476,8 +554,8 @@ def test_deleting_a_visit_of_another_congregation_is_not_found(
 ) -> None:
     """The admin of one congregation cannot reach into another's history."""
     other_congregation_id = uuid4()
-    stranger_block = draw_block(blocks, other_congregation_id)
     stranger = make_user(other_congregation_id, name="Bruno")
+    stranger_block = draw_block(blocks, other_congregation_id, assigned_user_id=stranger.id)
     log_id = uuid4()
     worked_at = NOW - timedelta(days=2)
     service.mark_worked(log_id, stranger_block.id, stranger, worked_at, NOW)

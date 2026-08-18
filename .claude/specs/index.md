@@ -8,6 +8,7 @@ Planejamentos de implementações complexas, decompostos em tasks para subagente
 | [0002](0002/README.md) | Fechar as divergências do admin desktop | 2026-08-05 | Concluída | 12 tasks |
 | [0003](0003/README.md) | Migrar o admin de Flutter desktop para Electron + React + TypeScript + Leaflet | 2026-08-08 | Concluída | 20 tasks |
 | [0004](0004/README.md) | Corrigir o fluxo de cadastro/edição de território e quadra no admin | 2026-08-17 | Concluída | 5 tasks |
+| [0005](0005/README.md) | App do publicador em React Native, com designação de território | 2026-08-17 | Concluída | 27 tasks |
 
 ---
 

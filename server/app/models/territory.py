@@ -13,6 +13,7 @@ from app.models.base import Base, EntityMixin
 if TYPE_CHECKING:
     from app.models.block import Block
     from app.models.congregation import Congregation
+    from app.models.user import User
 
 
 class Territory(Base, EntityMixin):
@@ -45,8 +46,20 @@ class Territory(Base, EntityMixin):
         Geometry(geometry_type="POLYGON", srid=4326, spatial_index=True),
         nullable=False,
     )
+    # The publisher currently responsible for this territory, at most one at a
+    # time. Nullable and SET NULL on delete: losing the territory must never
+    # delete the publisher, and deleting/deactivating the publisher must never
+    # be blocked by a territory still pointing at them -- it just drops the
+    # assignment.
+    assigned_user_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     congregation: Mapped["Congregation"] = relationship(back_populates="territories")
+    assigned_user: Mapped["User | None"] = relationship(foreign_keys=[assigned_user_id])
     blocks: Mapped[list["Block"]] = relationship(
         back_populates="territory",
         cascade="all, delete-orphan",
