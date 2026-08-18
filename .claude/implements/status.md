@@ -110,6 +110,7 @@ Histórico de todas as implementações realizadas neste projeto.
 | [0099](0099/README.md) | Conserto avulso: testes pré-existentes quebrados pela restrição de designação (decorrente da spec 0005, não é uma task dela) | 2026-08-17 | Concluído | `server/tests/routers/test_app_client_routes.py`, `server/tests/integration/conftest.py`, `server/tests/integration/test_full_flow_integration.py`, `server/tests/integration/test_device_swap_integration.py`, `server/tests/integration/test_revocation_integration.py` |
 | [0100](0100/README.md) | Corrigir `AndroidManifest.xml` inválido que impedia qualquer build do app (decorrente da spec 0005, não é uma task dela) | 2026-08-17 | Concluído | `app/android/app/src/main/AndroidManifest.xml` |
 | [0101](0101/README.md) | Safe area e estilização das telas do app, com correções de UX encontradas na revisão | 2026-08-17 | Concluído | `app/src/presentation/theme.ts`, `app/src/presentation/components/PrimaryButton.tsx`, `app/src/presentation/App.tsx`, `app/src/presentation/screens/ActivationScreen.tsx`, `app/src/presentation/screens/DashboardScreen.tsx`, `app/src/presentation/screens/MapScreen.tsx`, `app/jest.setup.js`, `app/jest.config.js`, `app/.eslintrc.js` |
+| [0102](0102/README.md) | Botão "Abrir mapa" sempre disponível no dashboard do app | 2026-08-17 | Concluído | `app/src/presentation/screens/DashboardScreen.tsx`, `app/src/presentation/screens/DashboardScreen.test.tsx`, `app/src/presentation/App.tsx` |
 
 ---
 

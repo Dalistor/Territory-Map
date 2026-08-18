@@ -44,6 +44,30 @@ function makeApiClient(
 }
 
 describe('DashboardScreen', () => {
+  it('always offers "Abrir mapa", even with no assigned territory, and it opens the full map', async () => {
+    const onOpenFullMap = jest.fn()
+
+    render(
+      <DashboardScreen
+        session={makeSession()}
+        apiClient={makeApiClient()}
+        onOpenMap={jest.fn()}
+        onOpenFullMap={onOpenFullMap}
+      />
+    )
+
+    await waitFor(
+      () => {
+        expect(screen.getByText('Nenhuma quadra trabalhada ainda')).toBeTruthy()
+      },
+      { timeout: 3000 }
+    )
+
+    fireEvent.press(screen.getByText('Abrir mapa'))
+
+    expect(onOpenFullMap).toHaveBeenCalled()
+  })
+
   it('shows worked territories with their name and most recent date', async () => {
     const lastWorkedAt = new Date('2026-08-10T12:00:00Z')
     const apiClient = makeApiClient({
@@ -53,7 +77,7 @@ describe('DashboardScreen', () => {
     })
 
     render(
-      <DashboardScreen session={makeSession()} apiClient={apiClient} onOpenMap={jest.fn()} />
+      <DashboardScreen session={makeSession()} apiClient={apiClient} onOpenMap={jest.fn()} onOpenFullMap={jest.fn()} />
     )
 
     await waitFor(
@@ -82,7 +106,14 @@ describe('DashboardScreen', () => {
     })
     const onOpenMap = jest.fn()
 
-    render(<DashboardScreen session={session} apiClient={apiClient} onOpenMap={onOpenMap} />)
+    render(
+      <DashboardScreen
+        session={session}
+        apiClient={apiClient}
+        onOpenMap={onOpenMap}
+        onOpenFullMap={jest.fn()}
+      />
+    )
 
     await waitFor(
       () => {
@@ -105,7 +136,7 @@ describe('DashboardScreen', () => {
     })
 
     render(
-      <DashboardScreen session={makeSession()} apiClient={apiClient} onOpenMap={jest.fn()} />
+      <DashboardScreen session={makeSession()} apiClient={apiClient} onOpenMap={jest.fn()} onOpenFullMap={jest.fn()} />
     )
 
     await waitFor(
@@ -122,7 +153,7 @@ describe('DashboardScreen', () => {
 
   it('shows "Nenhuma quadra trabalhada ainda" instead of an empty list when nothing was worked yet', async () => {
     render(
-      <DashboardScreen session={makeSession()} apiClient={makeApiClient()} onOpenMap={jest.fn()} />
+      <DashboardScreen session={makeSession()} apiClient={makeApiClient()} onOpenMap={jest.fn()} onOpenFullMap={jest.fn()} />
     )
 
     await waitFor(

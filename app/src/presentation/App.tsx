@@ -205,6 +205,7 @@ export default function App({ dependencies }: AppProps): React.JSX.Element {
                     onOpenMap={(territory) =>
                       navigation.navigate('Map', { territoryId: territory.id })
                     }
+                    onOpenFullMap={() => navigation.navigate('Map', {})}
                   />
                 )}
               </Stack.Screen>

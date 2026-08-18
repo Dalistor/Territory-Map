@@ -9,6 +9,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { ApiClient } from '../../data/api-client'
 import { isTerritoryAssignedToMe } from '../../domain/assignment'
 import type { Session, Territory, WorkedTerritory } from '../../domain/models'
+import { PrimaryButton } from '../components/PrimaryButton'
 import { colors, spacing } from '../theme'
 
 /**
@@ -24,9 +25,21 @@ export interface DashboardScreenProps {
   readonly session: Session
   readonly apiClient: Pick<ApiClient, 'listWorkedTerritories' | 'listTerritories'>
   readonly onOpenMap: (territory: Territory) => void
+  /**
+   * Opens the map with no preselected territory (the map's own default
+   * filter decides what shows). Always available -- "Ver no mapa" only
+   * exists per assigned territory, and a publisher with no assignment
+   * would otherwise have no way into the map at all.
+   */
+  readonly onOpenFullMap: () => void
 }
 
-export function DashboardScreen({ session, apiClient, onOpenMap }: DashboardScreenProps) {
+export function DashboardScreen({
+  session,
+  apiClient,
+  onOpenMap,
+  onOpenFullMap
+}: DashboardScreenProps) {
   const [workedTerritories, setWorkedTerritories] = useState<WorkedTerritory[]>([])
   const [assignedTerritories, setAssignedTerritories] = useState<Territory[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -56,6 +69,7 @@ export function DashboardScreen({ session, apiClient, onOpenMap }: DashboardScre
           <Text style={styles.errorBannerText}>{loadError}</Text>
         </View>
       )}
+      <PrimaryButton title="Abrir mapa" onPress={onOpenFullMap} />
       <WorkedTerritoriesSection territories={workedTerritories} />
       <AssignedTerritoriesSection territories={assignedTerritories} onOpenMap={onOpenMap} />
     </ScrollView>
