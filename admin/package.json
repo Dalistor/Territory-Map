@@ -25,6 +25,7 @@
     "@electron-toolkit/utils": "^4.0.0",
     "@geoman-io/leaflet-geoman-free": "^2.20.0",
     "dotenv": "^17.4.2",
+    "exceljs": "^4.4.0",
     "leaflet": "^1.9.4",
     "react-leaflet": "^5.0.0"
   },

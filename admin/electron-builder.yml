@@ -1,5 +1,10 @@
-appId: com.electron.app
-productName: admin
+# The bundle identity macOS/Windows show the admin: without these two the
+# scaffold defaults would install the app as literally "admin", under
+# `com.electron.app`. `productName` also decides the `userData` folder the
+# packaged app keeps its encrypted credentials in (`main/credentials-store.ts`),
+# so changing it later would orphan a real installation's saved login.
+appId: com.dalistor.territory-map-admin
+productName: Territory Map Admin
 directories:
   buildResources: build
 files:
@@ -11,6 +16,15 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+# The runtime config (`API_BASE_URL`, `APP_KEY`) travels next to the app, not
+# inside the asar: `main/index.ts` reads `Contents/Resources/.env` when
+# packaged, so an installed copy can be pointed at another server by editing a
+# text file instead of rebuilding. Packaging fails loudly if `admin/.env` is
+# missing — better than shipping an app that dies on first launch, which is
+# exactly what happened before this entry existed.
+extraResources:
+  - from: .env
+    to: .env
 win:
   executableName: admin
   target:
@@ -25,11 +39,10 @@ mac:
     - dmg
     - zip
   entitlementsInherit: build/entitlements.mac.plist
-  extendInfo:
-    - NSCameraUsageDescription: Application requests access to the device's camera.
-    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
-    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
-    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+  # The scaffold's camera/microphone/Documents/Downloads usage strings were
+  # dropped: this app asks for none of them, and a privacy prompt reason for a
+  # permission that is never requested is a claim the app cannot honour.
+  category: public.app-category.productivity
   notarize: false
 dmg:
   artifactName: ${name}-${version}.${ext}

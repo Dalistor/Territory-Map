@@ -22,11 +22,7 @@ jest.mock('react-native-config', () => ({
   default: { API_BASE_URL: 'https://territory.example.test', APP_KEY: 'the-app-key' },
 }))
 jest.mock('react-native-keychain')
-/**
- * `App.tsx` also wires `data/work-log-queue.ts` (Task 20) into `MapScreen`,
- * and that module imports `uuid`, which ships ESM-only -- same fix
- * `work-log-queue.test.ts` uses.
- */
+/** `MapScreen` generates a work-log id with `uuid`, which ships ESM-only. */
 jest.mock('uuid', () => ({ v4: jest.fn(() => 'fake-uuid') }))
 /**
  * `MapScreen` (Task 25, via `TerritoryMapView.tsx`) imports

@@ -1,0 +1,378 @@
+"""Behaviour of the assignment history: one publisher at a time, and a past that stays.
+
+These tests run against a real database rather than in-memory fakes, unlike the work
+log suite. Nothing here is geometric, but two things the rules depend on live in the
+database itself: the partial unique index that allows only one open assignment per
+territory, and `TerritoryRepository.set_assigned_user`, which refreshes the loaded
+relationship after the flush. A fake would answer both from Python and prove nothing
+about the invariant the schema is there to hold.
+"""
+
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+from uuid import UUID, uuid4
+
+import pytest
+from app.core.exceptions import NotFoundError
+from app.core.geo import LatLng, points_to_wkt
+from app.models.territory import Territory
+from app.models.user import User
+from app.repositories.territory import TerritoryRepository
+from app.repositories.territory_assignment import TerritoryAssignmentRepository
+from app.repositories.user import UserRepository
+from app.services.assignment import AssignmentService
+from sqlalchemy.orm import Session
+
+NOW = datetime(2026, 8, 2, 12, 0, tzinfo=UTC)
+EARLIER = NOW - timedelta(days=30)
+
+
+def square(lat: float, lng: float, size: float = 1.0) -> list[LatLng]:
+    """A square ring whose south-west corner is `(lat, lng)`, walked anticlockwise."""
+    return [
+        LatLng(lat, lng),
+        LatLng(lat, lng + size),
+        LatLng(lat + size, lng + size),
+        LatLng(lat + size, lng),
+    ]
+
+
+@pytest.fixture
+def service(session: Session) -> AssignmentService:
+    return AssignmentService(
+        assignments=TerritoryAssignmentRepository(session),
+        territories=TerritoryRepository(session),
+        users=UserRepository(session),
+        now_provider=lambda: NOW,
+    )
+
+
+@pytest.fixture
+def make_territory(session: Session) -> Callable[..., Territory]:
+    """Draw a territory straight through the repository.
+
+    `TerritoryService` is a different unit, and its rules (overlap, unique name)
+    would make these tests fail for reasons that belong there. What an assignment
+    needs from a territory is only that it exists, inside a congregation.
+    """
+    drawn = 0
+
+    def _make(congregation_id: UUID, name: str = "Centro") -> Territory:
+        nonlocal drawn
+        territory = TerritoryRepository(session).create(
+            congregation_id, name, points_to_wkt(square(float(drawn * 2), 0.0))
+        )
+        drawn += 1
+        return territory
+
+    return _make
+
+
+@pytest.fixture
+def make_user(session: Session) -> Callable[..., User]:
+    """Put a publisher on the map straight through the repository.
+
+    Same reasoning as the territory factory: `UserService` owns code generation and
+    expiry, and the assignment rules need none of it -- only a person who exists,
+    in a congregation, with a given `is_active`.
+    """
+
+    def _make(congregation_id: UUID, name: str = "Ana", *, is_active: bool = True) -> User:
+        repository = UserRepository(session)
+        user = repository.create(congregation_id=congregation_id, name=name)
+        if not is_active:
+            user = repository.set_active(user, False)
+        return user
+
+    return _make
+
+
+def test_designate_opens_an_assignment_and_points_the_territory_at_the_publisher(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+    make_user,
+) -> None:
+    congregation = make_congregation()
+    territory = make_territory(congregation.id)
+    publisher = make_user(congregation.id)
+
+    assignment = service.designate(congregation.id, territory.id, publisher.id)
+
+    assert assignment.user_id == publisher.id
+    assert assignment.started_at == NOW
+    assert assignment.completed_at is None
+    assert territory.assigned_user_id == publisher.id
+
+
+def test_designate_to_someone_else_closes_the_open_assignment_and_keeps_it_in_the_history(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+    make_user,
+) -> None:
+    """Handing a territory over is one event, not two.
+
+    The paper S-13 card has only two dates per line, so "gave it back" and
+    "completed it" are the same stamp -- the previous holder is closed at the moment
+    the next one starts, and the admin keeps the single click they had before.
+    """
+    congregation = make_congregation()
+    territory = make_territory(congregation.id)
+    first = make_user(congregation.id, "Ana")
+    second = make_user(congregation.id, "Bruno")
+    previous = service.designate(congregation.id, territory.id, first.id, now=EARLIER)
+
+    current = service.designate(congregation.id, territory.id, second.id)
+
+    assert previous.completed_at == NOW
+    assert current.started_at == NOW
+    assert current.completed_at is None
+    assert territory.assigned_user_id == second.id
+    assert [a.id for a in service.list(congregation.id, territory.id)] == [
+        current.id,
+        previous.id,
+    ]
+
+
+def test_complete_closes_the_open_assignment_and_frees_the_territory(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+    make_user,
+) -> None:
+    congregation = make_congregation()
+    territory = make_territory(congregation.id)
+    publisher = make_user(congregation.id)
+    service.designate(congregation.id, territory.id, publisher.id, now=EARLIER)
+
+    completed = service.complete(congregation.id, territory.id)
+
+    assert completed.completed_at == NOW
+    assert completed.started_at == EARLIER
+    assert territory.assigned_user_id is None
+    assert [a.id for a in service.list(congregation.id, territory.id)] == [completed.id]
+
+
+def test_delete_of_a_completed_record_leaves_the_open_assignment_untouched(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+    make_user,
+) -> None:
+    congregation = make_congregation()
+    territory = make_territory(congregation.id)
+    first = make_user(congregation.id, "Ana")
+    second = make_user(congregation.id, "Bruno")
+    previous = service.designate(congregation.id, territory.id, first.id, now=EARLIER)
+    current = service.designate(congregation.id, territory.id, second.id)
+
+    service.delete(congregation.id, previous.id)
+
+    assert territory.assigned_user_id == second.id
+    assert [a.id for a in service.list(congregation.id, territory.id)] == [current.id]
+
+
+def test_delete_of_the_open_record_frees_the_territory(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+    make_user,
+) -> None:
+    congregation = make_congregation()
+    territory = make_territory(congregation.id)
+    publisher = make_user(congregation.id)
+    assignment = service.designate(congregation.id, territory.id, publisher.id)
+
+    service.delete(congregation.id, assignment.id)
+
+    assert territory.assigned_user_id is None
+    assert service.list(congregation.id, territory.id) == []
+
+
+def test_delete_of_the_open_record_does_not_reopen_the_completed_one_before_it(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+    make_user,
+) -> None:
+    """Erasing the current holder frees the territory; it does not rewind to the last.
+
+    A completed assignment stays completed -- its two dates are a closed stretch of
+    time on the card. The projection is recomputed from the assignments that are
+    still open, and after this deletion there are none.
+    """
+    congregation = make_congregation()
+    territory = make_territory(congregation.id)
+    first = make_user(congregation.id, "Ana")
+    second = make_user(congregation.id, "Bruno")
+    previous = service.designate(congregation.id, territory.id, first.id, now=EARLIER)
+    current = service.designate(congregation.id, territory.id, second.id)
+
+    service.delete(congregation.id, current.id)
+
+    assert territory.assigned_user_id is None
+    assert [a.id for a in service.list(congregation.id, territory.id)] == [previous.id]
+
+
+def test_list_gives_the_history_most_recent_first(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+    make_user,
+) -> None:
+    congregation = make_congregation()
+    territory = make_territory(congregation.id)
+    publisher = make_user(congregation.id)
+    oldest = service.designate(congregation.id, territory.id, publisher.id, now=EARLIER)
+    middle = service.designate(
+        congregation.id, territory.id, publisher.id, now=NOW - timedelta(days=10)
+    )
+    newest = service.designate(congregation.id, territory.id, publisher.id)
+
+    history = service.list(congregation.id, territory.id)
+
+    assert [a.id for a in history] == [newest.id, middle.id, oldest.id]
+
+
+def test_list_of_a_territory_of_another_congregation_is_not_found(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+) -> None:
+    ours = make_congregation("Central", "São Paulo")
+    theirs = make_congregation("Norte", "São Paulo")
+    stranger = make_territory(theirs.id)
+
+    with pytest.raises(NotFoundError):
+        service.list(ours.id, stranger.id)
+
+
+def test_designate_with_a_nonexistent_territory_id_is_not_found(
+    service: AssignmentService,
+    make_congregation,
+    make_user,
+) -> None:
+    congregation = make_congregation()
+    publisher = make_user(congregation.id)
+
+    with pytest.raises(NotFoundError):
+        service.designate(congregation.id, uuid4(), publisher.id)
+
+
+def test_designate_of_a_territory_of_another_congregation_is_not_found(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+    make_user,
+) -> None:
+    ours = make_congregation("Central", "São Paulo")
+    theirs = make_congregation("Norte", "São Paulo")
+    stranger = make_territory(theirs.id)
+    publisher = make_user(ours.id)
+
+    with pytest.raises(NotFoundError):
+        service.designate(ours.id, stranger.id, publisher.id)
+
+
+def test_designate_with_a_nonexistent_user_id_is_not_found(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+) -> None:
+    congregation = make_congregation()
+    territory = make_territory(congregation.id)
+
+    with pytest.raises(NotFoundError):
+        service.designate(congregation.id, territory.id, uuid4())
+
+
+def test_designate_with_a_user_of_another_congregation_is_not_found(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+    make_user,
+) -> None:
+    """The same generic failure as a missing territory, on purpose.
+
+    Telling the two apart would confirm that an id names a real publisher
+    somewhere, which is precisely what the congregation boundary is there to hide.
+    """
+    ours = make_congregation("Central", "São Paulo")
+    theirs = make_congregation("Norte", "São Paulo")
+    territory = make_territory(ours.id)
+    stranger = make_user(theirs.id)
+
+    with pytest.raises(NotFoundError):
+        service.designate(ours.id, territory.id, stranger.id)
+
+
+def test_designate_accepts_an_inactive_publisher(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+    make_user,
+) -> None:
+    """Deactivation revokes app access, not the record of who is responsible."""
+    congregation = make_congregation()
+    territory = make_territory(congregation.id)
+    inactive = make_user(congregation.id, is_active=False)
+
+    assignment = service.designate(congregation.id, territory.id, inactive.id)
+
+    assert assignment.user_id == inactive.id
+    assert territory.assigned_user_id == inactive.id
+
+
+def test_complete_of_a_territory_of_another_congregation_is_not_found(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+    make_user,
+) -> None:
+    ours = make_congregation("Central", "São Paulo")
+    theirs = make_congregation("Norte", "São Paulo")
+    stranger = make_territory(theirs.id)
+    service.designate(theirs.id, stranger.id, make_user(theirs.id).id)
+
+    with pytest.raises(NotFoundError):
+        service.complete(ours.id, stranger.id)
+
+
+def test_complete_without_an_open_assignment_is_not_found(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+) -> None:
+    congregation = make_congregation()
+    territory = make_territory(congregation.id)
+
+    with pytest.raises(NotFoundError):
+        service.complete(congregation.id, territory.id)
+
+
+def test_delete_with_a_nonexistent_assignment_id_is_not_found(
+    service: AssignmentService,
+    make_congregation,
+) -> None:
+    congregation = make_congregation()
+
+    with pytest.raises(NotFoundError):
+        service.delete(congregation.id, uuid4())
+
+
+def test_delete_of_an_assignment_of_another_congregation_is_not_found(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+    make_user,
+) -> None:
+    ours = make_congregation("Central", "São Paulo")
+    theirs = make_congregation("Norte", "São Paulo")
+    stranger_territory = make_territory(theirs.id)
+    stranger = service.designate(theirs.id, stranger_territory.id, make_user(theirs.id).id)
+
+    with pytest.raises(NotFoundError):
+        service.delete(ours.id, stranger.id)
+
+    assert service.list(theirs.id, stranger_territory.id) == [stranger]

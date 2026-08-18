@@ -45,14 +45,3 @@ class TerritoryOut(OutSchema):
     boundary: RingOut
     blocks: list[BlockOut] = []
     assigned_user: UserBriefOut | None = None
-
-
-class TerritoryAssignmentIn(BaseModel):
-    """The admin setting who is responsible for a territory.
-
-    `user_id` has no default: this endpoint exists to set the assignment, and a body
-    without the field is a request that means nothing -- `null` explicitly clears the
-    assignment, same reasoning as `UserPatchIn.is_active`.
-    """
-
-    user_id: UUID | None

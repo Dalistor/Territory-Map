@@ -64,6 +64,15 @@ npm run build:linux  # gera .AppImage e .tar.gz em dist/
 
 Os binários saem em `dist/` (fora do controle de versão — está no `.gitignore`).
 
+**O `.env` viaja dentro do app empacotado.** `electron-builder.yml` copia `admin/.env` para
+`Contents/Resources/.env` (`extraResources`), e o main process lê de lá quando `app.isPackaged` é
+verdadeiro — em desenvolvimento continua lendo `admin/.env` da pasta do projeto. Duas consequências
+práticas: **preencher o `.env` antes de empacotar não é opcional** (sem ele o build falha, o que é
+melhor do que entregar um app que morre no primeiro clique), e uma instalação já feita pode ser
+apontada para outro servidor editando esse arquivo de texto dentro do `.app`, sem recompilar. Como
+já vale para o `APP_KEY` em geral, o valor é extraível de quem tiver o binário — a chave é uma
+persiana contra varredura automática, nunca autenticação.
+
 **Compilar Windows/Linux a partir do macOS pode não funcionar sem ferramentas extra.** O
 `electron-builder` cross-compila os três alvos a partir de qualquer SO na maioria dos casos, mas o
 instalador NSIS do Windows depende do Wine para rodar o `makensis` fora do Windows, e não há

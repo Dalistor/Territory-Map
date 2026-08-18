@@ -62,6 +62,20 @@ export interface WorkLog {
   readonly createdAt: Date
 }
 
+/**
+ * One line of a territory's assignment history, the way the S-13 card reads:
+ * who had it, when they took it and when they gave it back. An absent
+ * `completedAt` means the assignment is still **open** — the one in force
+ * right now, and the only one that grants the publisher the right to mark
+ * blocks in that territory.
+ */
+export interface Assignment {
+  readonly id: string
+  readonly publisher: PublisherBrief
+  readonly startedAt: Date
+  readonly completedAt?: Date
+}
+
 /** A successful admin login. */
 export interface AdminSession {
   readonly accessToken: string
@@ -76,6 +90,11 @@ export function publisherIsPending(publisher: Publisher): boolean {
 /** `true` when this block has never had a work log recorded against it. */
 export function blockWasNeverWorked(block: Block): boolean {
   return block.lastWorkedAt === undefined || block.lastWorkedAt === null
+}
+
+/** `true` while this assignment has not been completed — the one in force. */
+export function assignmentIsOpen(assignment: Assignment): boolean {
+  return assignment.completedAt === undefined || assignment.completedAt === null
 }
 
 /**
@@ -113,4 +132,37 @@ const SYNC_LATE_THRESHOLD_MS = 5 * 60 * 1000
  */
 export function workLogWasSyncedLate(log: WorkLog): boolean {
   return log.createdAt.getTime() - log.workedAt.getTime() > SYNC_LATE_THRESHOLD_MS
+}
+
+/**
+ * The sequence number a territory name carries by convention ("Centro - N5",
+ * "Santa Helena - N 7"), or `null` when the name has none.
+ *
+ * Reads the *last* run of digits rather than the first: an area name can hold
+ * a number of its own ("Cambé 3 - N1"), and it is the trailing one that
+ * identifies the territory. Tolerates the space some names put after the "N",
+ * because the names are typed by hand.
+ */
+export function territoryNumber(name: string): number | null {
+  const matches = name.match(/\d+/g)
+  if (matches === null) return null
+  return Number(matches[matches.length - 1])
+}
+
+/**
+ * Orders territories by their number, ascending — the order the congregation
+ * reads them in, and the reason the number is required when naming one.
+ *
+ * The area name only breaks ties, so "Próximo ao centro - N12" lands after
+ * "Santa Helena - N 7" instead of between "Centro" and "Santa Helena" the way
+ * a plain name sort put it. Names with no number at all sort last (they are
+ * legacy: the editor now refuses to save one), alphabetically among themselves.
+ */
+export function compareTerritoriesByNumber(a: string, b: string): number {
+  const numberA = territoryNumber(a)
+  const numberB = territoryNumber(b)
+  if (numberA !== null && numberB !== null && numberA !== numberB) return numberA - numberB
+  if (numberA === null && numberB !== null) return 1
+  if (numberA !== null && numberB === null) return -1
+  return a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true })
 }

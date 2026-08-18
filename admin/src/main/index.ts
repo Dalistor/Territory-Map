@@ -5,7 +5,7 @@
 // opens the window. No business rule lives here — this file only assembles
 // the pieces the other tasks already built and tested.
 
-import { app, shell, BrowserWindow, safeStorage } from 'electron'
+import { app, shell, BrowserWindow, dialog, safeStorage } from 'electron'
 import { join } from 'path'
 import { config as loadEnv } from 'dotenv'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -16,10 +16,28 @@ import { createSession } from './session'
 import { registerIpcHandlers } from './ipc-handlers'
 import { createGeocoder } from './geocode'
 
-// `__dirname` is always `<admin>/out/main` here — electron-vite bundles the
-// main process to `out/` in both `dev` and `build`, so this path reaches
-// `admin/.env` regardless of the process's current working directory.
-loadEnv({ path: join(__dirname, '../../.env') })
+/**
+ * Where `API_BASE_URL`/`APP_KEY` are read from, which is not the same place in
+ * the two ways this app runs:
+ *
+ * - **dev** (`npm run dev`): `<admin>/.env`, reached from the bundled
+ *   `<admin>/out/main` — electron-vite bundles the main process to `out/` in
+ *   both modes, so `__dirname` is stable regardless of the working directory.
+ * - **packaged**: `Contents/Resources/.env`, copied there at build time by
+ *   `extraResources` in `electron-builder.yml`. Deliberately *outside* the
+ *   asar, so the file stays editable after install: pointing an installed copy
+ *   at another server is a text edit, not a rebuild. It is still inside the
+ *   bundle and therefore extractable — the same thing CLAUDE.md already says
+ *   about `APP_KEY` shipping inside the binary, which is why the key is a
+ *   shutter against scanners and never authentication.
+ *
+ * Before this, the packaged app looked for `app.asar/.env` — a path that
+ * cannot exist, since `.env` is excluded from the asar — so it threw below and
+ * died before opening a window.
+ */
+const envPath = app.isPackaged ? join(process.resourcesPath, '.env') : join(__dirname, '../../.env')
+
+loadEnv({ path: envPath })
 
 /** Fails fast and says exactly what to do, instead of shipping a window that
  * takes 401s on every request because `APP_KEY`/`API_BASE_URL` were empty. */
@@ -27,7 +45,8 @@ function requireEnv(name: 'API_BASE_URL' | 'APP_KEY'): string {
   const value = process.env[name]
   if (!value) {
     throw new Error(
-      `Missing ${name} in admin/.env — copy admin/.env.example to admin/.env and fill it in.`
+      `Missing ${name} in ${envPath} — copy admin/.env.example to admin/.env and fill it in ` +
+        'before packaging (the file is copied into the app bundle at build time).'
     )
   }
   return value
@@ -98,7 +117,7 @@ app.whenReady().then(() => {
   })
   const session = createSession({ api, store: credentialsStore })
   const geocoder = createGeocoder()
-  registerIpcHandlers({ session, api, geocoder })
+  registerIpcHandlers({ session, api, geocoder, dialog })
 
   createWindow()
 

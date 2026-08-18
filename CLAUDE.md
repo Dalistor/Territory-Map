@@ -53,8 +53,8 @@ usuário e quem trabalhou cada quadra. Só o admin tem senha.
 | Geometria (Python) | Shapely / GeoAlchemy2 |
 | Auth | JWT (`python-jose`) + hash de senha com **bcrypt** (`passlib`) |
 | Mapas | **OpenStreetMap** — `@maplibre/maplibre-react-native` (MapLibre Native) no app; `react-leaflet`/Leaflet no admin. Sem chave de API, sem billing. |
-| App (Android) | **React Native (CLI puro, sem Expo) + TypeScript**, React Navigation para navegação, `react-native-keychain` (token) e `AsyncStorage` (fila offline, cache de mapa) |
-| Admin (desktop) | **Electron + React + TypeScript**, Leaflet + **Leaflet-Geoman** para desenhar/editar polígono, `safeStorage` (Electron) para as credenciais |
+| App (Android) | **React Native (CLI puro, sem Expo) + TypeScript**, React Navigation para navegação, `react-native-keychain` (token) e `AsyncStorage` (cache de mapa) |
+| Admin (desktop) | **Electron + React + TypeScript**, Leaflet + **Leaflet-Geoman** para desenhar/editar polígono, `safeStorage` (Electron) para as credenciais, **`exceljs`** (no main process) para a exportação `.xlsx` das designações |
 | Infra | Docker + Docker Compose em um Ubuntu |
 | CI/CD | GitHub Actions → deploy do servidor por SSH. Admin e app não têm CI: os builds (`electron-builder`, `./gradlew assembleRelease`) são sempre locais |
 
@@ -80,14 +80,20 @@ Monorepo. O servidor está completo. O `admin/` está implementado — configura
 daí, **navegação por sidebar permanente** (Mapa / Designações / Publicadores, com o nome da
 congregação no topo e "Sair da congregação" no rodapé): o Mapa é a Home (mapa + lista de
 territórios), **Designações** é a página própria da designação de território (mapa só com as
-demarcações, sem quadras, o nome do dirigente sobreposto a cada território, e clique abrindo o
-diálogo de atribuição — os canais IPC são os mesmos da spec 0005), e Publicadores tem busca por
-nome e contadores por situação. Os editores de território e de quadra são telas empurradas
+demarcações, sem quadras, o nome do dirigente sobreposto a cada território), onde clicar num
+território abre um **painel de histórico** — o cartão S-13, com a designação em vigor, as
+anteriores com suas datas e um botão de apagar em cada, mais "Designar a…" e "Marcar como
+concluído" — e um botão **"Exportar para Excel"** gera um `.xlsx` com **uma aba por território**,
+no estilo do S-13 (publicador, data de início, data de conclusão); a planilha é montada com
+**`exceljs`** no main process (`admin/src/main/excel-export.ts`, que sanea e desduplica o nome da
+aba dentro do limite de 31 caracteres do Excel) e salva pelo `dialog.showSaveDialog` do Electron.
+Publicadores tem busca por nome e contadores por situação. Os editores de território e de quadra são telas empurradas
 ("← Voltar") em **layout lado a lado** (painel compacto à esquerda, mapa grande à direita); o de
 quadra ainda sugere o próximo número da sequência após cada salvamento. As sete telas são cobertas
 por teste (Vitest + React Testing Library), mais o roteamento/sidebar em `App.test.tsx`. O `app/` (React Native) também está implementado — ativação por código, dashboard,
 mapa com MapLibre e localização em tempo real, marcação de quadra restrita ao território designado,
-fila offline e cache local —, com as telas de `presentation/` e as camadas de `domain/`/`data/`
+marcação sempre confirmada pelo servidor e cache local de leitura —, com as telas de
+`presentation/` e as camadas de `domain/`/`data/`
 cobertas por teste (Jest + `@testing-library/react-native`); só o componente que efetivamente
 desenha o MapLibre nativo (`presentation/map/TerritoryMapView.tsx` e a tela que o compõe,
 `presentation/screens/MapScreen.tsx`) não tem teste automatizado — ver "Testes" mais abaixo para o
@@ -128,7 +134,7 @@ Territory map/
 │   └── src/
 │       ├── domain/              # entidades e funções puras: models.ts, blockColor.ts, assignment.ts
 │       ├── data/                # api-client.ts, session-store.ts (react-native-keychain),
-│       │                        # territory-cache.ts e work-log-queue.ts (AsyncStorage)
+│       │                        # territory-cache.ts (AsyncStorage)
 │       └── presentation/        # screens/ (ActivationScreen, DashboardScreen, MapScreen), map/
 │                                # (TerritoryMapView com MapLibre, territoryFilter.ts), App.tsx
 └── admin/                      # Electron + React + TypeScript — desktop (sem domain/; veja Arquitetura de Camadas)
@@ -206,13 +212,45 @@ que cumpre a função. O que dura é o token do app guardado no aparelho. Índic
 | `congregation_id` | UUID | FK → Congregation |
 | `name` | str | único dentro da congregação |
 | `boundary` | `GEOMETRY(POLYGON, 4326)` | a demarcação do território |
-| `assigned_user_id` | UUID? | FK → User, nullable, `ON DELETE SET NULL` |
+| `assigned_user_id` | UUID? | FK → User, nullable, `ON DELETE SET NULL`. **Derivado** da designação aberta em `TerritoryAssignment`. |
 | `created_at` | datetime | |
 
 `assigned_user_id` é **1:N do lado do publicador, não do território**: um território tem no máximo
 um publicador designado por vez, mas um publicador pode ter vários territórios designados ao mesmo
 tempo (ex.: quem dirige um grupo). `SET NULL`, não `CASCADE` — apagar ou desativar o publicador
 nunca apaga o território, só solta a designação.
+
+**`assigned_user_id` é projeção, não fonte de verdade** — mesmo papel que `Block.last_worked_at`
+tem em relação ao `BlockWorkLog`. Quem manda é a designação **aberta** em `TerritoryAssignment`; a
+coluna é cache de leitura, recalculado pelo `AssignmentService` a cada designar/concluir/apagar
+(`_refresh_assigned_user`). Ela sobrevive porque é o que a regra do app lê numa coluna só
+(`WorkLogService`), sem precisar consultar o histórico a cada marcação.
+
+### TerritoryAssignment
+Um período em que um publicador foi responsável por um território — uma linha do cartão S-13.
+
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| `id` | UUID | PK |
+| `territory_id` | UUID | FK → Territory, `ON DELETE CASCADE` |
+| `user_id` | UUID | FK → User, **`ON DELETE RESTRICT`** — o histórico nomeia uma pessoa e não a perde em silêncio |
+| `started_at` | datetime | quando a designação começou (relógio do servidor, nunca do cliente) |
+| `completed_at` | datetime? | **nulo = designação aberta**; preenchido = virou histórico |
+| `created_at` | datetime | |
+
+Índices: `ix_territory_assignments_territory_started` em `(territory_id, started_at DESC)` — a
+ordem em que o painel e a planilha leem o cartão — e **`uq_territory_assignments_open`**, índice
+único **parcial** em `territory_id WHERE completed_at IS NULL`: é o banco, e não só o service,
+garantindo **no máximo uma designação aberta por território**, mesmo com duas requisições
+simultâneas.
+
+Apagar o território leva o histórico junto (`CASCADE`), pela mesma razão das quadras: o registro só
+significa alguma coisa em relação à área que descreve. `User` **não** tem coleção `assignments` do
+outro lado, de propósito — mesmo cuidado já tomado com `BlockWorkLog.user`.
+
+A migration que criou a tabela (`d3ab774c1b2f`) **zera `territories.assigned_user_id`** e não faz
+backfill: as designações que existiam não tinham data de início, e inventar uma poria data errada
+no que vira histórico. O admin redesigna pela tela, com a data correta.
 
 ### Block
 | Campo | Tipo | Notas |
@@ -312,19 +350,47 @@ Registro de que uma quadra foi trabalhada. Append-only pelo app.
 - **O app não desmarca.** Só o admin corrige ou remove um registro, pelo app admin; ao remover,
   `last_worked_at` é recalculado a partir do log restante.
 - Marcações repetidas da mesma pessoa no mesmo bloco são registros distintos e legítimos (a quadra
-  foi trabalhada de novo). Idempotência é por `id` do log gerado no cliente, para o reenvio offline
-  não duplicar.
+  foi trabalhada de novo). Idempotência é por `id` do log gerado no cliente, para um reenvio não
+  duplicar.
 - `worked_at` no futuro é rejeitado. Muito antigo (ex.: > 90 dias) também — provável relógio errado
   do aparelho.
 
 ### Designação de território
-- Só o **admin** designa (ou remove a designação de) um publicador a um território —
-  `PATCH /admin/territories/{id}/assignment`, corpo `{"user_id": "<uuid>" | null}`. O app do
-  publicador nunca escreve nisso.
-- Um território tem **no máximo um publicador por vez**. Designar a outro simplesmente substitui —
-  não precisa "desdesignar" antes.
+A designação é um **registro datado com histórico** (`TerritoryAssignment`), não um campo que se
+sobrescreve — é o cartão S-13 em banco. Só o **admin** escreve nela; o app do publicador nunca.
+
+As quatro rotas vivem em `server/app/routers/admin_assignments.py`, todas sob
+`/admin/territories/{territory_id}/assignments`:
+
+| Rota | O que faz |
+|------|-----------|
+| `GET ""` | o cartão do território: todos os períodos, mais recente primeiro (a aberta no topo) |
+| `POST ""` (201) | designa a um publicador (`{"user_id": "<uuid>"}`), com `started_at` = agora |
+| `POST "/complete"` | marca como concluído: fecha a designação em vigor e libera o território |
+| `DELETE "/{assignment_id}"` (204) | apaga um registro do histórico de vez |
+
+- **`PATCH /admin/territories/{id}/assignment` não existe mais** — foi removida junto com
+  `TerritoryService.assign_to_user`. Designar e desdesignar deixaram de ser o mesmo `PATCH` com
+  `null`, porque são eventos diferentes no cartão.
+- **Designar grava a data de início.** Se já houver uma designação aberta, ela é **encerrada com a
+  data de hoje** em vez de a operação ser recusada: no S-13 existem só duas datas por linha, então
+  "devolveu" e "concluiu" são o mesmo evento, e exigir uma conclusão explícita antes custaria ao
+  admin o clique único que ele tem para trocar de dirigente. A interface avisa antes de confirmar.
+- **"Marcar como concluído" grava a data de conclusão e libera o território.** A projeção
+  `assigned_user_id` é zerada na mesma chamada — consequência intencional: o publicador **perde na
+  hora** o direito de marcar quadras ali. Território sem nada aberto responde 404.
+- **Apagar um registro o remove do histórico de vez** (é o admin desfazendo o que não devia ter
+  sido escrito, diferente de concluir, que preserva a linha). A projeção é **recalculada** a partir
+  do que sobrou: apagar a designação aberta libera o território, apagar uma concluída não muda
+  nada — sem caso especial no código.
+- Um território tem **no máximo um publicador por vez** — garantido pelo índice único parcial
+  `uq_territory_assignments_open`, não só pelo service.
+- Território ou publicador de outra congregação, e id inexistente, respondem **o mesmo 404** — nunca
+  403: um 403 confirmaria que o id nomeia algo real em outro lugar.
 - Um publicador com `is_active = false` ainda **pode** ser designado: desativação revoga o acesso ao
   app, não o vínculo de responsabilidade registrado no admin.
+- **A regra do app não mudou**: ela continua lendo `Territory.assigned_user_id` numa coluna só — o
+  que mudou é que essa coluna passou a ser derivada da designação aberta.
 - O publicador só pode **marcar uma quadra de um território designado a ele**. Tentar marcar fora
   disso responde **403** com o código `territory_not_assigned` — o bloco existe visivelmente na
   congregação do publicador, então a barreira aqui é de permissão, não de existência (diferente do
@@ -374,8 +440,12 @@ Registro de que uma quadra foi trabalhada. Append-only pelo app.
 - Vincula-se pelo `access_code` individual; sem código válido e ativo, não há dados.
 - Faz cache local dos territórios e quadras para funcionar sem sinal em campo. Os *tiles* do mapa
   ficam limitados ao que já foi carregado — isso é uma limitação conhecida, não um bug.
-- Marcação feita offline entra numa **fila local** com `worked_at` do momento real e um `id` gerado
-  no cliente, e é enviada quando houver rede. A UI mostra a quadra como concluída na hora.
+- **Marcar quadra exige o servidor.** A confirmação só vale quando `POST /app/blocks/{id}/worked`
+  é aceito; sem rede, o app avisa e **não** marca nada. Não há fila local de marcações — decisão do
+  dono do projeto em 2026-08-18, revertendo a fila offline original: uma quadra verde que existe só
+  no aparelho é pior que um erro honesto, porque quem marcou acredita que o trabalho foi registrado.
+  O `id` do log continua sendo gerado no cliente e enviado na requisição, como chave de idempotência.
+- O cache local **de leitura** continua: territórios e quadras já baixados abrem sem rede.
 
 ## Arquitetura e Decisões Técnicas
 
@@ -465,7 +535,7 @@ Serviço não conhece HTTP: sinaliza erro com exceção de domínio, e o router 
 |--------|-------|------------------|----------|
 | Presentation | `app/src/presentation/` | Telas, navegação (React Navigation), o componente de mapa (MapLibre) | Chamada HTTP direta, regra de negócio |
 | Domain | `app/src/domain/` | Entidades e funções puras (cor da quadra, "é meu território?", filtro do mapa) | Dependência de React Native, HTTP ou armazenamento |
-| Data | `app/src/data/` | Cliente HTTP (`api-client.ts`), `react-native-keychain` (token, `session-store.ts`), `AsyncStorage` (fila offline `work-log-queue.ts`, cache do mapa `territory-cache.ts`) | Widget, lógica de apresentação |
+| Data | `app/src/data/` | Cliente HTTP (`api-client.ts`), `react-native-keychain` (token, `session-store.ts`), `AsyncStorage` (cache do mapa `territory-cache.ts`) | Widget, lógica de apresentação |
 
 **Direção:** `presentation → domain ← data`. O domínio não depende de ninguém — mesma direção já
 documentada quando o app era Flutter; a troca de stack na spec 0005 não mudou essa decisão, só a
@@ -555,7 +625,7 @@ vale a pena — mesmo padrão de `admin/src/shared/geo.ts` no admin.
   (`data/api-client.ts`) é testado com um `fetch` fake injetado (`app/src/data/api-client.test.ts`).
   No admin, o cliente (`main/api-client.ts`) é local ao projeto, e os testes de
   `session.ts`/`ipc-handlers.ts` recebem um fake dele por injeção.
-- **Armazenamento no app**: `react-native-keychain` (token) e `AsyncStorage` (fila offline, cache do
+- **Armazenamento no app**: `react-native-keychain` (token) e `AsyncStorage` (cache do
   mapa) são mockados nos testes de `data/` — nunca o keychain ou o armazenamento reais do aparelho.
 
 ## Como Rodar
@@ -700,9 +770,10 @@ Documentar o "abrir mesmo assim" para o admin. Assinar exige certificado pago.
 
 Build verde só prova que compila — ninguém clica num binário. Quem valida comportamento são os
 testes (Vitest + React Testing Library), que existem e cobrem as sete telas (configuração inicial,
-`HomeScreen` e as cores do mapa, Designações, publicadores, os dois editores e o histórico), mais o
-roteamento com a sidebar (`App.test.tsx`) e o que se abre com `npm run dev` durante o
-desenvolvimento.
+`HomeScreen` e as cores do mapa, Designações com o painel de histórico, publicadores, os dois
+editores e o histórico), mais o roteamento com a sidebar (`App.test.tsx`), o main process
+(incluindo a montagem da planilha em `excel-export.test.ts`) e o que se abre com `npm run dev`
+durante o desenvolvimento.
 
 **App Android** — sem CI, mesmo caminho do admin: build sempre **local**.
 
@@ -795,7 +866,8 @@ o `.env` exige gerar o `.apk` de novo. Detalhes em `app/README.md`.
 - Estratégia de **sincronização offline** do app (pull completo vs. delta por timestamp) — hoje é
   pull completo a cada abertura bem-sucedida (`app/src/presentation/App.tsx` recarrega e
   sobrescreve o cache inteiro via `saveTerritories`); delta por timestamp não foi avaliado.
-- Se o admin precisa **exportar** territórios (PDF/imagem) para uso impresso.
+- Se o admin precisa **exportar** territórios (PDF/imagem do mapa) para uso impresso — a
+  exportação que existe hoje é a das **designações** em `.xlsx` (spec 0007), não a do desenho.
 - **Reinstalar o app custa um código novo.** Limpar os dados ou trocar de celular apaga o token, e
   só o admin consegue devolver o acesso. Se isso virar chamado frequente, o remédio é o admin poder
   gerar o código em lote e a tela deixar isso a dois cliques — não afrouxar a regra.
@@ -809,7 +881,9 @@ traduzindo eventos para ele, não mutando estado direto —, o admin já apaga q
 congregação pela interface, e o fluxo de **atribuição de território a publicador** existe de ponta a
 ponta (spec 0005): o admin designa pela página **Designações** (spec 0006 — antes era pela
 `HomeScreen`), o servidor restringe a marcação de quadra ao território designado, e o app do
-publicador em React Native já existe.
+publicador em React Native já existe. A designação também virou **histórico datado com exportação
+para Excel** (spec 0007): designar, concluir e apagar registro estão na interface, e
+`assigned_user_id` passou a ser projeção da designação aberta.
 
 ## Implementações
 

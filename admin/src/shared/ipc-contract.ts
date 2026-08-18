@@ -16,7 +16,7 @@
 // the renderer calls it — `window.api.territories.create(...)`, not a flat
 // method bag.
 
-import type { Block, Congregation, Publisher, Territory, WorkLog } from './models'
+import type { Assignment, Block, Congregation, Publisher, Territory, WorkLog } from './models'
 import type { LatLng } from './geo'
 
 /**
@@ -83,7 +83,6 @@ export const IPC_CHANNELS = {
   territoriesCreate: 'territories:create',
   territoriesUpdate: 'territories:update',
   territoriesDelete: 'territories:delete',
-  territoriesAssign: 'territories:assign',
   blocksCreate: 'blocks:create',
   blocksUpdate: 'blocks:update',
   blocksDelete: 'blocks:delete',
@@ -91,6 +90,11 @@ export const IPC_CHANNELS = {
   publishersCreate: 'publishers:create',
   publishersRegenerateCode: 'publishers:regenerateCode',
   publishersSetActive: 'publishers:setActive',
+  assignmentsListFor: 'assignments:listFor',
+  assignmentsDesignate: 'assignments:designate',
+  assignmentsComplete: 'assignments:complete',
+  assignmentsDelete: 'assignments:delete',
+  exportAssignments: 'export:assignments',
   workLogsListFor: 'workLogs:listFor',
   workLogsDelete: 'workLogs:delete',
   geoGeocodeCity: 'geo:geocodeCity'
@@ -127,8 +131,6 @@ export interface IpcApi {
     create(input: TerritoryCreateInput): Promise<Territory>
     update(territoryId: string, input: TerritoryUpdateInput): Promise<Territory>
     delete(territoryId: string): Promise<void>
-    /** `userId: null` removes the assignment instead of setting a new one. */
-    assign(territoryId: string, userId: string | null): Promise<Territory>
   }
   readonly blocks: {
     create(input: BlockCreateInput): Promise<Block>
@@ -142,6 +144,23 @@ export interface IpcApi {
     regenerateCode(publisherId: string): Promise<Publisher>
     /** Sends the desired state; the caller decides, the API never flips it. */
     setActive(publisherId: string, isActive: boolean): Promise<Publisher>
+  }
+  readonly assignments: {
+    /** The territory's whole history, open assignment included. */
+    listFor(territoryId: string): Promise<Assignment[]>
+    /** Opens a new assignment; the server closes whatever was open before. */
+    designate(territoryId: string, publisherId: string): Promise<Assignment>
+    /** Closes the open assignment, freeing the territory for someone else. */
+    complete(territoryId: string): Promise<Assignment>
+    /** Erases one history line — the admin correcting a wrong record. */
+    delete(territoryId: string, assignmentId: string): Promise<void>
+  }
+  readonly exports: {
+    /**
+     * Writes the assignments spreadsheet and resolves with the path it was
+     * saved to, or `null` when the admin dismissed the save dialog.
+     */
+    assignments(): Promise<string | null>
   }
   readonly workLogs: {
     listFor(blockId: string): Promise<WorkLog[]>

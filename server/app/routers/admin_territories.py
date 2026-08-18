@@ -34,16 +34,10 @@ from app.models.congregation import Congregation
 from app.models.territory import Territory
 from app.repositories.block import BlockRepository
 from app.repositories.territory import TerritoryRepository
-from app.repositories.user import UserRepository
 from app.routers.auth import utc_now
 from app.schemas.block import BlockOut
 from app.schemas.geo import LatLngIn, LatLngOut
-from app.schemas.territory import (
-    TerritoryAssignmentIn,
-    TerritoryCreateIn,
-    TerritoryOut,
-    TerritoryPatchIn,
-)
+from app.schemas.territory import TerritoryCreateIn, TerritoryOut, TerritoryPatchIn
 from app.schemas.user import UserBriefOut
 from app.services.block import BlockService
 from app.services.territory import TerritoryService
@@ -59,7 +53,6 @@ def get_territory_service(session: DbSession) -> TerritoryService:
     return TerritoryService(
         territories=TerritoryRepository(session),
         blocks=BlockRepository(session),
-        users=UserRepository(session),
         now_provider=utc_now,
     )
 
@@ -179,18 +172,6 @@ def patch_territory(
         name=payload.name,
         points=to_points(payload.boundary) if payload.boundary is not None else None,
     )
-    return territory_out(territories, territory)
-
-
-@router.patch("/{territory_id}/assignment")
-def assign_territory(
-    territory_id: UUID,
-    payload: TerritoryAssignmentIn,
-    congregation: AdminCongregation,
-    territories: Territories,
-) -> TerritoryOut:
-    """Assign this territory to a publisher, or clear the assignment with `null`."""
-    territory = territories.assign_to_user(congregation.id, territory_id, payload.user_id)
     return territory_out(territories, territory)
 
 

@@ -13,6 +13,7 @@ from app.models.base import Base, EntityMixin
 if TYPE_CHECKING:
     from app.models.block import Block
     from app.models.congregation import Congregation
+    from app.models.territory_assignment import TerritoryAssignment
     from app.models.user import User
 
 
@@ -66,5 +67,14 @@ class Territory(Base, EntityMixin):
         # The FK already carries ON DELETE CASCADE, so let the database remove the
         # blocks in one statement instead of the ORM loading and deleting them one
         # by one.
+        passive_deletes=True,
+    )
+    # The assignment history of this territory. Deleting the territory takes its
+    # history with it, exactly as it takes the blocks: the records only mean
+    # anything in relation to the area they describe. Same reasoning as `blocks`
+    # for `passive_deletes` - the FK already cascades in the database.
+    assignments: Mapped[list["TerritoryAssignment"]] = relationship(
+        back_populates="territory",
+        cascade="all, delete-orphan",
         passive_deletes=True,
     )

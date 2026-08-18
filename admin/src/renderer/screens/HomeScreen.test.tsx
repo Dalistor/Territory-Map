@@ -76,7 +76,6 @@ function makeApi(overrides: Partial<IpcApi> = {}): IpcApi {
       create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn().mockResolvedValue(undefined),
-      assign: vi.fn(),
       ...overrides.territories
     },
     blocks: {
@@ -91,6 +90,17 @@ function makeApi(overrides: Partial<IpcApi> = {}): IpcApi {
       regenerateCode: vi.fn(),
       setActive: vi.fn(),
       ...overrides.publishers
+    },
+    assignments: {
+      listFor: vi.fn().mockResolvedValue([]),
+      designate: vi.fn(),
+      complete: vi.fn(),
+      delete: vi.fn(),
+      ...overrides.assignments
+    },
+    exports: {
+      assignments: vi.fn(),
+      ...overrides.exports
     },
     workLogs: {
       listFor: vi.fn(),
@@ -146,8 +156,7 @@ describe('HomeScreen loading and header', () => {
         listWithBlocks: vi.fn().mockRejectedValue(new Error('Falha de rede.')),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn(),
-        assign: vi.fn()
+        delete: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -163,8 +172,7 @@ describe('HomeScreen loading and header', () => {
         listWithBlocks: vi.fn().mockRejectedValue('boom'),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn(),
-        assign: vi.fn()
+        delete: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -204,8 +212,7 @@ describe('HomeScreen territory actions', () => {
         listWithBlocks: vi.fn().mockResolvedValue([territory]),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn(),
-        assign: vi.fn()
+        delete: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -234,8 +241,7 @@ describe('HomeScreen territory actions', () => {
         listWithBlocks: vi.fn().mockResolvedValue([assigned, unassigned]),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn(),
-        assign: vi.fn()
+        delete: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -256,8 +262,7 @@ describe('HomeScreen territory actions', () => {
         listWithBlocks: vi.fn().mockResolvedValue([territory]),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn(),
-        assign: vi.fn()
+        delete: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -277,8 +282,7 @@ describe('HomeScreen territory actions', () => {
         listWithBlocks: vi.fn().mockResolvedValue([territory]),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn(),
-        assign: vi.fn()
+        delete: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -300,8 +304,7 @@ describe('HomeScreen territory actions', () => {
         listWithBlocks: vi.fn().mockResolvedValue([territory, other]),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn(),
-        assign: vi.fn()
+        delete: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -339,8 +342,7 @@ describe('HomeScreen territory list ordering', () => {
         listWithBlocks: vi.fn().mockResolvedValue(territories),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn(),
-        assign: vi.fn()
+        delete: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -348,6 +350,33 @@ describe('HomeScreen territory list ordering', () => {
     render(<HomeScreen />)
 
     expect(await findRenderedTerritoryNames()).toEqual(['Bairro Norte', 'Centro', 'Zona Sul'])
+  })
+
+  it('orders by territory number across different area names, not by the area name', async () => {
+    // The real congregation data that exposed this: sorting by name put
+    // "Próximo ao centro - N12" between "Centro - N6" and "Santa Helena - N 7".
+    const territories = [
+      makeTerritory({ id: 't-12', name: 'Próximo ao centro - N12' }),
+      makeTerritory({ id: 't-6', name: 'Centro - N6' }),
+      makeTerritory({ id: 't-7', name: 'Santa Helena - N 7' })
+    ]
+    const api = makeApi({
+      territories: {
+        listWithBlocks: vi.fn().mockResolvedValue(territories),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn()
+      }
+    })
+    vi.stubGlobal('api', api)
+
+    render(<HomeScreen />)
+
+    expect(await findRenderedTerritoryNames()).toEqual([
+      'Centro - N6',
+      'Santa Helena - N 7',
+      'Próximo ao centro - N12'
+    ])
   })
 
   it('sorts embedded numbers numerically, so "N 10" comes after "N 9" instead of after "N 1"', async () => {
@@ -361,8 +390,7 @@ describe('HomeScreen territory list ordering', () => {
         listWithBlocks: vi.fn().mockResolvedValue(territories),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn(),
-        assign: vi.fn()
+        delete: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -387,8 +415,7 @@ describe('HomeScreen territory list ordering', () => {
         listWithBlocks: vi.fn().mockResolvedValue(territories),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn(),
-        assign: vi.fn()
+        delete: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -416,8 +443,7 @@ describe('HomeScreen territory list ordering', () => {
         listWithBlocks: vi.fn().mockResolvedValue([zona, bairro]),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn(),
-        assign: vi.fn()
+        delete: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -438,8 +464,7 @@ describe('HomeScreen territory list ordering', () => {
         listWithBlocks: vi.fn().mockResolvedValue(territories),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn(),
-        assign: vi.fn()
+        delete: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -462,8 +487,7 @@ describe('HomeScreen territory list ordering', () => {
         listWithBlocks: vi.fn().mockResolvedValue(territories),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn(),
-        assign: vi.fn()
+        delete: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -490,8 +514,7 @@ describe('HomeScreen deleting a territory', () => {
         listWithBlocks,
         create: vi.fn(),
         update: vi.fn(),
-        delete: deleteTerritory,
-        assign: vi.fn()
+        delete: deleteTerritory
       }
     })
     vi.stubGlobal('api', api)
@@ -521,8 +544,7 @@ describe('HomeScreen deleting a territory', () => {
         listWithBlocks: vi.fn().mockResolvedValue([territory]),
         create: vi.fn(),
         update: vi.fn(),
-        delete: deleteTerritory,
-        assign: vi.fn()
+        delete: deleteTerritory
       }
     })
     vi.stubGlobal('api', api)
@@ -549,8 +571,7 @@ describe('HomeScreen deleting a territory', () => {
         listWithBlocks: vi.fn().mockResolvedValue([territory]),
         create: vi.fn(),
         update: vi.fn(),
-        delete: deleteTerritory,
-        assign: vi.fn()
+        delete: deleteTerritory
       }
     })
     vi.stubGlobal('api', api)
@@ -572,8 +593,7 @@ describe('HomeScreen deleting a territory', () => {
         listWithBlocks: vi.fn().mockResolvedValue([territory]),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn().mockRejectedValue(new Error('O território tem uma pendência.')),
-        assign: vi.fn()
+        delete: vi.fn().mockRejectedValue(new Error('O território tem uma pendência.'))
       }
     })
     vi.stubGlobal('api', api)
@@ -613,8 +633,7 @@ describe('HomeScreen reloading', () => {
         listWithBlocks,
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn(),
-        assign: vi.fn()
+        delete: vi.fn()
       }
     })
     vi.stubGlobal('api', api)

@@ -3,6 +3,7 @@
 // MapLibre view that cannot render in Jest (CLAUDE.md, "risco assumido").
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { ApiErrorException, NetworkException } from '../../data/api-client';
 import type { Session, Territory } from '../../domain/models';
 import type { TerritoryMapViewProps } from '../map/TerritoryMapView';
 import { MapScreen } from './MapScreen';
@@ -17,9 +18,6 @@ jest.mock('../map/TerritoryMapView', () => ({
   },
 }));
 
-// Pulled in through `work-log-queue`, which this screen imports for its
-// types; both are native modules with no place in a component test.
-jest.mock('@react-native-async-storage/async-storage', () => ({ __esModule: true, default: {} }));
 jest.mock('uuid', () => ({ v4: () => 'fake-uuid' }));
 jest.mock('react-native-config', () => ({
   __esModule: true,
@@ -54,8 +52,10 @@ async function renderScreen() {
   return await render(
     <MapScreen
       session={session}
-      apiClient={{ listTerritories: jest.fn().mockResolvedValue(territories) }}
-      workLogQueue={{ enqueue: jest.fn(), drain: jest.fn() }}
+      apiClient={{
+        listTerritories: jest.fn().mockResolvedValue(territories),
+        markBlockWorked: jest.fn(),
+      }}
     />,
   );
 }
@@ -107,59 +107,76 @@ describe('MapScreen search', () => {
 });
 
 describe('MapScreen marking a block as worked', () => {
-  it('queues the visit when the block is in a territory assigned to the publisher', async () => {
-    const enqueue = jest.fn().mockResolvedValue(undefined);
-    const drain = jest.fn().mockResolvedValue(undefined);
-    await render(
+  function renderWithMarker(markBlockWorked: jest.Mock) {
+    return render(
       <MapScreen
         session={session}
-        apiClient={{ listTerritories: jest.fn().mockResolvedValue(territories) }}
-        workLogQueue={{ enqueue, drain }}
+        apiClient={{
+          listTerritories: jest.fn().mockResolvedValue(territories),
+          markBlockWorked,
+        }}
       />,
     );
+  }
+
+  it('records the visit on the server before showing it as done', async () => {
+    const markBlockWorked = jest.fn().mockResolvedValue(undefined);
+    await renderWithMarker(markBlockWorked);
     await screen.findByText('Santa Helena - N 7');
 
     // 't1' is assigned to this publisher -- see `territories` above.
     await act(async () => mapProps.current?.onBlockTap?.(territories[0], block));
     await fireEvent.press(await screen.findByText('Confirmar'));
 
-    expect(enqueue).toHaveBeenCalledWith('b1', expect.any(Date));
+    expect(markBlockWorked).toHaveBeenCalledWith(
+      'token-1',
+      'b1',
+      expect.any(String),
+      expect.any(Date),
+    );
+    expect(screen.queryByText(/não foi registrada/)).toBeNull();
   });
 
-  it('refuses, with a reason, when the territory is not assigned to the publisher', async () => {
-    const enqueue = jest.fn();
-    await render(
-      <MapScreen
-        session={session}
-        apiClient={{ listTerritories: jest.fn().mockResolvedValue(territories) }}
-        workLogQueue={{ enqueue, drain: jest.fn() }}
-      />,
-    );
-    await screen.findByText('Santa Helena - N 7');
-
-    // 't2' has no assigned publisher at all -- the case the congregation is
-    // in before anyone designates territories in the admin.
-    await act(async () => mapProps.current?.onBlockTap?.(territories[1], block));
-
-    expect(screen.getByText(/não está designado a você/)).toBeTruthy();
-    expect(screen.queryByText('Confirmar')).toBeNull();
-    expect(enqueue).not.toHaveBeenCalled();
-  });
-
-  it('tells the publisher when the visit could not even be queued on the device', async () => {
-    const enqueue = jest.fn().mockRejectedValue(new Error('storage full'));
-    await render(
-      <MapScreen
-        session={session}
-        apiClient={{ listTerritories: jest.fn().mockResolvedValue(territories) }}
-        workLogQueue={{ enqueue, drain: jest.fn() }}
-      />,
-    );
+  it('does not mark anything when the server could not be reached', async () => {
+    const markBlockWorked = jest.fn().mockRejectedValue(new NetworkException('offline'));
+    await renderWithMarker(markBlockWorked);
     await screen.findByText('Santa Helena - N 7');
 
     await act(async () => mapProps.current?.onBlockTap?.(territories[0], block));
     await fireEvent.press(await screen.findByText('Confirmar'));
 
-    expect(screen.getByText(/Não foi possível registrar a marcação/)).toBeTruthy();
+    expect(screen.getByText(/sem conexão/i)).toBeTruthy();
+    // The block stays exactly as it was: no optimistic green, because
+    // nothing was recorded anywhere.
+    expect(mapProps.current?.territories[0].blocks[0].lastWorkedAt).toBeUndefined();
+  });
+
+  it('shows the reason when the server refuses the visit', async () => {
+    const markBlockWorked = jest
+      .fn()
+      .mockRejectedValue(
+        new ApiErrorException(403, 'territory_not_assigned', 'território não designado'),
+      );
+    await renderWithMarker(markBlockWorked);
+    await screen.findByText('Santa Helena - N 7');
+
+    await act(async () => mapProps.current?.onBlockTap?.(territories[0], block));
+    await fireEvent.press(await screen.findByText('Confirmar'));
+
+    expect(screen.getByText(/território não designado/)).toBeTruthy();
+    expect(mapProps.current?.territories[0].blocks[0].lastWorkedAt).toBeUndefined();
+  });
+
+  it('refuses, with a reason, when the territory is not assigned to the publisher', async () => {
+    const markBlockWorked = jest.fn();
+    await renderWithMarker(markBlockWorked);
+    await screen.findByText('Santa Helena - N 7');
+
+    // 't2' has no assigned publisher at all.
+    await act(async () => mapProps.current?.onBlockTap?.(territories[1], block));
+
+    expect(screen.getByText(/não está designado a você/)).toBeTruthy();
+    expect(screen.queryByText('Confirmar')).toBeNull();
+    expect(markBlockWorked).not.toHaveBeenCalled();
   });
 });

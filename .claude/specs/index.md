@@ -10,6 +10,7 @@ Planejamentos de implementações complexas, decompostos em tasks para subagente
 | [0004](0004/README.md) | Corrigir o fluxo de cadastro/edição de território e quadra no admin | 2026-08-17 | Concluída | 5 tasks |
 | [0005](0005/README.md) | App do publicador em React Native, com designação de território | 2026-08-17 | Concluída | 27 tasks |
 | [0006](0006/README.md) | Redesign do admin: sidebar, página de Designações e fluxos de quadra/publicadores | 2026-08-17 | Concluída | 8 tasks |
+| [0007](0007/README.md) | Designação como registro histórico (estilo S-13) e exportação para Excel | 2026-08-18 | Concluída | 12 tasks |
 
 ---
 

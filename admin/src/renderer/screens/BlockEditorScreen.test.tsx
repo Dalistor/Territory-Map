@@ -97,8 +97,7 @@ function makeApi(overrides: Partial<IpcApi['blocks']> = {}): IpcApi {
       listWithBlocks: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
-      delete: vi.fn(),
-      assign: vi.fn()
+      delete: vi.fn()
     },
     blocks: {
       create: vi.fn(),
@@ -112,6 +111,13 @@ function makeApi(overrides: Partial<IpcApi['blocks']> = {}): IpcApi {
       regenerateCode: vi.fn(),
       setActive: vi.fn()
     },
+    assignments: {
+      listFor: vi.fn(),
+      designate: vi.fn(),
+      complete: vi.fn(),
+      delete: vi.fn()
+    },
+    exports: { assignments: vi.fn() },
     workLogs: { listFor: vi.fn(), delete: vi.fn() },
     geo: { geocodeCity: vi.fn() }
   }

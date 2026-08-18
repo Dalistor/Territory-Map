@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
+  assignmentIsOpen,
   blockTimeSinceWorked,
   blockWasNeverWorked,
+  compareTerritoriesByNumber,
   publisherHasLiveCode,
   publisherIsPending,
+  territoryNumber,
   workLogWasSyncedLate,
+  type Assignment,
   type Block,
   type Publisher,
   type PublisherBrief,
@@ -48,6 +52,15 @@ function makeWorkLog(overrides: Partial<WorkLog> = {}): WorkLog {
   }
 }
 
+function makeAssignment(overrides: Partial<Assignment> = {}): Assignment {
+  return {
+    id: 'assignment-1',
+    publisher: makePublisherBrief(),
+    startedAt: new Date('2026-08-01T00:00:00.000Z'),
+    ...overrides
+  }
+}
+
 describe('publisherIsPending', () => {
   it('is pending when activatedAt is undefined', () => {
     const publisher = makePublisher({ activatedAt: undefined })
@@ -73,6 +86,20 @@ describe('blockWasNeverWorked', () => {
     const block = makeBlock({ lastWorkedAt: new Date('2026-01-01T00:00:00Z') })
 
     expect(blockWasNeverWorked(block)).toBe(false)
+  })
+})
+
+describe('assignmentIsOpen', () => {
+  it('is open while completedAt is absent', () => {
+    const assignment = makeAssignment({ completedAt: undefined })
+
+    expect(assignmentIsOpen(assignment)).toBe(true)
+  })
+
+  it('is closed once completedAt is set', () => {
+    const assignment = makeAssignment({ completedAt: new Date('2026-08-15T00:00:00.000Z') })
+
+    expect(assignmentIsOpen(assignment)).toBe(false)
   })
 })
 
@@ -179,5 +206,58 @@ describe('workLogWasSyncedLate', () => {
     })
 
     expect(workLogWasSyncedLate(log)).toBe(false)
+  })
+})
+
+describe('territoryNumber', () => {
+  it('reads the number that follows the "N" marker', () => {
+    expect(territoryNumber('Centro - N5')).toBe(5)
+  })
+
+  it('reads it with a space after the N, the way some names are typed', () => {
+    expect(territoryNumber('Santa Helena - N 7')).toBe(7)
+  })
+
+  it('ignores a number that is part of the area name, taking the territory number', () => {
+    expect(territoryNumber('Cambé 3 - N1')).toBe(1)
+  })
+
+  it('is null when the name carries no number at all', () => {
+    expect(territoryNumber('Centro')).toBeNull()
+  })
+})
+
+describe('compareTerritoriesByNumber', () => {
+  /** Sorts names the way the admin's territory list has to render them. */
+  function sorted(names: string[]): string[] {
+    return [...names].sort(compareTerritoriesByNumber)
+  }
+
+  it('orders by the territory number, not by the area name', () => {
+    expect(sorted(['Santa Helena - N 7', 'Próximo ao centro - N12', 'Centro - N6'])).toEqual([
+      'Centro - N6',
+      'Santa Helena - N 7',
+      'Próximo ao centro - N12'
+    ])
+  })
+
+  it('puts 10 after 9 instead of after 1', () => {
+    expect(sorted(['Santa Helena - N 10', 'Cambé 3 - N1', 'Santa Helena - N 9'])).toEqual([
+      'Cambé 3 - N1',
+      'Santa Helena - N 9',
+      'Santa Helena - N 10'
+    ])
+  })
+
+  it('sends the numberless names to the end, alphabetically among themselves', () => {
+    expect(sorted(['Zona sem número', 'Centro - N5', 'Alfa sem número'])).toEqual([
+      'Centro - N5',
+      'Alfa sem número',
+      'Zona sem número'
+    ])
+  })
+
+  it('falls back to the name when two territories share a number', () => {
+    expect(sorted(['Vila B - N3', 'Vila A - N3'])).toEqual(['Vila A - N3', 'Vila B - N3'])
   })
 })

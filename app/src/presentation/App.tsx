@@ -38,7 +38,6 @@ import {
   getCachedTerritories as getCachedTerritoriesDefault,
   saveTerritories as saveTerritoriesDefault,
 } from '../data/territory-cache';
-import { createWorkLogQueue } from '../data/work-log-queue';
 import type { Session, Territory } from '../domain/models';
 import ActivationScreen from './screens/ActivationScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
@@ -155,7 +154,6 @@ export default function App({ dependencies }: AppProps): React.JSX.Element {
     () => withOfflineFallback(deps.apiClient, deps.getCachedTerritories),
     [deps],
   );
-  const workLogQueue = useMemo(() => createWorkLogQueue({ apiClient: deps.apiClient }), [deps]);
 
   if (state.status === 'loading') {
     return (
@@ -214,7 +212,6 @@ export default function App({ dependencies }: AppProps): React.JSX.Element {
                   <MapScreen
                     session={state.session}
                     apiClient={offlineApiClient}
-                    workLogQueue={workLogQueue}
                     initialTerritoryId={route.params?.territoryId}
                   />
                 )}

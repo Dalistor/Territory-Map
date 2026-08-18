@@ -69,11 +69,17 @@ function fakeApi(
       listWithBlocks: vi.fn(),
       create: overrides.create ?? vi.fn(),
       update: overrides.update ?? vi.fn(),
-      delete: vi.fn(),
-      assign: vi.fn()
+      delete: vi.fn()
     },
     blocks: { create: vi.fn(), update: vi.fn(), delete: vi.fn() },
     publishers: { list: vi.fn(), create: vi.fn(), regenerateCode: vi.fn(), setActive: vi.fn() },
+    assignments: {
+      listFor: vi.fn(),
+      designate: vi.fn(),
+      complete: vi.fn(),
+      delete: vi.fn()
+    },
+    exports: { assignments: vi.fn() },
     workLogs: { listFor: vi.fn(), delete: vi.fn() },
     geo: { geocodeCity: vi.fn() }
   }

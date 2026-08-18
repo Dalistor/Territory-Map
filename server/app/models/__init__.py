@@ -10,6 +10,7 @@ from app.models.block import Block
 from app.models.block_work_log import BlockWorkLog
 from app.models.congregation import Congregation
 from app.models.territory import Territory
+from app.models.territory_assignment import TerritoryAssignment
 from app.models.user import User
 
 __all__ = [
@@ -19,6 +20,7 @@ __all__ = [
     "Congregation",
     "EntityMixin",
     "Territory",
+    "TerritoryAssignment",
     "TimestampMixin",
     "User",
 ]

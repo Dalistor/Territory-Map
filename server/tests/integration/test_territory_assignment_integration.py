@@ -1,17 +1,21 @@
 """Designating a territory to a publisher, and the wall it puts around marking blocks.
 
 `WorkLogService.mark_worked` refusing an unassigned territory has a unit test, and the
-admin route that sets `assigned_user_id` has a router test of its own. Neither proves
-the joint: that the publisher the admin picked in `PATCH .../assignment` is the same
-one whose token the app later measures against, that both `GET /admin/territories` and
-`GET /app/territories` project the very row the `PATCH` wrote, and that clearing the
-assignment closes the door on the publisher who had just walked through it.
+admin routes that open and close a stint have router tests of their own. Neither proves
+the joint: that the publisher the admin picked in `POST .../assignments` is the same one
+whose token the app later measures against, that both `GET /admin/territories` and
+`GET /app/territories` project the row that `POST` opened, and that completing the stint
+closes the door on the publisher who had just walked through it.
+
+Handing the territory back is now an event with a date -- `POST .../assignments/complete`
+-- rather than a field set to null, which is the only thing that changed here since the
+designation became a historical record: the wall it raises and lowers is the same.
 
 The flow is deliberately one long test, for the same reason `test_full_flow_integration`
 is: the five scenarios are a sequence -- assign, read it back from both sides, mark
-successfully, get refused as someone else, get refused again once unassigned -- and
-splitting them would mean redoing the previous steps as setup for each one, hiding the
-one thing worth proving, which is that they chain.
+successfully, get refused as someone else, get refused again once the stint is closed --
+and splitting them would mean redoing the previous steps as setup for each one, hiding
+the one thing worth proving, which is that they chain.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -31,20 +35,10 @@ def bearer(token: str) -> dict[str, str]:
     """The `Authorization` header both kinds of token travel in.
 
     Duplicated from `conftest.py`'s helper of the same name rather than imported --
-    this file is not supposed to touch anything outside itself, and the two routes it
-    calls (`PATCH .../assignment`, `GET /app/worked-territories`) are not yet in the
-    shared `Api` facade.
+    this file is not supposed to touch anything outside itself, and the route it calls
+    directly (`GET /app/worked-territories`) is not yet in the shared `Api` facade.
     """
     return {"Authorization": f"Bearer {token}"}
-
-
-async def assign_territory(api, admin_token: str, territory_id: str, user_id: str | None):
-    """`PATCH /admin/territories/{id}/assignment` -- set or clear who is responsible."""
-    return await api.client.patch(
-        f"/admin/territories/{territory_id}/assignment",
-        json={"user_id": user_id},
-        headers=bearer(admin_token),
-    )
 
 
 async def worked_territories(api, app_token: str):
@@ -70,9 +64,10 @@ async def test_designation_gates_marking_end_to_end(api, register_congregation, 
     assert registered.status_code == 201, registered.text
     user_id = registered.json()["id"]
 
-    assigned = await assign_territory(api, admin_token, territory_id, user_id)
-    assert assigned.status_code == 200, assigned.text
-    assert assigned.json()["assigned_user"] == {"id": user_id, "name": "Irmã Marta"}
+    assigned = await api.assign_territory(admin_token, territory_id, user_id)
+    assert assigned.status_code == 201, assigned.text
+    assert assigned.json()["user"] == {"id": user_id, "name": "Irmã Marta"}
+    assert assigned.json()["completed_at"] is None
 
     # -- and the admin's own listing shows the same designation -----------------
     listed = await api.list_territories(admin_token)
@@ -117,10 +112,14 @@ async def test_designation_gates_marking_end_to_end(api, register_congregation, 
     assert len(history.json()) == 1
     assert history.json()[0]["user"]["id"] == user_id
 
-    # -- the admin clears the designation ----------------------------------------
-    cleared = await assign_territory(api, admin_token, territory_id, None)
-    assert cleared.status_code == 200
-    assert cleared.json()["assigned_user"] is None
+    # -- the admin marks the designation as concluded, which gives the -----------
+    # -- territory back and leaves the stint in the card as history -------------
+    completed = await api.complete_assignment(admin_token, territory_id)
+    assert completed.status_code == 200, completed.text
+    assert completed.json()["completed_at"] is not None
+
+    released = await api.list_territories(admin_token)
+    assert released.json()[0]["assigned_user"] is None
 
     # -- and even the publisher who had legitimate access a moment ago is now ---
     # -- refused on the same territory -------------------------------------------

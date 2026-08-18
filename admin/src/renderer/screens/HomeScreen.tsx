@@ -8,6 +8,7 @@
 // props instead of an import, so this file does not need to know they exist.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { LatLngTuple } from 'leaflet'
+import { compareTerritoriesByNumber } from '../../shared/models'
 import type { Block, Congregation, Territory } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
 import { TerritoryMap } from '../map/TerritoryMap'
@@ -83,15 +84,12 @@ export function HomeScreen({
   // Sorted once here, and used everywhere below (the list, the map, and the
   // territories handed to onNewTerritory/onEditTerritory) -- so every
   // consumer of "the territories" sees the same order, not just the <ul>.
-  // `sensitivity: 'base'` ignores case and diacritics ("Árvore" and "arvore"
-  // land next to each other); `numeric: true` compares embedded digits as
-  // numbers, so the "N 10" of a territory name sorts after "N 9" instead of
-  // after "N 1" -- territory names carry their sequence number by convention.
+  // The order is by territory *number* (`compareTerritoriesByNumber`), not by
+  // name: the congregation refers to territories by that number, so sorting by
+  // the area name would scatter the sequence (N12 landing between N6 and N7
+  // just because "Próximo" sorts between "Centro" and "Santa Helena").
   const sortedTerritories = useMemo(
-    () =>
-      [...territories].sort((a, b) =>
-        a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true })
-      ),
+    () => [...territories].sort((a, b) => compareTerritoriesByNumber(a.name, b.name)),
     [territories]
   )
   const [isLoading, setIsLoading] = useState(true)

@@ -19,7 +19,14 @@ from app.core.exceptions import (
 )
 from app.core.rate_limit import limiter, rate_limit_exceeded_handler
 from app.core.scheduler import lifespan
-from app.routers import admin_blocks, admin_territories, admin_users, app_client, auth
+from app.routers import (
+    admin_assignments,
+    admin_blocks,
+    admin_territories,
+    admin_users,
+    app_client,
+    auth,
+)
 
 settings = get_settings()
 
@@ -117,6 +124,7 @@ if settings.CORS_ORIGINS:
 app.include_router(auth.router)
 app.include_router(admin_users.router)
 app.include_router(admin_territories.router)
+app.include_router(admin_assignments.router)
 app.include_router(admin_blocks.router)
 app.include_router(app_client.router)
 

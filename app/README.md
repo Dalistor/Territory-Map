@@ -46,7 +46,7 @@ mudou):
 |--------|-------|-------------------|
 | Presentation | `src/presentation/` | Telas, navegação (React Navigation), o componente de mapa |
 | Domain | `src/domain/` | Entidades e funções puras — sem depender de React Native, HTTP ou armazenamento |
-| Data | `src/data/` | Cliente HTTP, `react-native-keychain` (token), `AsyncStorage` (fila offline e cache do mapa) |
+| Data | `src/data/` | Cliente HTTP, `react-native-keychain` (token), `AsyncStorage` (cache do mapa) |
 
 As três pastas existem vazias por enquanto — ver a spec 0005 (`.claude/specs/0005/`, Tasks 17 a 26)
 para o que entra em cada uma.

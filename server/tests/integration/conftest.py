@@ -258,15 +258,59 @@ class Api:
             headers=bearer(admin_token),
         )
 
+    async def list_assignments(
+        self,
+        admin_token: str,
+        territory_id: UUID | str,
+    ) -> httpx.Response:
+        """Read the territory's card: every stint it ever had, most recent first."""
+        return await self.client.get(
+            f"/admin/territories/{territory_id}/assignments",
+            headers=bearer(admin_token),
+        )
+
     async def assign_territory(
         self,
         admin_token: str,
         territory_id: UUID | str,
-        user_id: UUID | str | None,
+        user_id: UUID | str,
     ) -> httpx.Response:
-        return await self.client.patch(
-            f"/admin/territories/{territory_id}/assignment",
-            json={"user_id": str(user_id) if user_id is not None else None},
+        """Open a stint: hand the territory to a publisher, starting now."""
+        return await self.client.post(
+            f"/admin/territories/{territory_id}/assignments",
+            json={"user_id": str(user_id)},
+            headers=bearer(admin_token),
+        )
+
+    async def complete_assignment(
+        self,
+        admin_token: str,
+        territory_id: UUID | str,
+    ) -> httpx.Response:
+        """Close the stint in force -- the only way an assignment is undone now.
+
+        There is no "clear the assignment" verb any more: giving the territory back
+        is an event with a date, so it closes the card's open row instead of blanking
+        a field.
+        """
+        return await self.client.post(
+            f"/admin/territories/{territory_id}/assignments/complete",
+            headers=bearer(admin_token),
+        )
+
+    async def delete_assignment(
+        self,
+        admin_token: str,
+        territory_id: UUID | str,
+        assignment_id: UUID | str,
+    ) -> httpx.Response:
+        """Erase one row of the card, as if the designation had never been written.
+
+        Different from completing it: `complete_assignment` keeps the row as history
+        with its end date, this one removes it.
+        """
+        return await self.client.delete(
+            f"/admin/territories/{territory_id}/assignments/{assignment_id}",
             headers=bearer(admin_token),
         )
 

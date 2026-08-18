@@ -13,6 +13,7 @@ import { type LatLng, ringFromJson, ringToJson, validateRing } from '../shared/g
 import { ApiErrorException, NetworkException } from '../shared/api-errors'
 import type {
   AdminSession,
+  Assignment,
   Block,
   Congregation,
   Publisher,
@@ -72,8 +73,15 @@ export interface ApiClient {
     input: { name?: string; boundary?: LatLng[] }
   ): Promise<Territory>
   deleteTerritory(territoryId: string): Promise<void>
-  /** `userId: null` removes the assignment instead of setting a new one. */
-  assignTerritory(territoryId: string, userId: string | null): Promise<Territory>
+
+  /** The territory's whole assignment history, most recent first. */
+  listAssignments(territoryId: string): Promise<Assignment[]>
+  /** Opens a new assignment; the server closes whatever was open before. */
+  designate(territoryId: string, userId: string): Promise<Assignment>
+  /** Closes the open assignment, freeing the territory for someone else. */
+  completeAssignment(territoryId: string): Promise<Assignment>
+  /** Erases one history line -- the admin correcting a wrong record. */
+  deleteAssignment(territoryId: string, assignmentId: string): Promise<void>
 
   /** `number` left out asks the server for the lowest free integer. */
   createBlock(input: { territoryId: string; polygon: LatLng[]; number?: number }): Promise<Block>
@@ -192,6 +200,21 @@ function parseTerritory(json: Record<string, unknown>): Territory {
   }
 }
 
+/**
+ * One row of the S-13 card. `completed_at` arriving as `null` is the whole
+ * point of the record -- it marks the assignment that is still open -- so it
+ * becomes `undefined` here rather than an invalid `Date`, matching how
+ * `parseBlock` treats `last_worked_at`.
+ */
+function parseAssignment(json: Record<string, unknown>): Assignment {
+  return {
+    id: json.id as string,
+    publisher: parsePublisherBrief(json.user as Record<string, unknown>),
+    startedAt: new Date(json.started_at as string),
+    completedAt: parseOptionalDate(json.completed_at)
+  }
+}
+
 function parseWorkLog(json: Record<string, unknown>): WorkLog {
   return {
     id: json.id as string,
@@ -305,11 +328,23 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
       await request('DELETE', `/admin/territories/${territoryId}`)
     },
 
-    async assignTerritory(territoryId, userId) {
-      const json = await request('PATCH', `/admin/territories/${territoryId}/assignment`, {
+    listAssignments: (territoryId) =>
+      list(`/admin/territories/${territoryId}/assignments`, parseAssignment),
+
+    async designate(territoryId, userId) {
+      const json = await request('POST', `/admin/territories/${territoryId}/assignments`, {
         user_id: userId
       })
-      return parseTerritory(json as Record<string, unknown>)
+      return parseAssignment(json as Record<string, unknown>)
+    },
+
+    async completeAssignment(territoryId) {
+      const json = await request('POST', `/admin/territories/${territoryId}/assignments/complete`)
+      return parseAssignment(json as Record<string, unknown>)
+    },
+
+    async deleteAssignment(territoryId, assignmentId) {
+      await request('DELETE', `/admin/territories/${territoryId}/assignments/${assignmentId}`)
     },
 
     async createBlock({ territoryId, polygon, number }) {

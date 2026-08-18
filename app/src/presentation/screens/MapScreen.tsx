@@ -8,8 +8,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { ApiClient } from '../../data/api-client';
-import { WorkLogDrainError, type WorkLogQueue } from '../../data/work-log-queue';
+import { v4 as uuidv4 } from 'uuid';
+import { ApiErrorException, NetworkException, type ApiClient } from '../../data/api-client';
 import { isTerritoryAssignedToMe } from '../../domain/assignment';
 import type { Block, Session, Territory } from '../../domain/models';
 import { TerritoryMapView } from '../map/TerritoryMapView';
@@ -23,8 +23,7 @@ import { colors, spacing } from '../theme';
 
 export interface MapScreenProps {
   readonly session: Session;
-  readonly apiClient: Pick<ApiClient, 'listTerritories'>;
-  readonly workLogQueue: Pick<WorkLogQueue, 'enqueue' | 'drain'>;
+  readonly apiClient: Pick<ApiClient, 'listTerritories' | 'markBlockWorked'>;
   /** Preselects the `'specific'` filter to this territory -- how `DashboardScreen`'s "Ver no mapa" opens this screen (wired in Task 26). */
   readonly initialTerritoryId?: string;
   /** Injected so a fixed "now" can drive the block colours; defaults to the real clock. */
@@ -39,7 +38,6 @@ interface BlockTarget {
 export function MapScreen({
   session,
   apiClient,
-  workLogQueue,
   initialTerritoryId,
   now,
 }: MapScreenProps): React.JSX.Element {
@@ -56,13 +54,17 @@ export function MapScreen({
   // filter bar are never overwritten by a second fetch.
   const [filterInitialized, setFilterInitialized] = useState(false);
   /**
-   * Optimistic "just marked" overrides. CLAUDE.md's offline-queue rule is
-   * explicit: "A UI mostra a quadra como concluída na hora" -- the block
-   * turns green immediately, before `drain` (let alone the server) confirms
-   * anything.
+   * The blocks marked during this session, shown as worked without waiting
+   * for the territory list to be fetched again.
+   *
+   * Written only *after* the server has accepted the visit -- never
+   * optimistically. A green block here means the record exists on the
+   * server, which is the whole point of requiring the round trip.
    */
   const [justWorked, setJustWorked] = useState<Record<string, Date>>({});
   const [confirmTarget, setConfirmTarget] = useState<BlockTarget | null>(null);
+  /** True while the server round trip is in flight -- the confirm button must not fire twice. */
+  const [saving, setSaving] = useState(false);
   const [readOnlyTarget, setReadOnlyTarget] = useState<BlockTarget | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
   /** What the publisher typed in the search box -- narrows the chip list, never the map itself. */
@@ -112,34 +114,42 @@ export function MapScreen({
     }
   }
 
+  /**
+   * Records the visit on the server, and only then shows the block as done.
+   *
+   * There is deliberately no local fallback: a visit that did not reach the
+   * server is not recorded, and the publisher is told so, rather than
+   * looking at a green block that exists only on this phone.
+   *
+   * The `logId` is generated here and sent with the request so the server
+   * can recognise a repeat of the *same* confirmation (its idempotency key).
+   */
   async function handleConfirmWorked(): Promise<void> {
     if (confirmTarget === null) return;
     const { block } = confirmTarget;
     const workedAt = effectiveNow;
+    setSaving(true);
     try {
-      await workLogQueue.enqueue(block.id, workedAt);
-    } catch {
-      // Writing to the on-device queue is the one step with no fallback: if
-      // it fails the visit is not recorded anywhere, so the publisher has to
-      // hear about it instead of watching the dialog sit there doing nothing.
-      setConfirmTarget(null);
-      setBanner('Não foi possível registrar a marcação neste aparelho. Tente novamente.');
-      return;
-    }
-    setJustWorked((previous) => ({ ...previous, [block.id]: workedAt }));
-    setConfirmTarget(null);
-    try {
-      await workLogQueue.drain(session.token);
+      await apiClient.markBlockWorked(session.token, block.id, uuidv4(), workedAt);
     } catch (error) {
-      if (error instanceof WorkLogDrainError) {
+      if (error instanceof NetworkException) {
         setBanner(
-          `${error.failures.length} marcação(ões) não foram aceitas pelo servidor. Fale com quem cuida dos territórios na congregação.`,
+          'Sem conexão com o servidor: a marcação não foi registrada. Tente de novo quando houver internet.',
         );
+      } else if (error instanceof ApiErrorException) {
+        // The server's own words -- "território não designado", "quadra não
+        // encontrada" -- say more than anything this screen could guess.
+        setBanner(`A marcação não foi registrada: ${error.detail}`);
+      } else {
+        setBanner('A marcação não foi registrada. Tente novamente.');
       }
-      // A plain network failure just leaves the item queued for the next
-      // `drain` -- nothing new to tell the publisher, the block already
-      // shows as done.
+      return;
+    } finally {
+      setSaving(false);
+      setConfirmTarget(null);
     }
+    setBanner(null);
+    setJustWorked((previous) => ({ ...previous, [block.id]: workedAt }));
   }
 
   return (
@@ -183,13 +193,17 @@ export function MapScreen({
                 </Pressable>
                 <Pressable
                   accessibilityRole="button"
+                  disabled={saving}
                   onPress={handleConfirmWorked}
                   style={({ pressed }) => [
                     styles.filledButton,
                     pressed && styles.filledButtonPressed,
+                    saving && styles.filledButtonDisabled,
                   ]}
                 >
-                  <Text style={styles.filledButtonLabel}>Confirmar</Text>
+                  <Text style={styles.filledButtonLabel}>
+                    {saving ? 'Registrando…' : 'Confirmar'}
+                  </Text>
                 </Pressable>
               </View>
             </View>
@@ -389,6 +403,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   filledButtonPressed: { backgroundColor: colors.primaryPressed },
+  filledButtonDisabled: { opacity: 0.6 },
   filledButtonLabel: { color: colors.onPrimary, fontSize: 15, fontWeight: '600' },
 });
 

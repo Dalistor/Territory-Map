@@ -356,28 +356,76 @@ describe('createApiClient', () => {
 
       expect(territory.assignedUser).toBeUndefined()
     })
+  })
 
-    it('assignTerritory PATCHes /admin/territories/{id}/assignment with {user_id} and returns the parsed territory', async () => {
-      const { client, fetchImpl } = makeClient(
-        jsonResponse(200, { ...TERRITORY_JSON, assigned_user: { id: 'pub-1', name: 'Ana' } })
-      )
+  describe('assignments', () => {
+    const ASSIGNMENT_JSON = {
+      id: 'asg-1',
+      user: { id: 'pub-1', name: 'Ana' },
+      started_at: '2026-08-01T09:00:00Z',
+      completed_at: '2026-08-10T09:00:00Z'
+    }
+    const PARSED_ASSIGNMENT = {
+      id: 'asg-1',
+      publisher: { id: 'pub-1', name: 'Ana' },
+      startedAt: new Date('2026-08-01T09:00:00Z'),
+      completedAt: new Date('2026-08-10T09:00:00Z')
+    }
 
-      const territory = await client.assignTerritory('terr-1', 'pub-1')
+    it('listAssignments GETs /admin/territories/{id}/assignments and returns the parsed list', async () => {
+      const { client, fetchImpl } = makeClient(jsonResponse(200, [ASSIGNMENT_JSON]))
+
+      const assignments = await client.listAssignments('terr-1')
 
       const [url, init] = fetchImpl.mock.calls[0]
-      expect(url).toBe(`${BASE_URL}/admin/territories/terr-1/assignment`)
-      expect(init.method).toBe('PATCH')
-      expect(JSON.parse(init.body as string)).toEqual({ user_id: 'pub-1' })
-      expect(territory).toEqual({ ...PARSED_TERRITORY, assignedUser: { id: 'pub-1', name: 'Ana' } })
+      expect(url).toBe(`${BASE_URL}/admin/territories/terr-1/assignments`)
+      expect(init.method).toBe('GET')
+      expect(assignments).toEqual([PARSED_ASSIGNMENT])
     })
 
-    it('assignTerritory sends {user_id: null} to remove the assignment', async () => {
-      const { client, fetchImpl } = makeClient(jsonResponse(200, TERRITORY_JSON))
+    it('parses a completed_at of null as an open assignment, with completedAt undefined', async () => {
+      const { client } = makeClient(jsonResponse(200, [{ ...ASSIGNMENT_JSON, completed_at: null }]))
 
-      await client.assignTerritory('terr-1', null)
+      const [assignment] = await client.listAssignments('terr-1')
 
-      const [, init] = fetchImpl.mock.calls[0]
-      expect(JSON.parse(init.body as string)).toEqual({ user_id: null })
+      expect(assignment.completedAt).toBeUndefined()
+      expect(assignment.startedAt).toEqual(new Date('2026-08-01T09:00:00Z'))
+    })
+
+    it('designate POSTs /admin/territories/{id}/assignments with {user_id} and returns the parsed assignment', async () => {
+      const { client, fetchImpl } = makeClient(
+        jsonResponse(201, { ...ASSIGNMENT_JSON, completed_at: null })
+      )
+
+      const assignment = await client.designate('terr-1', 'pub-1')
+
+      const [url, init] = fetchImpl.mock.calls[0]
+      expect(url).toBe(`${BASE_URL}/admin/territories/terr-1/assignments`)
+      expect(init.method).toBe('POST')
+      expect(JSON.parse(init.body as string)).toEqual({ user_id: 'pub-1' })
+      expect(assignment).toEqual({ ...PARSED_ASSIGNMENT, completedAt: undefined })
+    })
+
+    it('completeAssignment POSTs /admin/territories/{id}/assignments/complete with no body', async () => {
+      const { client, fetchImpl } = makeClient(jsonResponse(200, ASSIGNMENT_JSON))
+
+      const assignment = await client.completeAssignment('terr-1')
+
+      const [url, init] = fetchImpl.mock.calls[0]
+      expect(url).toBe(`${BASE_URL}/admin/territories/terr-1/assignments/complete`)
+      expect(init.method).toBe('POST')
+      expect(init.body).toBeUndefined()
+      expect(assignment).toEqual(PARSED_ASSIGNMENT)
+    })
+
+    it('deleteAssignment DELETEs /admin/territories/{id}/assignments/{assignmentId}', async () => {
+      const { client, fetchImpl } = makeClient(emptyResponse())
+
+      await client.deleteAssignment('terr-1', 'asg-1')
+
+      const [url, init] = fetchImpl.mock.calls[0]
+      expect(url).toBe(`${BASE_URL}/admin/territories/terr-1/assignments/asg-1`)
+      expect(init.method).toBe('DELETE')
     })
   })
 

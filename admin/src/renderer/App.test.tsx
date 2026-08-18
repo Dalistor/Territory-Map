@@ -115,7 +115,6 @@ function fakeApi(overrides: Partial<IpcApi> = {}): IpcApi {
       create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
-      assign: vi.fn(),
       ...overrides.territories
     },
     blocks: {
@@ -130,6 +129,17 @@ function fakeApi(overrides: Partial<IpcApi> = {}): IpcApi {
       regenerateCode: vi.fn(),
       setActive: vi.fn(),
       ...overrides.publishers
+    },
+    assignments: {
+      listFor: vi.fn().mockResolvedValue([]),
+      designate: vi.fn(),
+      complete: vi.fn(),
+      delete: vi.fn(),
+      ...overrides.assignments
+    },
+    exports: {
+      assignments: vi.fn(),
+      ...overrides.exports
     },
     workLogs: {
       listFor: vi.fn(),
@@ -225,8 +235,7 @@ describe('App', () => {
         listWithBlocks: vi.fn().mockResolvedValue([]),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn(),
-        assign: vi.fn()
+        delete: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -255,8 +264,7 @@ describe('App', () => {
           .mockRejectedValue({ name: 'CredentialsRejectedException', message: rejectedMessage }),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn(),
-        assign: vi.fn()
+        delete: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -281,8 +289,7 @@ describe('App', () => {
         listWithBlocks: vi.fn().mockRejectedValue(rejected),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn(),
-        assign: vi.fn()
+        delete: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -307,8 +314,7 @@ describe('App', () => {
         listWithBlocks: vi.fn().mockRejectedValue(networkError),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn(),
-        assign: vi.fn()
+        delete: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -336,8 +342,7 @@ describe('App', () => {
         listWithBlocks: vi.fn().mockRejectedValue(new Error('boom')),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn(),
-        assign: vi.fn()
+        delete: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -361,8 +366,7 @@ describe('App', () => {
         listWithBlocks: vi.fn().mockResolvedValue([]),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn(),
-        assign: vi.fn()
+        delete: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -397,8 +401,7 @@ describe('App', () => {
         listWithBlocks: vi.fn().mockRejectedValue({ name: 'CredentialsRejectedException' }),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn(),
-        assign: vi.fn()
+        delete: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -425,8 +428,7 @@ describe('App', () => {
         listWithBlocks: vi.fn().mockRejectedValue('boom'),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn(),
-        assign: vi.fn()
+        delete: vi.fn()
       }
     })
     vi.stubGlobal('api', api)
@@ -602,8 +604,7 @@ describe('AuthenticatedApp navigation', () => {
           listWithBlocks: vi.fn().mockResolvedValue([]),
           create: vi.fn(),
           update: vi.fn(),
-          delete: vi.fn(),
-          assign: vi.fn()
+          delete: vi.fn()
         }
       })
     )
@@ -635,8 +636,7 @@ describe('AuthenticatedApp navigation', () => {
           listWithBlocks: vi.fn().mockResolvedValue([territory]),
           create: vi.fn(),
           update: vi.fn(),
-          delete: vi.fn(),
-          assign: vi.fn()
+          delete: vi.fn()
         }
       })
     )
@@ -685,8 +685,7 @@ describe('AuthenticatedApp navigation', () => {
           listWithBlocks: vi.fn().mockResolvedValue([territory]),
           create: vi.fn(),
           update: vi.fn(),
-          delete: vi.fn(),
-          assign: vi.fn()
+          delete: vi.fn()
         },
         blocks: { create, update: vi.fn(), delete: vi.fn() }
       })
@@ -726,8 +725,7 @@ describe('AuthenticatedApp navigation', () => {
           listWithBlocks: vi.fn().mockResolvedValue([territory]),
           create: vi.fn(),
           update: vi.fn(),
-          delete: vi.fn(),
-          assign: vi.fn()
+          delete: vi.fn()
         },
         workLogs: {
           listFor: vi.fn().mockResolvedValue([]),

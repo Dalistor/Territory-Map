@@ -15,15 +15,39 @@ import {
   type TerritoryUpdateInput,
   type SerializedIpcError
 } from '../shared/ipc-contract'
+import type { Territory } from '../shared/models'
 import { ApiErrorException } from '../shared/api-errors'
 import type { ApiClient } from './api-client'
 import type { Session } from './session'
 import type { Geocoder } from './geocode'
+import { buildAssignmentsWorkbook } from './excel-export'
+
+/**
+ * The slice of Electron's `dialog` this file uses. Narrowing it to one method
+ * is what lets the tests hand in a stub and never open a real window --
+ * `session`, `api` and `geocoder` are injected for the same reason.
+ */
+export interface SaveDialog {
+  showSaveDialog(options: {
+    title?: string
+    defaultPath?: string
+    filters?: { name: string; extensions: string[] }[]
+  }): Promise<{ canceled: boolean; filePath?: string }>
+}
 
 export interface RegisterIpcHandlersOptions {
   readonly session: Session
   readonly api: ApiClient
   readonly geocoder: Geocoder
+  readonly dialog: SaveDialog
+}
+
+/** `designacoes-2026-08-18.xlsx` — the name the save dialog opens with. */
+function suggestedFileName(now: Date): string {
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `designacoes-${year}-${month}-${day}.xlsx`
 }
 
 /**
@@ -72,7 +96,20 @@ function handle<Args extends unknown[], Result>(
   })
 }
 
-export function registerIpcHandlers({ session, api, geocoder }: RegisterIpcHandlersOptions): void {
+export function registerIpcHandlers({
+  session,
+  api,
+  geocoder,
+  dialog
+}: RegisterIpcHandlersOptions): void {
+  // The list endpoint does not carry blocks, so the detail of each territory
+  // has to be fetched separately. Shared by the `territoriesListWithBlocks`
+  // handler and the spreadsheet export below.
+  async function listTerritoriesWithBlocks(): Promise<Territory[]> {
+    const territories = await api.listTerritories()
+    return Promise.all(territories.map((territory) => api.getTerritory(territory.id)))
+  }
+
   handle(IPC_CHANNELS.sessionIsConfigured, () => session.isConfigured())
   handle(IPC_CHANNELS.sessionConfigure, (credentials: SessionCredentials) =>
     session.configure(credentials)
@@ -82,15 +119,7 @@ export function registerIpcHandlers({ session, api, geocoder }: RegisterIpcHandl
   // `sessionIsConfigured` above.
   handle(IPC_CHANNELS.sessionGetCongregation, () => Promise.resolve(session.congregation))
 
-  handle(IPC_CHANNELS.territoriesListWithBlocks, () =>
-    session.run(async () => {
-      // Same fan-out as the old `ApiTerritoryRepository.listWithBlocks`: the
-      // list endpoint does not carry blocks, so the detail of each territory
-      // has to be fetched separately.
-      const territories = await api.listTerritories()
-      return Promise.all(territories.map((territory) => api.getTerritory(territory.id)))
-    })
-  )
+  handle(IPC_CHANNELS.territoriesListWithBlocks, () => session.run(listTerritoriesWithBlocks))
   handle(IPC_CHANNELS.territoriesCreate, (input: TerritoryCreateInput) =>
     session.run(() => api.createTerritory(input))
   )
@@ -100,8 +129,18 @@ export function registerIpcHandlers({ session, api, geocoder }: RegisterIpcHandl
   handle(IPC_CHANNELS.territoriesDelete, (territoryId: string) =>
     session.run(() => api.deleteTerritory(territoryId))
   )
-  handle(IPC_CHANNELS.territoriesAssign, (territoryId: string, userId: string | null) =>
-    session.run(() => api.assignTerritory(territoryId, userId))
+
+  handle(IPC_CHANNELS.assignmentsListFor, (territoryId: string) =>
+    session.run(() => api.listAssignments(territoryId))
+  )
+  handle(IPC_CHANNELS.assignmentsDesignate, (territoryId: string, publisherId: string) =>
+    session.run(() => api.designate(territoryId, publisherId))
+  )
+  handle(IPC_CHANNELS.assignmentsComplete, (territoryId: string) =>
+    session.run(() => api.completeAssignment(territoryId))
+  )
+  handle(IPC_CHANNELS.assignmentsDelete, (territoryId: string, assignmentId: string) =>
+    session.run(() => api.deleteAssignment(territoryId, assignmentId))
   )
 
   handle(IPC_CHANNELS.blocksCreate, (input: BlockCreateInput) =>
@@ -131,6 +170,38 @@ export function registerIpcHandlers({ session, api, geocoder }: RegisterIpcHandl
   handle(IPC_CHANNELS.workLogsDelete, (logId: string) =>
     session.run(() => api.deleteWorkLog(logId))
   )
+
+  handle(IPC_CHANNELS.exportAssignments, async (): Promise<string | null> => {
+    const rows = await session.run(async () => {
+      const territories = await listTerritoriesWithBlocks()
+      // One extra request per territory. It is an N+1, and deliberately left
+      // as one: a congregation has dozens of territories, not thousands, and
+      // the server has no bulk endpoint for the histories. Adding one would
+      // cost a route and a schema to save a handful of local requests on an
+      // action the admin runs a few times a year.
+      return Promise.all(
+        territories.map(async (territory) => ({
+          territory,
+          assignments: await api.listAssignments(territory.id)
+        }))
+      )
+    })
+
+    const workbook = buildAssignmentsWorkbook(rows)
+
+    // Asked for only after the data is in hand: a dialog that opens and then
+    // fails on a network error would have made the admin pick a path for
+    // nothing.
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: 'Exportar designações',
+      defaultPath: suggestedFileName(new Date()),
+      filters: [{ name: 'Planilha do Excel', extensions: ['xlsx'] }]
+    })
+    if (canceled || filePath === undefined || filePath === '') return null
+
+    await workbook.xlsx.writeFile(filePath)
+    return filePath
+  })
 
   // Not a call to this app's own server -- no `session.run()`, same as
   // `sessionIsConfigured`/`sessionGetCongregation` above.

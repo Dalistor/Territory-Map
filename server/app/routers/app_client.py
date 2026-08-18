@@ -27,7 +27,6 @@ from app.models.user import User
 from app.repositories.block import BlockRepository
 from app.repositories.block_work_log import BlockWorkLogRepository
 from app.repositories.territory import TerritoryRepository
-from app.repositories.user import UserRepository
 from app.routers.auth import utc_now
 from app.schemas.block import BlockOut
 from app.schemas.geo import LatLngOut
@@ -44,9 +43,7 @@ DbSession = Annotated[Session, Depends(get_session)]
 
 
 def get_territory_service(session: DbSession) -> TerritoryService:
-    return TerritoryService(
-        TerritoryRepository(session), BlockRepository(session), UserRepository(session), utc_now
-    )
+    return TerritoryService(TerritoryRepository(session), BlockRepository(session), utc_now)
 
 
 def get_block_service(session: DbSession) -> BlockService:

@@ -10,7 +10,7 @@ cases and get the edges wrong, which is where the bugs are.
 
 from collections.abc import Callable
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import pytest
 from app.core.exceptions import (
@@ -22,10 +22,8 @@ from app.core.exceptions import (
 )
 from app.core.geo import LatLng, points_to_wkt
 from app.models.block import Block
-from app.models.user import User
 from app.repositories.block import BlockRepository
 from app.repositories.territory import TerritoryRepository
-from app.repositories.user import UserRepository
 from app.services.territory import TerritoryService
 from sqlalchemy.orm import Session
 
@@ -47,7 +45,6 @@ def service(session: Session) -> TerritoryService:
     return TerritoryService(
         territories=TerritoryRepository(session),
         blocks=BlockRepository(session),
-        users=UserRepository(session),
         now_provider=lambda: NOW,
     )
 
@@ -65,26 +62,6 @@ def draw_block(session: Session) -> Callable[..., Block]:
         return BlockRepository(session).create(territory_id, number, points_to_wkt(points))
 
     return _draw
-
-
-@pytest.fixture
-def make_user(session: Session) -> Callable[..., User]:
-    """Put a publisher on the map straight through the repository.
-
-    `UserService` is a different unit; going through it would make these tests
-    fail for reasons that belong there (code generation, expiry). What the
-    assignment rule needs from a user is only that it exists, in a congregation,
-    with a given `is_active`.
-    """
-
-    def _make(congregation_id: UUID, name: str = "Ana", *, is_active: bool = True) -> User:
-        repository = UserRepository(session)
-        user = repository.create(congregation_id=congregation_id, name=name)
-        if not is_active:
-            user = repository.set_active(user, False)
-        return user
-
-    return _make
 
 
 def test_create_stores_the_territory_and_gives_the_points_back_in_order(
@@ -405,117 +382,3 @@ def test_delete_of_a_territory_of_another_congregation_is_not_found(
         service.delete(ours.id, stranger.id)
 
     assert service.get(theirs.id, stranger.id).id == stranger.id
-
-
-def test_assign_to_user_sets_the_assigned_user(
-    service: TerritoryService,
-    make_congregation,
-    make_user,
-) -> None:
-    congregation = make_congregation()
-    territory = service.create(congregation.id, "Centro", square(0.0, 0.0))
-    publisher = make_user(congregation.id)
-
-    assigned = service.assign_to_user(congregation.id, territory.id, publisher.id)
-
-    assert assigned.assigned_user_id == publisher.id
-
-
-def test_assign_to_user_with_none_clears_an_existing_assignment(
-    service: TerritoryService,
-    make_congregation,
-    make_user,
-) -> None:
-    congregation = make_congregation()
-    territory = service.create(congregation.id, "Centro", square(0.0, 0.0))
-    publisher = make_user(congregation.id)
-    service.assign_to_user(congregation.id, territory.id, publisher.id)
-
-    cleared = service.assign_to_user(congregation.id, territory.id, None)
-
-    assert cleared.assigned_user_id is None
-
-
-def test_assign_to_user_to_someone_else_replaces_the_previous_publisher(
-    service: TerritoryService,
-    make_congregation,
-    make_user,
-) -> None:
-    """No "unassign first" step -- assigning to someone else is a plain overwrite."""
-    congregation = make_congregation()
-    territory = service.create(congregation.id, "Centro", square(0.0, 0.0))
-    first = make_user(congregation.id, "Ana")
-    second = make_user(congregation.id, "Beto")
-    service.assign_to_user(congregation.id, territory.id, first.id)
-
-    reassigned = service.assign_to_user(congregation.id, territory.id, second.id)
-
-    assert reassigned.assigned_user_id == second.id
-
-
-def test_assign_to_user_with_a_nonexistent_territory_id_is_not_found(
-    service: TerritoryService,
-    make_congregation,
-    make_user,
-) -> None:
-    congregation = make_congregation()
-    publisher = make_user(congregation.id)
-
-    with pytest.raises(NotFoundError):
-        service.assign_to_user(congregation.id, uuid4(), publisher.id)
-
-
-def test_assign_to_user_of_a_territory_of_another_congregation_is_not_found(
-    service: TerritoryService,
-    make_congregation,
-    make_user,
-) -> None:
-    """Never 403: confirming the territory exists would already leak the other tenant."""
-    ours = make_congregation(name="Central")
-    theirs = make_congregation(name="Jardim", city="Campinas")
-    stranger_territory = service.create(theirs.id, "Centro", square(0.0, 0.0))
-    publisher = make_user(theirs.id)
-
-    with pytest.raises(NotFoundError):
-        service.assign_to_user(ours.id, stranger_territory.id, publisher.id)
-
-
-def test_assign_to_user_with_a_nonexistent_user_id_is_not_found(
-    service: TerritoryService,
-    make_congregation,
-) -> None:
-    congregation = make_congregation()
-    territory = service.create(congregation.id, "Centro", square(0.0, 0.0))
-
-    with pytest.raises(NotFoundError):
-        service.assign_to_user(congregation.id, territory.id, uuid4())
-
-
-def test_assign_to_user_with_a_user_id_of_another_congregation_is_not_found(
-    service: TerritoryService,
-    make_congregation,
-    make_user,
-) -> None:
-    """Same generic error as a missing user -- it must not reveal which failed."""
-    ours = make_congregation(name="Central")
-    theirs = make_congregation(name="Jardim", city="Campinas")
-    territory = service.create(ours.id, "Centro", square(0.0, 0.0))
-    stranger = make_user(theirs.id)
-
-    with pytest.raises(NotFoundError):
-        service.assign_to_user(ours.id, territory.id, stranger.id)
-
-
-def test_assign_to_user_accepts_an_inactive_publisher(
-    service: TerritoryService,
-    make_congregation,
-    make_user,
-) -> None:
-    """Deactivation revokes app access, not the right to be a territory's contact."""
-    congregation = make_congregation()
-    territory = service.create(congregation.id, "Centro", square(0.0, 0.0))
-    inactive = make_user(congregation.id, is_active=False)
-
-    assigned = service.assign_to_user(congregation.id, territory.id, inactive.id)
-
-    assert assigned.assigned_user_id == inactive.id

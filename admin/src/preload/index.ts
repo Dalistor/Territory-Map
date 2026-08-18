@@ -30,10 +30,7 @@ const api: IpcApi = {
       ipcRenderer.invoke(IPC_CHANNELS.territoriesCreate, input),
     update: (territoryId: string, input: TerritoryUpdateInput) =>
       ipcRenderer.invoke(IPC_CHANNELS.territoriesUpdate, territoryId, input),
-    delete: (territoryId: string) =>
-      ipcRenderer.invoke(IPC_CHANNELS.territoriesDelete, territoryId),
-    assign: (territoryId: string, userId: string | null) =>
-      ipcRenderer.invoke(IPC_CHANNELS.territoriesAssign, territoryId, userId)
+    delete: (territoryId: string) => ipcRenderer.invoke(IPC_CHANNELS.territoriesDelete, territoryId)
   },
   blocks: {
     create: (input: BlockCreateInput) => ipcRenderer.invoke(IPC_CHANNELS.blocksCreate, input),
@@ -48,6 +45,19 @@ const api: IpcApi = {
       ipcRenderer.invoke(IPC_CHANNELS.publishersRegenerateCode, publisherId),
     setActive: (publisherId: string, isActive: boolean) =>
       ipcRenderer.invoke(IPC_CHANNELS.publishersSetActive, publisherId, isActive)
+  },
+  assignments: {
+    listFor: (territoryId: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.assignmentsListFor, territoryId),
+    designate: (territoryId: string, publisherId: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.assignmentsDesignate, territoryId, publisherId),
+    complete: (territoryId: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.assignmentsComplete, territoryId),
+    delete: (territoryId: string, assignmentId: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.assignmentsDelete, territoryId, assignmentId)
+  },
+  exports: {
+    assignments: () => ipcRenderer.invoke(IPC_CHANNELS.exportAssignments)
   },
   workLogs: {
     listFor: (blockId: string) => ipcRenderer.invoke(IPC_CHANNELS.workLogsListFor, blockId),

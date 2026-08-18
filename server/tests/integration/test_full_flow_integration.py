@@ -96,8 +96,8 @@ async def test_a_congregation_goes_from_empty_to_a_worked_block(api, register_co
     # -- the admin designates the territory to the publisher ------------------
     publisher_id = activated.json()["user"]["id"]
     designated = await api.assign_territory(admin_token, territory_id, publisher_id)
-    assert designated.status_code == 200
-    assert designated.json()["assigned_user"]["name"] == "Irmã Marta"
+    assert designated.status_code == 201
+    assert designated.json()["user"]["name"] == "Irmã Marta"
 
     # -- the publisher works block 1 and marks it -----------------------------
     worked_at = an_hour_ago()
