@@ -9,11 +9,31 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { LatLngTuple } from 'leaflet'
 import { compareTerritoriesByNumber } from '../../shared/models'
-import type { Block, Congregation, Territory } from '../../shared/models'
+import type { Block, Congregation, Publisher, Territory } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
 import { TerritoryMap } from '../map/TerritoryMap'
+import { deleteBlockConfirmMessage, deleteTerritoryConfirmMessage } from './confirmMessages'
 
 const GENERIC_ERROR_MESSAGE = 'Não foi possível completar a operação.'
+
+/**
+ * A `Date` as `<input type="date">` wants it: `YYYY-MM-DD` in the admin's own
+ * timezone. `toISOString()` would answer in UTC, which lands on the previous
+ * day for anyone west of Greenwich -- Brazil included.
+ */
+function toDateInputValue(date: Date): string {
+  const two = (value: number): string => value.toString().padStart(2, '0')
+  return `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())}`
+}
+
+/**
+ * The inverse of {@link toDateInputValue}: local midnight of the day the admin
+ * picked. Deliberately not `new Date(value)`, which reads the string as UTC.
+ */
+function fromDateInputValue(value: string): Date {
+  const [year, month, day] = value.split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
 
 export interface HomeScreenProps {
   /**
@@ -29,6 +49,8 @@ export interface HomeScreenProps {
    */
   readonly onNewTerritory?: (neighbours: Territory[]) => void
   readonly onEditTerritory?: (territory: Territory, neighbours: Territory[]) => void
+  /** Signals the intent to open the territory's settings page (name, rotation, summary, delete). */
+  readonly onOpenSettings?: (territory: Territory) => void
   readonly onAddBlock?: (territory: Territory) => void
   readonly onShowHistory?: (territory: Territory, block: Block) => void
   readonly onEditBlock?: (territory: Territory, block: Block) => void
@@ -50,28 +72,11 @@ function errorMessage(error: unknown): string {
   return parseIpcError(error, GENERIC_ERROR_MESSAGE).message
 }
 
-/** Literal, because `block_work_logs.block_id` really is `ON DELETE CASCADE` on the server. */
-function deleteTerritoryConfirmMessage(territory: Territory): string {
-  if (territory.blocks.length === 0) {
-    return `O território "${territory.name}" será apagado.`
-  }
-  return (
-    `O território "${territory.name}" será apagado, e junto dele as ${territory.blocks.length} ` +
-    `quadras e todo o histórico de trabalho delas.`
-  )
-}
-
-function deleteBlockConfirmMessage(territory: Territory, block: Block): string {
-  return (
-    `A quadra ${block.number} de "${territory.name}" será apagada, e junto dela todo o ` +
-    `histórico de trabalho registrado nela.`
-  )
-}
-
 export function HomeScreen({
   congregation,
   onNewTerritory,
   onEditTerritory,
+  onOpenSettings,
   onAddBlock,
   onShowHistory,
   onEditBlock,
@@ -99,6 +104,10 @@ export function HomeScreen({
     null
   )
   const [openTerritoryMenuId, setOpenTerritoryMenuId] = useState<string | null>(null)
+  const [isMarkingWorked, setIsMarkingWorked] = useState(false)
+  const [publishers, setPublishers] = useState<Publisher[]>([])
+  const [workedPublisherId, setWorkedPublisherId] = useState('')
+  const [workedAtValue, setWorkedAtValue] = useState('')
 
   const load = useCallback(async () => {
     setIsLoading(true)
@@ -186,6 +195,45 @@ export function HomeScreen({
     [load, runConfirmed]
   )
 
+  const openMarkWorked = useCallback(async () => {
+    if (activeBlock === null) return
+    setActionError(null)
+    // The assigned publisher is the right guess almost every time, so it comes
+    // pre-selected -- but the admin can still record someone else's work.
+    setWorkedPublisherId(activeBlock.territory.assignedUser?.id ?? '')
+    setWorkedAtValue(toDateInputValue(now ?? new Date()))
+    setIsMarkingWorked(true)
+    try {
+      setPublishers(await window.api.publishers.list())
+    } catch (error) {
+      setActionError(errorMessage(error))
+    }
+  }, [activeBlock, now])
+
+  const closeMarkWorked = useCallback(() => {
+    setIsMarkingWorked(false)
+    setPublishers([])
+  }, [])
+
+  const confirmMarkWorked = useCallback(() => {
+    if (activeBlock === null || workedPublisherId === '' || workedAtValue === '') {
+      return Promise.resolve()
+    }
+    const blockId = activeBlock.block.id
+    return runAction(async () => {
+      await window.api.workLogs.markWorked(
+        blockId,
+        workedPublisherId,
+        fromDateInputValue(workedAtValue)
+      )
+      closeMarkWorked()
+      setActiveBlock(null)
+      // The block's colour is derived from `lastWorkedAt`, which the server
+      // just recomputed -- reloading is what makes the map catch up.
+      await load()
+    })
+  }, [activeBlock, closeMarkWorked, load, runAction, workedAtValue, workedPublisherId])
+
   const title = congregation ? `${congregation.name} — ${congregation.city}` : 'Territory Map'
 
   return (
@@ -260,6 +308,17 @@ export function HomeScreen({
                             <li>
                               <button
                                 role="menuitem"
+                                onClick={() => {
+                                  setOpenTerritoryMenuId(null)
+                                  onOpenSettings?.(territory)
+                                }}
+                              >
+                                {`Configurações de ${territory.name}`}
+                              </button>
+                            </li>
+                            <li>
+                              <button
+                                role="menuitem"
                                 className="block-action-danger"
                                 onClick={() => {
                                   setOpenTerritoryMenuId(null)
@@ -328,6 +387,54 @@ export function HomeScreen({
             >
               Editar contorno ou número
             </button>
+            {!isMarkingWorked && (
+              <button
+                role="menuitem"
+                className="block-action"
+                onClick={() => void openMarkWorked()}
+              >
+                Marcar como trabalhada
+              </button>
+            )}
+            {isMarkingWorked && (
+              <div className="block-mark-worked">
+                <label className="field">
+                  <span>Publicador</span>
+                  <select
+                    value={workedPublisherId}
+                    onChange={(event) => setWorkedPublisherId(event.target.value)}
+                  >
+                    <option value="">Selecione…</option>
+                    {publishers.map((publisher) => (
+                      <option key={publisher.id} value={publisher.id}>
+                        {publisher.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Data</span>
+                  <input
+                    type="date"
+                    value={workedAtValue}
+                    onChange={(event) => setWorkedAtValue(event.target.value)}
+                  />
+                </label>
+                <div className="block-mark-worked-actions">
+                  <button
+                    type="button"
+                    className="button-primary"
+                    disabled={workedPublisherId === '' || workedAtValue === ''}
+                    onClick={() => void confirmMarkWorked()}
+                  >
+                    Marcar
+                  </button>
+                  <button type="button" onClick={closeMarkWorked}>
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
             <button
               role="menuitem"
               className="block-action block-action-danger"

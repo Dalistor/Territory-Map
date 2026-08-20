@@ -27,6 +27,7 @@ from app.models.user import User
 from app.repositories.block import BlockRepository
 from app.repositories.block_work_log import BlockWorkLogRepository
 from app.repositories.territory import TerritoryRepository
+from app.repositories.user import UserRepository
 from app.routers.auth import utc_now
 from app.schemas.block import BlockOut
 from app.schemas.geo import LatLngOut
@@ -51,7 +52,12 @@ def get_block_service(session: DbSession) -> BlockService:
 
 
 def get_work_log_service(session: DbSession) -> WorkLogService:
-    return WorkLogService(BlockWorkLogRepository(session), BlockRepository(session), utc_now)
+    return WorkLogService(
+        work_logs=BlockWorkLogRepository(session),
+        blocks=BlockRepository(session),
+        users=UserRepository(session),
+        now_provider=utc_now,
+    )
 
 
 AppUser = Annotated[User, Depends(current_app_user)]
@@ -81,7 +87,13 @@ def _territory_out(
     territories: TerritoryService,
     blocks: BlockService,
 ) -> TerritoryOut:
-    """One territory with the blocks drawn inside it, ready to be cached offline."""
+    """One territory with the blocks drawn inside it, ready to be cached offline.
+
+    `rotation_days` rides along for the same reason `last_worked_at` does: the phone
+    decides the colour of every block on its own, from the cache, with no server to
+    ask -- and the threshold that turns a block overdue is per territory. Null means
+    the app falls back to its own default cycle.
+    """
     return TerritoryOut(
         id=territory.id,
         name=territory.name,
@@ -92,6 +104,7 @@ def _territory_out(
         assigned_user=UserBriefOut.model_validate(territory.assigned_user)
         if territory.assigned_user
         else None,
+        rotation_days=territory.rotation_days,
     )
 
 

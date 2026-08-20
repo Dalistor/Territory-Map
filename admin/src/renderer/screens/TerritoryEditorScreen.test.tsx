@@ -81,7 +81,7 @@ function fakeApi(
       delete: vi.fn()
     },
     exports: { assignments: vi.fn() },
-    workLogs: { listFor: vi.fn(), delete: vi.fn() },
+    workLogs: { listFor: vi.fn(), delete: vi.fn(), markWorked: vi.fn() },
     geo: { geocodeCity: vi.fn() }
   }
 }

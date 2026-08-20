@@ -17,18 +17,12 @@ import { DivIcon, type LatLngTuple } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { Block, Territory } from '../../shared/models'
 import type { LatLng } from '../../shared/geo'
-import { blockColorCategory, type BlockColorCategory } from './blockColor'
+import { CATEGORY_COLOR, blockColorCategory } from './blockColor'
 
 /** Brasília -- the fallback centre when there is nothing to draw yet. */
 const FALLBACK_CENTER: LatLngTuple = [-15.78, -47.93]
 const FALLBACK_ZOOM = 4
 const TERRITORY_ZOOM = 15
-
-const CATEGORY_COLOR: Record<BlockColorCategory, string> = {
-  never: '#c62828', // red -- never worked
-  overdue: '#ef6c00', // orange -- past the 120-day threshold
-  recent: '#2e7d32' // green -- worked recently
-}
 
 const TERRITORY_OUTLINE_COLOR = '#1565c0'
 
@@ -128,7 +122,8 @@ function numberIcon(number: number, color: string): DivIcon {
 
 /**
  * The map itself: territories drawn as thin, unfilled outlines; blocks drawn
- * as filled polygons coloured by how overdue their work is; a numbered
+ * as filled polygons coloured by how overdue their work is against their own
+ * territory's rotation; a numbered
  * marker on each block's centroid that reports taps to the caller.
  *
  * This component only draws what it is handed through props -- no
@@ -165,7 +160,7 @@ export function TerritoryMap({
       ))}
       {territories.map((territory) =>
         territory.blocks.map((block) => {
-          const color = CATEGORY_COLOR[blockColorCategory(block, now)]
+          const color = CATEGORY_COLOR[blockColorCategory(block, now, territory.rotationDays)]
           return (
             <Polygon
               key={block.id}
@@ -177,7 +172,7 @@ export function TerritoryMap({
       )}
       {territories.map((territory) =>
         territory.blocks.map((block) => {
-          const color = CATEGORY_COLOR[blockColorCategory(block, now)]
+          const color = CATEGORY_COLOR[blockColorCategory(block, now, territory.rotationDays)]
           return (
             <Marker
               key={block.id}

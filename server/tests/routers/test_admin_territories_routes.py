@@ -263,3 +263,93 @@ async def test_no_route_here_is_reachable_without_an_admin_token(client, method,
     response = await client.request(method.upper(), path, json=body)
 
     assert response.status_code == 401
+
+
+async def test_setting_the_rotation_answers_with_the_number_that_was_stored(client, make_admin):
+    _, token = make_admin()
+    territory = (await draw(client, token)).json()
+    assert territory["rotation_days"] is None
+
+    response = await client.patch(
+        f"/admin/territories/{territory['id']}",
+        json={"rotation_days": 60},
+        headers=bearer(token),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["rotation_days"] == 60
+
+
+async def test_a_patch_that_only_renames_leaves_the_rotation_where_it_was(client, make_admin):
+    """Absent is not null: renaming a territory must not put it back on the default."""
+    _, token = make_admin()
+    territory = (await draw(client, token)).json()
+    await client.patch(
+        f"/admin/territories/{territory['id']}",
+        json={"rotation_days": 60},
+        headers=bearer(token),
+    )
+
+    response = await client.patch(
+        f"/admin/territories/{territory['id']}",
+        json={"name": "Centro Novo"},
+        headers=bearer(token),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["name"] == "Centro Novo"
+    assert body["rotation_days"] == 60
+
+
+async def test_sending_the_rotation_as_null_puts_the_territory_back_on_the_default(
+    client, make_admin
+):
+    _, token = make_admin()
+    territory = (await draw(client, token)).json()
+    await client.patch(
+        f"/admin/territories/{territory['id']}",
+        json={"rotation_days": 60},
+        headers=bearer(token),
+    )
+
+    response = await client.patch(
+        f"/admin/territories/{territory['id']}",
+        json={"rotation_days": None},
+        headers=bearer(token),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["rotation_days"] is None
+
+
+@pytest.mark.parametrize("rotation", [0, -1, 3651], ids=["zero", "negative", "over-ten-years"])
+async def test_a_rotation_outside_the_allowed_cycle_never_reaches_the_service(
+    client, make_admin, rotation
+):
+    _, token = make_admin()
+    territory = (await draw(client, token)).json()
+
+    response = await client.patch(
+        f"/admin/territories/{territory['id']}",
+        json={"rotation_days": rotation},
+        headers=bearer(token),
+    )
+
+    assert response.status_code == 422
+
+
+async def test_the_rotation_comes_back_in_the_listing_and_in_the_detail(client, make_admin):
+    _, token = make_admin()
+    territory = (await draw(client, token)).json()
+    await client.patch(
+        f"/admin/territories/{territory['id']}",
+        json={"rotation_days": 45},
+        headers=bearer(token),
+    )
+
+    listing = await client.get("/admin/territories", headers=bearer(token))
+    detail = await client.get(f"/admin/territories/{territory['id']}", headers=bearer(token))
+
+    assert [item["rotation_days"] for item in listing.json()] == [45]
+    assert detail.json()["rotation_days"] == 45

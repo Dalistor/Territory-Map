@@ -54,7 +54,8 @@ function fakeApi(overrides: Partial<IpcApi['session']> = {}): IpcApi {
     exports: { assignments: vi.fn() },
     workLogs: {
       listFor: vi.fn(),
-      delete: vi.fn()
+      delete: vi.fn(),
+      markWorked: vi.fn()
     },
     geo: {
       geocodeCity: vi.fn()

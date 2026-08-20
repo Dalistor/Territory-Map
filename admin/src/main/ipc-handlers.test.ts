@@ -4,11 +4,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IPC_CHANNELS } from '../shared/ipc-contract'
-import type { Assignment, AssignmentWithTerritory, Territory } from '../shared/models'
+import type { Assignment, AssignmentWithTerritory, Territory, WorkLog } from '../shared/models'
 import type { ApiClient } from './api-client'
 import type { Session } from './session'
 import type { Geocoder } from './geocode'
 import { registerIpcHandlers, type SaveDialog } from './ipc-handlers'
+import { ApiErrorException } from '../shared/api-errors'
+import { createSession } from './session'
+import type { CredentialsStore } from './credentials-store'
 
 /**
  * `ipcMain` is the only Electron binding this file reaches, and it does not
@@ -59,9 +62,18 @@ const ASSIGNMENT_WITH_TERRITORY: AssignmentWithTerritory = {
   territory: { id: TERRITORY.id, name: TERRITORY.name }
 }
 
+const WORK_LOG: WorkLog = {
+  id: 'log-1',
+  blockId: 'block-1',
+  publisher: { id: 'pub-1', name: 'João' },
+  workedAt: new Date(Date.UTC(2026, 7, 1, 9)),
+  createdAt: new Date(Date.UTC(2026, 7, 1, 9, 5))
+}
+
 function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
     listTerritories: vi.fn(async () => [TERRITORY]),
+    markBlockWorked: vi.fn(async () => WORK_LOG),
     getTerritory: vi.fn(async () => TERRITORY),
     listAssignments: vi.fn(async () => [ASSIGNMENT]),
     listAllAssignments: vi.fn(async () => [ASSIGNMENT_WITH_TERRITORY]),
@@ -150,5 +162,93 @@ describe('assignments:listAll', () => {
     ])
     expect(api.listAllAssignments).toHaveBeenCalledOnce()
     expect(session.run).toHaveBeenCalledOnce()
+  })
+})
+
+describe('workLogs:markWorked', () => {
+  it('forwards the block, the publisher and the date to the API client, through the session', async () => {
+    const api = fakeApi()
+    const session = fakeSession()
+    const workedAt = new Date(Date.UTC(2026, 7, 1, 9))
+    registerIpcHandlers({
+      session,
+      api,
+      geocoder: fakeGeocoder,
+      dialog: { showSaveDialog: vi.fn() }
+    })
+
+    await expect(
+      invoke(IPC_CHANNELS.workLogsMarkWorked, 'block-1', 'pub-1', workedAt)
+    ).resolves.toEqual(WORK_LOG)
+    expect(api.markBlockWorked).toHaveBeenCalledWith('block-1', {
+      userId: 'pub-1',
+      workedAt
+    })
+    expect(session.run).toHaveBeenCalledOnce()
+  })
+
+  it('propagates a rejected marking as a serialized error, code and status included', async () => {
+    const api = fakeApi({
+      markBlockWorked: vi.fn(async () => {
+        throw new ApiErrorException(404, 'not_found', 'Publicador não encontrado.')
+      })
+    })
+    registerIpcHandlers({
+      session: fakeSession(),
+      api,
+      geocoder: fakeGeocoder,
+      dialog: { showSaveDialog: vi.fn() }
+    })
+
+    const error = await invoke(
+      IPC_CHANNELS.workLogsMarkWorked,
+      'block-1',
+      'pub-1',
+      new Date()
+    ).catch((thrown: Error) => thrown)
+
+    expect(JSON.parse((error as Error).message)).toEqual({
+      name: 'ApiErrorException',
+      message: 'Publicador não encontrado.',
+      code: 'not_found',
+      statusCode: 404
+    })
+  })
+
+  // The one handler-level check that the marking really sits inside
+  // `session.run`: a real session (not the pass-through fake) turns an
+  // expired token into a silent re-login and a second attempt.
+  it('re-authenticates once and retries when the server answers 401', async () => {
+    const credentials = { name: 'Congregação Central', city: 'São Paulo', password: 'pw' }
+    const store: CredentialsStore = {
+      read: vi.fn(async () => credentials),
+      write: vi.fn(),
+      clear: vi.fn()
+    }
+    let attempt = 0
+    const api = fakeApi({
+      login: vi.fn(async () => ({
+        accessToken: 'token',
+        congregation: { id: 'cong-1', name: credentials.name, city: credentials.city }
+      })),
+      setToken: vi.fn(),
+      markBlockWorked: vi.fn(async () => {
+        attempt += 1
+        if (attempt === 1) throw new ApiErrorException(401, 'unauthorized', 'token expirado')
+        return WORK_LOG
+      })
+    })
+    registerIpcHandlers({
+      session: createSession({ api, store }),
+      api,
+      geocoder: fakeGeocoder,
+      dialog: { showSaveDialog: vi.fn() }
+    })
+
+    await expect(
+      invoke(IPC_CHANNELS.workLogsMarkWorked, 'block-1', 'pub-1', new Date())
+    ).resolves.toEqual(WORK_LOG)
+    expect(attempt).toBe(2)
+    expect(api.login).toHaveBeenCalledTimes(2) // first sign-in + the retry's
   })
 })

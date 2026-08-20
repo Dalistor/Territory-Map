@@ -9,7 +9,7 @@ conflict, an outline that leaves the territory is unprocessable -- and the one w
 the admin has over the history the app can only append to.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -276,12 +276,150 @@ async def test_deleting_a_visit_gives_the_block_back_its_previous_state(
     assert history.json() == []
 
 
+async def test_the_admin_marking_a_block_records_the_visit_under_the_chosen_publisher(
+    client, make_admin, make_publisher
+):
+    """The whole point of this route: the admin writes down somebody else's visit."""
+    congregation, token = make_admin()
+    territory_id = await draw_territory(client, token)
+    block = (await draw_block(client, token, territory_id)).json()
+    publisher = make_publisher(congregation.id, name="Irmã Maria")
+
+    response = await client.post(
+        f"/admin/blocks/{block['id']}/worked",
+        json={"user_id": str(publisher.id), "worked_at": WORKED_AT.isoformat()},
+        headers=bearer(token),
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["block_id"] == block["id"]
+    assert body["user"]["name"] == "Irmã Maria"
+    assert body["worked_at"].startswith("2026-07-20T15:30:00")
+
+
+async def test_after_the_admin_marks_it_the_block_reads_back_as_worked(
+    client, make_admin, make_publisher
+):
+    """`last_worked_at` is the projection the map colours from, so it has to move."""
+    congregation, token = make_admin()
+    territory_id = await draw_territory(client, token)
+    block = (await draw_block(client, token, territory_id)).json()
+    publisher = make_publisher(congregation.id)
+
+    await client.post(
+        f"/admin/blocks/{block['id']}/worked",
+        json={"user_id": str(publisher.id), "worked_at": WORKED_AT.isoformat()},
+        headers=bearer(token),
+    )
+
+    detail = await client.get(f"/admin/territories/{territory_id}", headers=bearer(token))
+    assert detail.json()["blocks"][0]["last_worked_at"].startswith("2026-07-20T15:30:00")
+
+
+async def test_marking_the_same_block_twice_records_two_visits(client, make_admin, make_publisher):
+    """No client id to recognise, so a second call is a second visit -- as it should be."""
+    congregation, token = make_admin()
+    territory_id = await draw_territory(client, token)
+    block = (await draw_block(client, token, territory_id)).json()
+    publisher = make_publisher(congregation.id)
+    body = {"user_id": str(publisher.id), "worked_at": WORKED_AT.isoformat()}
+
+    first = await client.post(
+        f"/admin/blocks/{block['id']}/worked", json=body, headers=bearer(token)
+    )
+    second = await client.post(
+        f"/admin/blocks/{block['id']}/worked", json=body, headers=bearer(token)
+    )
+
+    assert [first.status_code, second.status_code] == [201, 201]
+    assert first.json()["id"] != second.json()["id"]
+    history = await client.get(f"/admin/blocks/{block['id']}/work-logs", headers=bearer(token))
+    assert len(history.json()) == 2
+
+
+async def test_marking_for_a_publisher_of_another_congregation_is_404(
+    client, make_admin, make_publisher
+):
+    """The same 404 as a block that is not yours -- never a 403 confirming the person."""
+    _, token = make_admin(name="Central", city="Uberlândia")
+    other, _ = make_admin(name="Norte", city="Contagem")
+    territory_id = await draw_territory(client, token)
+    block = (await draw_block(client, token, territory_id)).json()
+    stranger = make_publisher(other.id, name="Irmão de fora")
+
+    response = await client.post(
+        f"/admin/blocks/{block['id']}/worked",
+        json={"user_id": str(stranger.id), "worked_at": WORKED_AT.isoformat()},
+        headers=bearer(token),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "not_found"
+
+
+async def test_marking_for_a_publisher_that_never_existed_is_404_too(client, make_admin):
+    _, token = make_admin()
+    territory_id = await draw_territory(client, token)
+    block = (await draw_block(client, token, territory_id)).json()
+
+    response = await client.post(
+        f"/admin/blocks/{block['id']}/worked",
+        json={"user_id": str(uuid4()), "worked_at": WORKED_AT.isoformat()},
+        headers=bearer(token),
+    )
+
+    assert response.status_code == 404
+
+
+async def test_a_visit_dated_in_the_future_is_refused(client, make_admin, make_publisher):
+    congregation, token = make_admin()
+    territory_id = await draw_territory(client, token)
+    block = (await draw_block(client, token, territory_id)).json()
+    publisher = make_publisher(congregation.id)
+    tomorrow = datetime.now(UTC) + timedelta(days=1)
+
+    response = await client.post(
+        f"/admin/blocks/{block['id']}/worked",
+        json={"user_id": str(publisher.id), "worked_at": tomorrow.isoformat()},
+        headers=bearer(token),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "invalid_worked_at"
+
+
+async def test_a_visit_older_than_the_apps_floor_is_accepted_from_the_admin(
+    client, make_admin, make_publisher
+):
+    """The 90-day floor guards against a wrong phone clock; here the date is typed."""
+    congregation, token = make_admin()
+    territory_id = await draw_territory(client, token)
+    block = (await draw_block(client, token, territory_id)).json()
+    publisher = make_publisher(congregation.id)
+    long_ago = datetime.now(UTC) - timedelta(days=200)
+
+    response = await client.post(
+        f"/admin/blocks/{block['id']}/worked",
+        json={"user_id": str(publisher.id), "worked_at": long_ago.isoformat()},
+        headers=bearer(token),
+    )
+
+    assert response.status_code == 201
+
+
 @pytest.mark.parametrize(
     ("method", "suffix", "body"),
     [
         pytest.param("patch", "", {"number": 3}, id="patch"),
         pytest.param("delete", "", None, id="delete"),
         pytest.param("get", "/work-logs", None, id="work-logs"),
+        pytest.param(
+            "post",
+            "/worked",
+            {"user_id": str(uuid4()), "worked_at": WORKED_AT.isoformat()},
+            id="worked",
+        ),
     ],
 )
 async def test_a_block_of_another_congregation_is_404_and_not_403(
@@ -337,6 +475,12 @@ async def test_a_block_that_never_existed_is_404_too(client, make_admin):
         pytest.param("patch", f"/admin/blocks/{uuid4()}", {"number": 1}, id="patch"),
         pytest.param("delete", f"/admin/blocks/{uuid4()}", None, id="delete"),
         pytest.param("get", f"/admin/blocks/{uuid4()}/work-logs", None, id="work-logs"),
+        pytest.param(
+            "post",
+            f"/admin/blocks/{uuid4()}/worked",
+            {"user_id": str(uuid4()), "worked_at": WORKED_AT.isoformat()},
+            id="worked",
+        ),
         pytest.param("delete", f"/admin/work-logs/{uuid4()}", None, id="delete-work-log"),
     ],
 )

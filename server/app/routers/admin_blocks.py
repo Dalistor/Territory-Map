@@ -26,10 +26,11 @@ from sqlalchemy.orm import Session
 from app.core.db import get_session
 from app.repositories.block import BlockRepository
 from app.repositories.block_work_log import BlockWorkLogRepository
+from app.repositories.user import UserRepository
 from app.routers.admin_territories import AdminCongregation, Blocks, block_out, to_points
 from app.routers.auth import utc_now
 from app.schemas.block import BlockCreateIn, BlockOut, BlockPatchIn
-from app.schemas.work_log import WorkLogOut
+from app.schemas.work_log import AdminWorkedIn, WorkLogOut
 from app.services.work_log import WorkLogService
 
 router = APIRouter(tags=["admin: blocks"])
@@ -42,6 +43,7 @@ def get_work_log_service(session: DbSession) -> WorkLogService:
     return WorkLogService(
         work_logs=BlockWorkLogRepository(session),
         blocks=BlockRepository(session),
+        users=UserRepository(session),
         now_provider=utc_now,
     )
 
@@ -97,6 +99,39 @@ def delete_block(
     """Remove a block and, by cascade, the record of the work done on it."""
     blocks.delete(congregation.id, block_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/admin/blocks/{block_id}/worked", status_code=status.HTTP_201_CREATED)
+def mark_block_worked(
+    block_id: UUID,
+    payload: AdminWorkedIn,
+    congregation: AdminCongregation,
+    work_logs: WorkLogs,
+) -> WorkLogOut:
+    """Record, on the admin's word, that a publisher worked this block.
+
+    Always 201, never the 200 the app's own route can answer. That 200 exists so a
+    phone resending a queued marking learns the visit is already stored and can stop
+    retrying; here the id of the log is minted by the server and the admin has no
+    queue behind them -- the request either lands or visibly fails -- so there is no
+    resend to recognise, and a second call is honestly a second visit.
+
+    The territory's designation is not consulted either. It is the barrier that keeps
+    a publisher's phone inside the area assigned to them; the admin is the person who
+    decides those assignments and who knows what actually happened in the field, so
+    binding them to one would only stop them from writing down the truth.
+
+    A block or a publisher of another congregation raises `NotFoundError` and comes
+    back as 404 -- the same answer either way, so the reply never confirms that the id
+    names a real block or a real person somewhere else.
+    """
+    log = work_logs.mark_worked_by_admin(
+        congregation.id,
+        block_id,
+        payload.user_id,
+        payload.worked_at,
+    )
+    return WorkLogOut.model_validate(log)
 
 
 @router.get("/admin/blocks/{block_id}/work-logs")

@@ -43,6 +43,7 @@ function fakeWorkLogsApi(overrides: Partial<IpcApi['workLogs']> = {}): IpcApi['w
   return {
     listFor: vi.fn(async () => []),
     delete: vi.fn(async () => undefined),
+    markWorked: vi.fn(),
     ...overrides
   }
 }

@@ -164,6 +164,34 @@ describe('createApiClient', () => {
 
       expect(territory.blocks[0].lastWorkedAt).toBeUndefined();
     });
+
+    it('parses the territory rotation from rotation_days', async () => {
+      const { client } = makeClient(
+        jsonResponse(200, [{ ...TERRITORY_JSON, rotation_days: 60 }]),
+      );
+
+      const [territory] = await client.listTerritories('app-token');
+
+      expect(territory.rotationDays).toBe(60);
+    });
+
+    it('parses a territory on the default rotation (rotation_days: null) as rotationDays: undefined', async () => {
+      const { client } = makeClient(
+        jsonResponse(200, [{ ...TERRITORY_JSON, rotation_days: null }]),
+      );
+
+      const [territory] = await client.listTerritories('app-token');
+
+      expect(territory.rotationDays).toBeUndefined();
+    });
+
+    it('parses a territory whose payload omits rotation_days as rotationDays: undefined', async () => {
+      const { client } = makeClient(jsonResponse(200, [TERRITORY_JSON]));
+
+      const [territory] = await client.listTerritories('app-token');
+
+      expect(territory.rotationDays).toBeUndefined();
+    });
   });
 
   describe('listWorkedTerritories', () => {

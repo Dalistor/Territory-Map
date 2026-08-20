@@ -12,6 +12,7 @@ import {
   type Block,
   type Publisher,
   type PublisherBrief,
+  type Territory,
   type WorkLog
 } from './models'
 
@@ -60,6 +61,30 @@ function makeAssignment(overrides: Partial<Assignment> = {}): Assignment {
     ...overrides
   }
 }
+
+function makeTerritory(overrides: Partial<Territory> = {}): Territory {
+  return {
+    id: 'territory-1',
+    name: 'Centro - N5',
+    boundary: [],
+    blocks: [],
+    ...overrides
+  }
+}
+
+describe('Territory rotation', () => {
+  it('carries the rotation the admin configured, in days', () => {
+    const territory = makeTerritory({ rotationDays: 60 })
+
+    expect(territory.rotationDays).toBe(60)
+  })
+
+  it('leaves rotationDays undefined when the territory uses the default rotation', () => {
+    const territory = makeTerritory()
+
+    expect(territory.rotationDays).toBeUndefined()
+  })
+})
 
 describe('publisherIsPending', () => {
   it('is pending when activatedAt is undefined', () => {

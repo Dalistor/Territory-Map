@@ -94,6 +94,18 @@ describe('territory-cache', () => {
 
       await expect(getCachedTerritories()).resolves.toEqual(TERRITORIES);
     });
+
+    it('keeps the territory rotation across the round trip', async () => {
+      // `rotationDays` decides which blocks the offline map draws as overdue,
+      // so losing it in the cache would silently repaint the map with the
+      // 120-day default the moment the phone goes without signal.
+      await saveTerritories([{ ...TERRITORIES[0], rotationDays: 60 }, TERRITORIES[1]]);
+
+      const cached = await getCachedTerritories();
+
+      expect(cached?.[0].rotationDays).toBe(60);
+      expect(cached?.[1].rotationDays).toBeUndefined();
+    });
   });
 
   describe('clearCache', () => {

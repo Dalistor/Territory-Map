@@ -2,7 +2,7 @@
 
 from collections.abc import Callable
 from datetime import datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.core.exceptions import (
     DomainError,
@@ -15,6 +15,7 @@ from app.models.block_work_log import BlockWorkLog
 from app.models.user import User
 from app.repositories.block import BlockRepository
 from app.repositories.block_work_log import BlockWorkLogRepository
+from app.repositories.user import UserRepository
 
 #: How far back a reported `worked_at` may reach. Long enough to absorb any real
 #: offline queue -- a publisher out of signal for a whole territory cycle -- and short
@@ -42,10 +43,12 @@ class WorkLogService:
         self,
         work_logs: BlockWorkLogRepository,
         blocks: BlockRepository,
+        users: UserRepository,
         now_provider: Callable[[], datetime],
     ) -> None:
         self._work_logs = work_logs
         self._blocks = blocks
+        self._users = users
         self._now_provider = now_provider
 
     def mark_worked(
@@ -87,6 +90,49 @@ class WorkLogService:
         )
         self._refresh_last_worked_at(block)
         return log, True
+
+    def mark_worked_by_admin(
+        self,
+        congregation_id: UUID,
+        block_id: UUID,
+        user_id: UUID,
+        worked_at: datetime,
+        now: datetime | None = None,
+    ) -> BlockWorkLog:
+        """Record, on the admin's word, that a publisher worked a block.
+
+        Same event as `mark_worked` and the same projection rule -- the log is written
+        and `Block.last_worked_at` is recomputed from the logs, never assigned -- but
+        the three rules that exist to defend against a phone are dropped here, because
+        there is no phone:
+
+        * **No designation check.** The app is confined to the territory designated to
+          the publisher holding the token; the admin is the person who knows what
+          happened in the field, and may record any publisher of their congregation on
+          any block of it, including a territory nobody is designated to.
+        * **No 90-day floor.** That floor catches a device whose clock is wrong. Here
+          the date is typed on purpose, quite possibly to enter old work coming off the
+          paper card, so an old date is the feature rather than the symptom.
+        * **No idempotency by client id.** The admin has no offline queue to retry, so
+          there is nothing to recognise: the `log_id` is minted here, and a second call
+          is a second visit -- which is what working the block again actually is.
+
+        What remains is what is not about the device: a `worked_at` in the future is
+        refused, and both the block and the publisher must belong to the caller's
+        congregation.
+        """
+        now = now if now is not None else self._now_provider()
+        block = self._block_of_congregation(congregation_id, block_id)
+        publisher = self._user_of_congregation(congregation_id, user_id)
+        self._refuse_future_moment(worked_at, now)
+        log = self._work_logs.create(
+            log_id=uuid4(),
+            block_id=block.id,
+            user_id=publisher.id,
+            worked_at=worked_at,
+        )
+        self._refresh_last_worked_at(block)
+        return log
 
     def list_by_block(self, congregation_id: UUID, block_id: UUID) -> list[BlockWorkLog]:
         """The visits recorded for one block, most recent first."""
@@ -151,16 +197,42 @@ class WorkLogService:
         if block.territory.assigned_user_id != user.id:
             raise TerritoryNotAssignedError
 
+    def _user_of_congregation(self, congregation_id: UUID, user_id: UUID) -> User:
+        """Return the publisher, provided they belong to this congregation.
+
+        A publisher of another congregation and one that does not exist raise the same
+        `NotFoundError`, for the same reason blocks do: telling the two apart would
+        confirm that the id names a real person somewhere else. A deactivated publisher
+        passes -- revoking the app token does not remove the person from the history
+        the admin is writing.
+        """
+        user = self._users.get(user_id)
+        if user is None or user.congregation_id != congregation_id:
+            raise NotFoundError
+        return user
+
+    def _refuse_future_moment(self, worked_at: datetime, now: datetime) -> None:
+        """Reject a visit dated after the present moment.
+
+        Nothing has been worked tomorrow, whoever is reporting it, and a future date
+        pins the block to the top of the "recently worked" list forever -- which is the
+        number the admin reads to decide where the congregation goes next.
+        """
+        if worked_at > now:
+            raise InvalidWorkedAtError
+
     def _refuse_implausible_moment(self, worked_at: datetime, now: datetime) -> None:
         """Reject a moment the device's clock cannot honestly have produced.
 
         Both ends are the same symptom -- a phone whose clock is wrong -- and both
-        would poison `last_worked_at`, which is the number the admin reads to decide
-        where the congregation goes next: a date in the future pins a block to the top
-        of the "recently worked" list forever, and one from months ago is far more
-        likely to be a bad clock than a queue that survived a whole cycle offline.
+        would poison `last_worked_at`: a date in the future pins a block to the top of
+        the "recently worked" list forever, and one from months ago is far more likely
+        to be a bad clock than a queue that survived a whole cycle offline. The floor
+        is what the admin's own marking deliberately does without, since a date typed
+        by hand carries no clock to distrust.
         """
-        if worked_at > now or worked_at < now - MAX_WORKED_AT_AGE:
+        self._refuse_future_moment(worked_at, now)
+        if worked_at < now - MAX_WORKED_AT_AGE:
             raise InvalidWorkedAtError
 
     def _refresh_last_worked_at(self, block: Block) -> None:

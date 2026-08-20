@@ -69,9 +69,15 @@ export interface ApiClient {
   /** The detail endpoint, which is the one that carries the blocks. */
   getTerritory(territoryId: string): Promise<Territory>
   createTerritory(input: { name: string; boundary: LatLng[] }): Promise<Territory>
+  /**
+   * Only the keys actually present in `input` reach the wire. That matters
+   * for `rotationDays`, where leaving it out and passing `null` are different
+   * requests: the first does not touch the column, the second puts the
+   * territory back on the default rotation.
+   */
   updateTerritory(
     territoryId: string,
-    input: { name?: string; boundary?: LatLng[] }
+    input: { name?: string; boundary?: LatLng[]; rotationDays?: number | null }
   ): Promise<Territory>
   deleteTerritory(territoryId: string): Promise<void>
 
@@ -92,6 +98,12 @@ export interface ApiClient {
   deleteBlock(blockId: string): Promise<void>
 
   listWorkLogs(blockId: string): Promise<WorkLog[]>
+  /**
+   * Registers work on a block on behalf of a publisher. Unlike the Android
+   * app's own marking, this one is not bound to the territory's assignment --
+   * the admin records what happened, whoever it happened with.
+   */
+  markBlockWorked(blockId: string, input: { userId: string; workedAt: Date }): Promise<WorkLog>
   /** Removing a log recomputes the block's `last_worked_at` on the server. */
   deleteWorkLog(logId: string): Promise<void>
 }
@@ -199,7 +211,11 @@ function parseTerritory(json: Record<string, unknown>): Territory {
     name: json.name as string,
     boundary: ringFromJson(json.boundary as { lat: number; lng: number }[]),
     blocks: blocks.map(parseBlock),
-    assignedUser: assignedUserJson ? parsePublisherBrief(assignedUserJson) : undefined
+    assignedUser: assignedUserJson ? parsePublisherBrief(assignedUserJson) : undefined,
+    // Absent and explicitly `null` mean the same thing -- the territory uses
+    // the clients' default rotation -- so both collapse to `undefined`, the
+    // same treatment `parseBlock` gives `last_worked_at`.
+    rotationDays: (json.rotation_days as number | null | undefined) ?? undefined
   }
 }
 
@@ -331,11 +347,16 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
       return parseTerritory(json as Record<string, unknown>)
     },
 
-    async updateTerritory(territoryId, { name, boundary }) {
+    async updateTerritory(territoryId, input) {
+      const { name, boundary } = input
       if (boundary !== undefined) validateRing(boundary)
       const json = await request('PATCH', `/admin/territories/${territoryId}`, {
         ...(name !== undefined && { name }),
-        ...(boundary !== undefined && { boundary: ringToJson(boundary) })
+        ...(boundary !== undefined && { boundary: ringToJson(boundary) }),
+        // Keyed on the property being there at all, not on its value: the
+        // server tells "not sent" from "sent as null" by which keys arrived,
+        // and `null` is how the admin clears a custom rotation.
+        ...('rotationDays' in input && { rotation_days: input.rotationDays ?? null })
       })
       return parseTerritory(json as Record<string, unknown>)
     },
@@ -388,6 +409,14 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
     },
 
     listWorkLogs: (blockId) => list(`/admin/blocks/${blockId}/work-logs`, parseWorkLog),
+
+    async markBlockWorked(blockId, { userId, workedAt }) {
+      const json = await request('POST', `/admin/blocks/${blockId}/worked`, {
+        user_id: userId,
+        worked_at: workedAt.toISOString()
+      })
+      return parseWorkLog(json as Record<string, unknown>)
+    },
 
     async deleteWorkLog(logId) {
       await request('DELETE', `/admin/work-logs/${logId}`)

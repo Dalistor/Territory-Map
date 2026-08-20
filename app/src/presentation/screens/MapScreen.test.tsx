@@ -31,6 +31,8 @@ const session: Session = {
 };
 
 const block = { id: 'b1', number: 7, polygon: [], lastWorkedAt: undefined };
+const workedBlock = { ...block, lastWorkedAt: new Date('2026-08-06T10:00:00Z') };
+const now = new Date('2026-08-18T15:00:00Z');
 
 function territory(id: string, name: string, assignedToMe = false): Territory {
   return {
@@ -118,6 +120,43 @@ describe('MapScreen marking a block as worked', () => {
       />,
     );
   }
+
+  it('shows when the block was last worked before asking to confirm', async () => {
+    await render(
+      <MapScreen
+        session={session}
+        apiClient={{
+          listTerritories: jest.fn().mockResolvedValue(territories),
+          markBlockWorked: jest.fn(),
+        }}
+        now={now}
+      />,
+    );
+    await screen.findByText('Santa Helena - N 7');
+
+    await act(async () => mapProps.current?.onBlockTap?.(territories[0], workedBlock));
+
+    expect(screen.getByText('Última visita: 06/08/2026 (há 12 dias)')).toBeTruthy();
+    expect(screen.getByText('Marcar quadra 7 como trabalhada?')).toBeTruthy();
+  });
+
+  it('shows "Nunca trabalhada" for a block with no visit yet', async () => {
+    await render(
+      <MapScreen
+        session={session}
+        apiClient={{
+          listTerritories: jest.fn().mockResolvedValue(territories),
+          markBlockWorked: jest.fn(),
+        }}
+        now={now}
+      />,
+    );
+    await screen.findByText('Santa Helena - N 7');
+
+    await act(async () => mapProps.current?.onBlockTap?.(territories[0], block));
+
+    expect(screen.getByText('Nunca trabalhada')).toBeTruthy();
+  });
 
   it('records the visit on the server before showing it as done', async () => {
     const markBlockWorked = jest.fn().mockResolvedValue(undefined);

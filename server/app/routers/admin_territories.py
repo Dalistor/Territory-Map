@@ -40,7 +40,7 @@ from app.schemas.geo import LatLngIn, LatLngOut
 from app.schemas.territory import TerritoryCreateIn, TerritoryOut, TerritoryPatchIn
 from app.schemas.user import UserBriefOut
 from app.services.block import BlockService
-from app.services.territory import TerritoryService
+from app.services.territory import UNSET, TerritoryService
 
 router = APIRouter(prefix="/admin/territories", tags=["admin: territories"])
 
@@ -109,6 +109,10 @@ def territory_out(
     The listing leaves `blocks` empty on purpose: an admin opening the map wants the
     areas, and loading every outline of every territory would make the cheapest screen
     the most expensive one.
+
+    `rotation_days` travels in both shapes, though: it is one number, and it is what
+    decides the colour of every block on the map -- withholding it from the listing
+    would make the screen that draws the map ask for each territory one by one.
     """
     return TerritoryOut(
         id=territory.id,
@@ -118,6 +122,7 @@ def territory_out(
         assigned_user=UserBriefOut.model_validate(territory.assigned_user)
         if territory.assigned_user
         else None,
+        rotation_days=territory.rotation_days,
     )
 
 
@@ -165,12 +170,23 @@ def patch_territory(
     congregation: AdminCongregation,
     territories: Territories,
 ) -> TerritoryOut:
-    """Rename a territory, redraw it, or both. A field left out is untouched."""
+    """Rename a territory, redraw it, change its rotation, or any combination.
+
+    A field left out is untouched -- and for `rotation_days` that has to be read off
+    `model_fields_set` rather than off the value, because null is a value the field
+    actually takes: it is how the admin puts the territory back on the client default.
+    Judging it by the value would make `{"name": "Centro"}` wipe the 60-day cycle of
+    the territory being renamed, which is why the service is handed `UNSET` instead of
+    `None` when the key never arrived.
+    """
     territory = territories.update(
         congregation.id,
         territory_id,
         name=payload.name,
         points=to_points(payload.boundary) if payload.boundary is not None else None,
+        rotation_days=payload.rotation_days
+        if "rotation_days" in payload.model_fields_set
+        else UNSET,
     )
     return territory_out(territories, territory)
 

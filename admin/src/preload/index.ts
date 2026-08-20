@@ -62,7 +62,9 @@ const api: IpcApi = {
   },
   workLogs: {
     listFor: (blockId: string) => ipcRenderer.invoke(IPC_CHANNELS.workLogsListFor, blockId),
-    delete: (logId: string) => ipcRenderer.invoke(IPC_CHANNELS.workLogsDelete, logId)
+    delete: (logId: string) => ipcRenderer.invoke(IPC_CHANNELS.workLogsDelete, logId),
+    markWorked: (blockId: string, publisherId: string, workedAt: Date) =>
+      ipcRenderer.invoke(IPC_CHANNELS.workLogsMarkWorked, blockId, publisherId, workedAt)
   },
   geo: {
     geocodeCity: (city: string) => ipcRenderer.invoke(IPC_CHANNELS.geoGeocodeCity, city)

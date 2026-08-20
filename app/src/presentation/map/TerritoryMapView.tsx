@@ -68,7 +68,10 @@ const OSM_USER_AGENT = 'TerritoryMapApp/1.0 (+https://github.com/dalistor/territ
 
 const CATEGORY_COLOR: Record<BlockColorCategory, string> = {
   never: '#c62828', // red -- never worked
-  overdue: '#ef6c00', // orange -- past the 120-day threshold
+  // orange -- past the owning territory's rotation (its `rotationDays`, or
+  // `DEFAULT_ROTATION_DAYS` when the admin never configured one). No fixed
+  // number is spelled out on screen, because it now varies per territory.
+  overdue: '#ef6c00',
   recent: '#2e7d32', // green -- worked recently
 };
 
@@ -264,7 +267,11 @@ export function TerritoryMapView({
             block,
             properties: {
               blockId: block.id,
-              color: CATEGORY_COLOR[blockColorCategory(block, effectiveNow)],
+              // The rotation belongs to the territory that owns the block
+              // (spec 0009): a block is only "overdue" against its own
+              // territory's cycle, not against a single global threshold.
+              color:
+                CATEGORY_COLOR[blockColorCategory(block, effectiveNow, territory.rotationDays)],
               label: String(block.number),
             },
           })),

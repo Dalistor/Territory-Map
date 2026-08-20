@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { v4 as uuidv4 } from 'uuid';
 import { ApiErrorException, NetworkException, type ApiClient } from '../../data/api-client';
 import { isTerritoryAssignedToMe } from '../../domain/assignment';
+import { describeLastWorked } from '../../domain/lastWorked';
 import type { Block, Session, Territory } from '../../domain/models';
 import { TerritoryMapView } from '../map/TerritoryMapView';
 import {
@@ -183,6 +184,12 @@ export function MapScreen({
               <Text style={styles.modalTitle}>
                 Marcar quadra {confirmTarget.block.number} como trabalhada?
               </Text>
+              {/* The publisher decides with this line: a quadra worked
+                  yesterday is usually a mis-tap, one from four months ago is
+                  the reason they came. */}
+              <Text style={styles.modalDetail}>
+                {describeLastWorked(confirmTarget.block, effectiveNow)}
+              </Text>
               <View style={styles.modalActions}>
                 <Pressable
                   accessibilityRole="button"
@@ -218,9 +225,7 @@ export function MapScreen({
                 Quadra {readOnlyTarget.block.number} — {readOnlyTarget.territory.name}
               </Text>
               <Text style={styles.modalDetail}>
-                {readOnlyTarget.block.lastWorkedAt !== undefined
-                  ? `Última visita: ${readOnlyTarget.block.lastWorkedAt.toLocaleDateString()}`
-                  : 'Nunca trabalhada'}
+                {describeLastWorked(readOnlyTarget.block, effectiveNow)}
               </Text>
               <Text style={styles.readOnlyHint}>
                 Este território não está designado a você — fale com quem cuida dos territórios na

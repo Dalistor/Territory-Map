@@ -89,6 +89,18 @@ class TerritoryRepository:
         self.session.flush()
         return territory
 
+    def set_rotation_days(self, territory: Territory, rotation_days: int | None) -> Territory:
+        """Write the length of this territory's rotation cycle, or clear it.
+
+        Separate from `update` because the column is nullable, and `None` there
+        already means "leave as it is": a method that only ever runs when the caller
+        decided to touch the column keeps that meaning intact for the other fields.
+        `None` here is the real value -- back to the client default cycle.
+        """
+        territory.rotation_days = rotation_days
+        self.session.flush()
+        return territory
+
     def set_assigned_user(self, territory: Territory, user_id: UUID | None) -> Territory:
         """Assign (or clear) the publisher responsible for this territory.
 

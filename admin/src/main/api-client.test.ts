@@ -320,6 +320,33 @@ describe('createApiClient', () => {
       expect(JSON.parse(init.body as string)).toEqual({ boundary: VALID_RING })
     })
 
+    it('updateTerritory sends rotation_days when rotationDays is a number', async () => {
+      const { client, fetchImpl } = makeClient(jsonResponse(200, TERRITORY_JSON))
+
+      await client.updateTerritory('terr-1', { rotationDays: 60 })
+
+      const [, init] = fetchImpl.mock.calls[0]
+      expect(JSON.parse(init.body as string)).toEqual({ rotation_days: 60 })
+    })
+
+    it('updateTerritory sends rotation_days: null when rotationDays is explicitly null', async () => {
+      const { client, fetchImpl } = makeClient(jsonResponse(200, TERRITORY_JSON))
+
+      await client.updateTerritory('terr-1', { rotationDays: null })
+
+      const [, init] = fetchImpl.mock.calls[0]
+      expect(JSON.parse(init.body as string)).toEqual({ rotation_days: null })
+    })
+
+    it('updateTerritory omits rotation_days entirely when rotationDays is not in the input', async () => {
+      const { client, fetchImpl } = makeClient(jsonResponse(200, TERRITORY_JSON))
+
+      await client.updateTerritory('terr-1', { name: 'Novo nome' })
+
+      const [, init] = fetchImpl.mock.calls[0]
+      expect(JSON.parse(init.body as string)).not.toHaveProperty('rotation_days')
+    })
+
     it('updateTerritory validates the boundary before sending any request when boundary is passed', async () => {
       const { client, fetchImpl } = makeClient(jsonResponse(200, TERRITORY_JSON))
 
@@ -355,6 +382,22 @@ describe('createApiClient', () => {
       const [territory] = await client.listTerritories()
 
       expect(territory.assignedUser).toBeUndefined()
+    })
+
+    it('listTerritories parses rotation_days into rotationDays', async () => {
+      const { client } = makeClient(jsonResponse(200, [{ ...TERRITORY_JSON, rotation_days: 60 }]))
+
+      const [territory] = await client.listTerritories()
+
+      expect(territory.rotationDays).toBe(60)
+    })
+
+    it('listTerritories parses a territory whose rotation_days is null as undefined', async () => {
+      const { client } = makeClient(jsonResponse(200, [{ ...TERRITORY_JSON, rotation_days: null }]))
+
+      const [territory] = await client.listTerritories()
+
+      expect(territory.rotationDays).toBeUndefined()
     })
   })
 
@@ -579,6 +622,24 @@ describe('createApiClient', () => {
       expect(url).toBe(`${BASE_URL}/admin/blocks/block-1/work-logs`)
       expect(init.method).toBe('GET')
       expect(logs).toEqual([PARSED_WORK_LOG])
+    })
+
+    it('markBlockWorked POSTs /admin/blocks/{id}/worked with the publisher and an ISO date', async () => {
+      const { client, fetchImpl } = makeClient(jsonResponse(200, WORK_LOG_JSON))
+
+      const log = await client.markBlockWorked('block-1', {
+        userId: 'pub-1',
+        workedAt: new Date('2026-08-01T09:00:00Z')
+      })
+
+      const [url, init] = fetchImpl.mock.calls[0]
+      expect(url).toBe(`${BASE_URL}/admin/blocks/block-1/worked`)
+      expect(init.method).toBe('POST')
+      expect(JSON.parse(init.body as string)).toEqual({
+        user_id: 'pub-1',
+        worked_at: '2026-08-01T09:00:00.000Z'
+      })
+      expect(log).toEqual(PARSED_WORK_LOG)
     })
 
     it('deleteWorkLog DELETEs /admin/work-logs/{id}', async () => {

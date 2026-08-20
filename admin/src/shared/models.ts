@@ -47,6 +47,14 @@ export interface Territory {
   readonly blocks: Block[]
   /** `undefined` (absent) means the territory has no publisher assigned. */
   readonly assignedUser?: PublisherBrief
+  /**
+   * How many days a full rotation of this territory takes: once a block has
+   * gone longer than this without being worked, it shows as overdue on the
+   * map. `undefined` (absent) means the territory uses the default rotation
+   * (`DEFAULT_ROTATION_DAYS`), which is what every territory did before the
+   * setting existed.
+   */
+  readonly rotationDays?: number
 }
 
 export interface WorkLog {

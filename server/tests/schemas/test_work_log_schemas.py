@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
-from app.schemas.work_log import WorkedIn, WorkLogOut
+from app.schemas.work_log import AdminWorkedIn, WorkedIn, WorkLogOut
 from pydantic import ValidationError
 
 AWARE = datetime(2026, 7, 30, 15, 0, tzinfo=UTC)
@@ -113,3 +113,44 @@ def test_work_log_out_keeps_the_ids_as_uuid_objects():
 
     assert isinstance(dto.id, UUID)
     assert isinstance(dto.block_id, UUID)
+
+
+def test_admin_worked_in_names_the_publisher_and_a_timezone_aware_moment():
+    user_id = uuid4()
+
+    body = AdminWorkedIn(user_id=user_id, worked_at=AWARE)
+
+    assert body.user_id == user_id
+    assert body.worked_at == AWARE
+
+
+def test_admin_worked_in_accepts_the_offset_the_desktop_sends():
+    body = AdminWorkedIn(user_id=uuid4(), worked_at="2026-07-30T12:00:00-03:00")
+
+    assert body.worked_at == AWARE
+
+
+def test_admin_worked_in_does_not_take_a_log_id_from_the_client():
+    # The admin has no offline queue, so there is no resend to recognise: the server
+    # mints the id, and a client-supplied one would only be a way to collide.
+    assert "log_id" not in AdminWorkedIn.model_fields
+
+
+@pytest.mark.parametrize("moment", [NAIVE, "2026-07-30T15:00:00"])
+def test_admin_worked_in_rejects_a_moment_without_an_offset(moment):
+    with pytest.raises(ValidationError):
+        AdminWorkedIn(user_id=uuid4(), worked_at=moment)
+
+
+def test_admin_worked_in_rejects_a_user_id_that_is_not_a_uuid():
+    with pytest.raises(ValidationError):
+        AdminWorkedIn(user_id="42", worked_at=AWARE)
+
+
+@pytest.mark.parametrize("missing", ["user_id", "worked_at"])
+def test_admin_worked_in_requires_both_fields(missing):
+    body = {"user_id": uuid4(), "worked_at": AWARE}
+    del body[missing]
+
+    with pytest.raises(ValidationError):
+        AdminWorkedIn(**body)

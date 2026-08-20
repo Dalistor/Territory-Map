@@ -342,6 +342,93 @@ def test_update_that_keeps_every_block_inside_is_accepted(
     assert service.boundary_points(updated) == shrunk
 
 
+def test_update_with_rotation_days_stores_the_cycle_length(
+    service: TerritoryService,
+    make_congregation,
+) -> None:
+    congregation = make_congregation()
+    territory = service.create(congregation.id, "Centro", square(0.0, 0.0))
+
+    updated = service.update(congregation.id, territory.id, rotation_days=60)
+
+    assert updated.rotation_days == 60
+
+
+def test_update_without_rotation_days_keeps_the_configured_cycle(
+    service: TerritoryService,
+    make_congregation,
+) -> None:
+    """A rename must not drag the rotation back to the default behind the admin."""
+    congregation = make_congregation()
+    territory = service.create(congregation.id, "Centro", square(0.0, 0.0))
+    service.update(congregation.id, territory.id, rotation_days=90)
+
+    updated = service.update(congregation.id, territory.id, name="Centro Velho")
+
+    assert updated.name == "Centro Velho"
+    assert updated.rotation_days == 90
+
+
+def test_update_without_rotation_days_keeps_a_territory_on_the_default_cycle(
+    service: TerritoryService,
+    make_congregation,
+) -> None:
+    congregation = make_congregation()
+    territory = service.create(congregation.id, "Centro", square(0.0, 0.0))
+
+    updated = service.update(congregation.id, territory.id, name="Centro Velho")
+
+    assert updated.rotation_days is None
+
+
+def test_update_with_a_null_rotation_days_puts_the_territory_back_on_the_default(
+    service: TerritoryService,
+    make_congregation,
+) -> None:
+    congregation = make_congregation()
+    territory = service.create(congregation.id, "Centro", square(0.0, 0.0))
+    service.update(congregation.id, territory.id, rotation_days=90)
+
+    updated = service.update(congregation.id, territory.id, rotation_days=None)
+
+    assert updated.rotation_days is None
+
+
+def test_update_changes_the_name_the_boundary_and_the_rotation_in_one_call(
+    service: TerritoryService,
+    make_congregation,
+) -> None:
+    congregation = make_congregation()
+    territory = service.create(congregation.id, "Centro", square(0.0, 0.0))
+    redrawn = square(0.2, 0.2)
+
+    updated = service.update(
+        congregation.id,
+        territory.id,
+        name="Centro Velho",
+        points=redrawn,
+        rotation_days=45,
+    )
+
+    assert updated.name == "Centro Velho"
+    assert service.boundary_points(updated) == redrawn
+    assert updated.rotation_days == 45
+
+
+def test_update_of_a_territory_of_another_congregation_does_not_set_its_rotation(
+    service: TerritoryService,
+    make_congregation,
+) -> None:
+    ours = make_congregation(name="Central")
+    theirs = make_congregation(name="Jardim", city="Campinas")
+    stranger = service.create(theirs.id, "Centro", square(0.0, 0.0))
+
+    with pytest.raises(NotFoundError):
+        service.update(ours.id, stranger.id, rotation_days=15)
+
+    assert service.get(theirs.id, stranger.id).rotation_days is None
+
+
 def test_delete_removes_the_territory(
     service: TerritoryService,
     make_congregation,

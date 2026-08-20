@@ -132,6 +132,16 @@ function parseOptionalDate(value: unknown): Date | undefined {
   return value === null || value === undefined ? undefined : new Date(value as string);
 }
 
+/**
+ * The counterpart of `parseOptionalDate` for a nullable number: the server
+ * spells "no value" as `null` (`rotation_days` on a territory that uses the
+ * default rotation), and an older payload may omit the key entirely. Both
+ * become `undefined`, the single absent value the domain models use.
+ */
+function parseOptionalNumber(value: unknown): number | undefined {
+  return value === null || value === undefined ? undefined : (value as number);
+}
+
 function parsePublisherBrief(json: Record<string, unknown>): PublisherBrief {
   return { id: json.id as string, name: json.name as string };
 }
@@ -158,6 +168,7 @@ function parseTerritory(json: Record<string, unknown>): Territory {
     boundary: ((json.boundary as Record<string, unknown>[] | undefined) ?? []).map(parseLatLng),
     blocks: blocks.map(parseBlock),
     assignedUser: assignedUser ? parsePublisherBrief(assignedUser) : undefined,
+    rotationDays: parseOptionalNumber(json.rotation_days),
   };
 }
 

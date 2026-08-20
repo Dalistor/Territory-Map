@@ -85,6 +85,16 @@ class FakeBlockRepository:
         block.last_worked_at = worked_at
 
 
+class FakeUserRepository:
+    """In-memory stand-in for `UserRepository`, limited to what the work log uses."""
+
+    def __init__(self) -> None:
+        self.users: dict[UUID, User] = {}
+
+    def get(self, user_id: UUID) -> User | None:
+        return self.users.get(user_id)
+
+
 def draw_block(
     blocks: FakeBlockRepository,
     congregation_id: UUID,
@@ -137,16 +147,29 @@ def blocks() -> FakeBlockRepository:
 
 
 @pytest.fixture
-def service(
-    work_logs: FakeBlockWorkLogRepository,
-    blocks: FakeBlockRepository,
-) -> WorkLogService:
-    return WorkLogService(work_logs=work_logs, blocks=blocks, now_provider=lambda: NOW)
+def users() -> FakeUserRepository:
+    return FakeUserRepository()
 
 
 @pytest.fixture
-def user(congregation_id: UUID) -> User:
-    return make_user(congregation_id)
+def service(
+    work_logs: FakeBlockWorkLogRepository,
+    blocks: FakeBlockRepository,
+    users: FakeUserRepository,
+) -> WorkLogService:
+    return WorkLogService(
+        work_logs=work_logs,
+        blocks=blocks,
+        users=users,
+        now_provider=lambda: NOW,
+    )
+
+
+@pytest.fixture
+def user(congregation_id: UUID, users: FakeUserRepository) -> User:
+    publisher = make_user(congregation_id)
+    users.users[publisher.id] = publisher
+    return publisher
 
 
 @pytest.fixture
@@ -565,3 +588,227 @@ def test_deleting_a_visit_of_another_congregation_is_not_found(
 
     assert stranger_block.last_worked_at == worked_at
     assert len(service.list_by_block(other_congregation_id, stranger_block.id)) == 1
+
+
+def test_the_admin_marking_a_block_records_the_visit_for_the_publisher_they_named(
+    service: WorkLogService,
+    congregation_id: UUID,
+    user: User,
+    block: Block,
+) -> None:
+    """The admin is registering someone else's fieldwork, so the author is a parameter."""
+    worked_at = NOW - timedelta(days=3)
+
+    log = service.mark_worked_by_admin(congregation_id, block.id, user.id, worked_at, NOW)
+
+    assert (log.block_id, log.user_id, log.worked_at) == (block.id, user.id, worked_at)
+    assert block.last_worked_at == worked_at
+
+
+def test_the_admin_marking_the_same_block_twice_records_two_visits(
+    service: WorkLogService,
+    work_logs: FakeBlockWorkLogRepository,
+    congregation_id: UUID,
+    user: User,
+    block: Block,
+) -> None:
+    """Working the block again in a new cycle is a second visit, not a repeat."""
+    first_visit = NOW - timedelta(days=200)
+    second_visit = NOW - timedelta(days=1)
+
+    first = service.mark_worked_by_admin(congregation_id, block.id, user.id, first_visit, NOW)
+    second = service.mark_worked_by_admin(congregation_id, block.id, user.id, second_visit, NOW)
+
+    recorded = work_logs.list_by_block(block.id)
+    assert [log.worked_at for log in recorded] == [second_visit, first_visit]
+    assert first.id != second.id
+
+
+def test_the_admin_marking_an_older_visit_does_not_drag_last_worked_at_backwards(
+    service: WorkLogService,
+    work_logs: FakeBlockWorkLogRepository,
+    congregation_id: UUID,
+    user: User,
+    block: Block,
+) -> None:
+    """Entering a visit off the paper card must not hide a more recent one."""
+    recent = NOW - timedelta(days=1)
+    stale = NOW - timedelta(days=150)
+    service.mark_worked_by_admin(congregation_id, block.id, user.id, recent, NOW)
+
+    service.mark_worked_by_admin(congregation_id, block.id, user.id, stale, NOW)
+
+    assert block.last_worked_at == recent
+    assert len(work_logs.list_by_block(block.id)) == 2
+
+
+def test_the_admin_marking_a_block_of_another_congregation_is_not_found(
+    service: WorkLogService,
+    work_logs: FakeBlockWorkLogRepository,
+    blocks: FakeBlockRepository,
+    congregation_id: UUID,
+    user: User,
+) -> None:
+    """Never 403: saying "not yours" would already confirm the block exists."""
+    stranger = draw_block(blocks, uuid4())
+
+    with pytest.raises(NotFoundError):
+        service.mark_worked_by_admin(congregation_id, stranger.id, user.id, NOW, NOW)
+
+    assert work_logs.list_by_block(stranger.id) == []
+    assert stranger.last_worked_at is None
+
+
+def test_the_admin_marking_a_block_that_does_not_exist_is_not_found(
+    service: WorkLogService,
+    congregation_id: UUID,
+    user: User,
+) -> None:
+    with pytest.raises(NotFoundError):
+        service.mark_worked_by_admin(congregation_id, uuid4(), user.id, NOW, NOW)
+
+
+def test_the_admin_naming_a_publisher_of_another_congregation_is_not_found(
+    service: WorkLogService,
+    work_logs: FakeBlockWorkLogRepository,
+    users: FakeUserRepository,
+    congregation_id: UUID,
+    block: Block,
+) -> None:
+    """The same 404 as an unknown id: a 403 would confirm the person exists elsewhere."""
+    stranger = make_user(uuid4(), name="Bruno")
+    users.users[stranger.id] = stranger
+
+    with pytest.raises(NotFoundError):
+        service.mark_worked_by_admin(congregation_id, block.id, stranger.id, NOW, NOW)
+
+    assert work_logs.list_by_block(block.id) == []
+    assert block.last_worked_at is None
+
+
+def test_the_admin_naming_a_publisher_that_does_not_exist_is_not_found(
+    service: WorkLogService,
+    congregation_id: UUID,
+    block: Block,
+) -> None:
+    with pytest.raises(NotFoundError):
+        service.mark_worked_by_admin(congregation_id, block.id, uuid4(), NOW, NOW)
+
+
+def test_the_admin_can_record_a_visit_for_a_deactivated_publisher(
+    service: WorkLogService,
+    congregation_id: UUID,
+    user: User,
+    block: Block,
+) -> None:
+    """Revoking the app access does not remove the person from the history."""
+    user.is_active = False
+    worked_at = NOW - timedelta(days=2)
+
+    log = service.mark_worked_by_admin(congregation_id, block.id, user.id, worked_at, NOW)
+
+    assert (log.user_id, log.worked_at) == (user.id, worked_at)
+    assert block.last_worked_at == worked_at
+
+
+def test_the_admin_marking_a_visit_in_the_future_is_refused(
+    service: WorkLogService,
+    work_logs: FakeBlockWorkLogRepository,
+    congregation_id: UUID,
+    user: User,
+    block: Block,
+) -> None:
+    """Nothing has been worked tomorrow, whoever is typing the date."""
+    with pytest.raises(InvalidWorkedAtError):
+        service.mark_worked_by_admin(
+            congregation_id,
+            block.id,
+            user.id,
+            NOW + timedelta(seconds=1),
+            NOW,
+        )
+
+    assert work_logs.list_by_block(block.id) == []
+    assert block.last_worked_at is None
+
+
+def test_the_admin_marking_the_present_moment_is_accepted(
+    service: WorkLogService,
+    congregation_id: UUID,
+    user: User,
+    block: Block,
+) -> None:
+    """Today is the dialog's default, and the border is accepted, not refused."""
+    log = service.mark_worked_by_admin(congregation_id, block.id, user.id, NOW, NOW)
+
+    assert log.worked_at == NOW
+
+
+def test_the_admin_can_record_a_visit_far_older_than_the_app_would_accept(
+    service: WorkLogService,
+    congregation_id: UUID,
+    user: User,
+    block: Block,
+) -> None:
+    """The 90-day floor catches a wrong clock; a date typed off the paper card has none."""
+    long_ago = NOW - timedelta(days=200)
+
+    log = service.mark_worked_by_admin(congregation_id, block.id, user.id, long_ago, NOW)
+
+    assert log.worked_at == long_ago
+    assert block.last_worked_at == long_ago
+    with pytest.raises(InvalidWorkedAtError):
+        service.mark_worked(uuid4(), block.id, user, long_ago, NOW)
+
+
+def test_the_admin_can_mark_a_block_whose_territory_has_nobody_designated(
+    service: WorkLogService,
+    blocks: FakeBlockRepository,
+    congregation_id: UUID,
+    user: User,
+) -> None:
+    """The designation confines the app, not the admin, who knows what happened in field."""
+    unassigned_block = draw_block(blocks, congregation_id, number=2)
+    worked_at = NOW - timedelta(days=4)
+
+    log = service.mark_worked_by_admin(
+        congregation_id,
+        unassigned_block.id,
+        user.id,
+        worked_at,
+        NOW,
+    )
+
+    assert log.block_id == unassigned_block.id
+    assert unassigned_block.last_worked_at == worked_at
+
+
+def test_the_admin_marking_a_block_designated_to_someone_else_is_accepted(
+    service: WorkLogService,
+    blocks: FakeBlockRepository,
+    congregation_id: UUID,
+    user: User,
+) -> None:
+    """Who holds the territory today says nothing about who covered the block."""
+    other_block = draw_block(blocks, congregation_id, number=3, assigned_user_id=uuid4())
+
+    log = service.mark_worked_by_admin(congregation_id, other_block.id, user.id, NOW, NOW)
+
+    assert log.user_id == user.id
+    assert other_block.last_worked_at == NOW
+
+
+def test_the_admin_marking_without_a_moment_of_its_own_reads_the_injected_clock(
+    service: WorkLogService,
+    congregation_id: UUID,
+    user: User,
+    block: Block,
+) -> None:
+    """The service never asks the machine what time it is; the clock is handed to it."""
+    with pytest.raises(InvalidWorkedAtError):
+        service.mark_worked_by_admin(
+            congregation_id,
+            block.id,
+            user.id,
+            NOW + timedelta(hours=1),
+        )

@@ -96,9 +96,15 @@ só (`GET /admin/assignments`): os mesmos registros em **duas visões alternadas
 quem passou por ele) —, mais um campo de **busca por nome** que filtra pelo nome de quem a visão
 atual agrupa, e um botão de **apagar** em cada linha (com confirmação antes). Designar e concluir
 continuam só em Designações, onde o mapa dá o contexto.
-Publicadores tem busca por nome e contadores por situação. Os editores de território e de quadra são telas empurradas
+Publicadores tem busca por nome e contadores por situação. Cada território tem ainda uma
+**página de configurações** (`TerritorySettingsScreen`, spec 0009), aberta pelo menu "⋮" da lista:
+nome, **tempo de rotação** em dias (vazio = o padrão de 120, dito na própria interface, porque campo
+vazio parece esquecimento), um resumo somente-leitura (quantas quadras, quantas vencidas pela
+rotação em vigor, publicador designado, data da última visita) e o **apagar território**, com a
+mesma confirmação que antes vivia só na Home. Ela não desenha nada — a demarcação continua sendo
+tarefa do `TerritoryEditorScreen`. Os editores de território e de quadra são telas empurradas
 ("← Voltar") em **layout lado a lado** (painel compacto à esquerda, mapa grande à direita); o de
-quadra ainda sugere o próximo número da sequência após cada salvamento. As oito telas são cobertas
+quadra ainda sugere o próximo número da sequência após cada salvamento. As nove telas são cobertas
 por teste (Vitest + React Testing Library), mais o roteamento/sidebar em `App.test.tsx`. O `app/` (React Native) também está implementado — ativação por código, dashboard,
 mapa com MapLibre e localização em tempo real, marcação de quadra restrita ao território designado,
 marcação sempre confirmada pelo servidor e cache local de leitura —, com as telas de
@@ -222,7 +228,16 @@ que cumpre a função. O que dura é o token do app guardado no aparelho. Índic
 | `name` | str | único dentro da congregação |
 | `boundary` | `GEOMETRY(POLYGON, 4326)` | a demarcação do território |
 | `assigned_user_id` | UUID? | FK → User, nullable, `ON DELETE SET NULL`. **Derivado** da designação aberta em `TerritoryAssignment`. |
+| `rotation_days` | int? | `INTEGER NULL`. Duração do ciclo de rotação do território, em dias. Nulo = **usa o padrão de 120 dias**. |
 | `created_at` | datetime | |
+
+`rotation_days` é a única regra do sistema que o admin configura por território: passado esse
+número de dias sem visita, a quadra volta a aparecer como vencida no mapa. **Nulo não é "faltando
+preencher"** — é o valor semanticamente correto para quem nunca precisou de outro ritmo, e os dois
+clientes o traduzem para os mesmos 120 dias que já aplicavam antes de a coluna existir. Por isso a
+migration que a criou (`a1c7e4f92b83`) **não faz backfill** e não define `server_default`: gravar
+120 em toda linha diria que alguém escolheu 120, e ninguém escolheu. Faixa aceita quando presente:
+1 a 3650 dias (de um dia a dez anos) — zero e negativo são bug de cliente, não configuração.
 
 `assigned_user_id` é **1:N do lado do publicador, não do território**: um território tem no máximo
 um publicador designado por vez, mas um publicador pode ter vários territórios designados ao mesmo
@@ -363,6 +378,38 @@ Registro de que uma quadra foi trabalhada. Append-only pelo app.
   duplicar.
 - `worked_at` no futuro é rejeitado. Muito antigo (ex.: > 90 dias) também — provável relógio errado
   do aparelho.
+
+### Marcar quadra como trabalhada (pelo admin)
+Nem todo trabalho chega pelo celular: o publicador esquece de marcar, entrega o cartão em papel, ou
+nem usa o app. `POST /admin/blocks/{block_id}/worked` é o caminho do admin para lançar isso, com
+corpo `{"user_id", "worked_at"}` — **o admin escolhe o publicador**, porque `BlockWorkLog.user_id`
+continua `NOT NULL` e um log sem autor não serviria para nada. O que sai dali é um `BlockWorkLog`
+comum, e `Block.last_worked_at` é recalculado a partir dos logs como sempre.
+
+- **O `log_id` é gerado no servidor.** A idempotência por id do cliente existe por causa do reenvio
+  do celular, e o admin não tem fila offline nenhuma — não há reenvio a reconhecer, então também
+  não existe aqui o 200-de-reenvio que a rota do app devolve.
+- **Não há checagem de designação**, ao contrário da rota do app. Quem registra é o responsável
+  pelos territórios, lançando um fato que ele já conhece; exigir que a designação ainda estivesse
+  aberta barraria justamente o caso mais comum, que é lançar trabalho de um ciclo já concluído.
+- **Não há o piso de 90 dias.** Aquele limite existe para pegar aparelho com relógio errado; aqui a
+  data foi digitada de propósito, muitas vezes copiada de um registro antigo em papel. O teto
+  continua valendo: `worked_at` no futuro é recusado.
+- Quadra e publicador precisam ser da congregação do token; qualquer um dos dois de fora, ou
+  inexistente, responde o mesmo **404**. Publicador inativo **pode** ser marcado — desativar revoga
+  o acesso ao app, não apaga a pessoa do histórico.
+- **A rota do app não mudou.** O publicador continua só podendo marcar quadra de território
+  designado a ele, e continua tomando 403 `territory_not_assigned` fora disso. A frouxidão acima é
+  do admin, e só dele.
+
+### Cor da quadra no mapa
+Três cores, nos dois clientes: **nunca trabalhada**, **vencida** e **recente**. O que a spec 0009
+mudou foi o número que separa as duas últimas — era o literal 120 dias, e passou a ser o
+`rotation_days` do território dono da quadra, com 120 sobrando apenas como padrão de quem não
+configurou nada (`DEFAULT_ROTATION_DAYS`). A regra é função pura e vive em dois arquivos
+deliberadamente idênticos, `admin/src/renderer/map/blockColor.ts` e `app/src/domain/blockColor.ts`
+— mudar um sem o outro faz o mesmo território ter cores diferentes na mesa do admin e no celular do
+publicador. Exatamente no limiar a quadra ainda é recente; só estritamente acima vira vencida.
 
 ### Designação de território
 A designação é um **registro datado com histórico** (`TerritoryAssignment`), não um campo que se
@@ -788,9 +835,10 @@ Gatekeeper do macOS vão exibir aviso de desenvolvedor não identificado na prim
 Documentar o "abrir mesmo assim" para o admin. Assinar exige certificado pago.
 
 Build verde só prova que compila — ninguém clica num binário. Quem valida comportamento são os
-testes (Vitest + React Testing Library), que existem e cobrem as oito telas (configuração inicial,
+testes (Vitest + React Testing Library), que existem e cobrem as nove telas (configuração inicial,
 `HomeScreen` e as cores do mapa, Designações com o painel de histórico, Histórico, publicadores, os
-dois editores e o histórico da quadra), mais o roteamento com a sidebar (`App.test.tsx`), o main
+dois editores, as configurações do território e o histórico da quadra), mais o roteamento com a
+sidebar (`App.test.tsx`), o main
 process (incluindo a montagem e a formatação da planilha em `excel-export.test.ts`) e o que se abre com `npm run dev`
 durante o desenvolvimento.
 
@@ -890,9 +938,11 @@ o `.env` exige gerar o `.apk` de novo. Detalhes em `app/README.md`.
 - **Reinstalar o app custa um código novo.** Limpar os dados ou trocar de celular apaga o token, e
   só o admin consegue devolver o acesso. Se isso virar chamado frequente, o remédio é o admin poder
   gerar o código em lote e a tela deixar isso a dois cliques — não afrouxar a regra.
-- Se o admin precisa de uma visão de **quadras não trabalhadas há mais de N dias** — é o relatório
-  mais provável de aparecer assim que houver histórico, e o índice já está preparado para ele. O
-  mapa já destaca por cor (nunca trabalhada, acima de 120 dias, recente), mas não existe listagem.
+- Se o admin precisa de uma **listagem** de quadras não trabalhadas há mais de N dias — o N deixou
+  de ser hipótese e já é o `rotation_days` do território (spec 0009): o mapa destaca por cor (nunca
+  trabalhada, vencida pela rotação, recente) e a página de configurações do território conta
+  quantas estão vencidas. O que falta é a lista em si, a congregação inteira de uma vez, para levar
+  no papel a campo; o índice já está preparado para ela.
 
 **Resolvidos, para não voltarem à mesa:** o desfazer do editor de polígono existe — é o controller
 próprio `usePolygonEditor` (`admin/src/renderer/map/usePolygonEditor.ts`), com o Leaflet-Geoman só

@@ -42,6 +42,7 @@ import PublishersScreen from './screens/PublishersScreen'
 import BlockHistorySheet from './screens/BlockHistorySheet'
 import DesignationsScreen from './screens/DesignationsScreen'
 import HistoryScreen from './screens/HistoryScreen'
+import TerritorySettingsScreen from './screens/TerritorySettingsScreen'
 
 const STORAGE_READ_ERROR_MESSAGE = 'Não foi possível ler os dados guardados neste computador.'
 const CREDENTIALS_REJECTED_NAME = 'CredentialsRejectedException'
@@ -140,6 +141,7 @@ type Route =
       readonly neighbours: Territory[]
     }
   | { readonly kind: 'block-editor'; readonly territory: Territory; readonly block?: Block }
+  | { readonly kind: 'territory-settings'; readonly territory: Territory }
   | { readonly kind: 'designations' }
   | { readonly kind: 'history' }
   | { readonly kind: 'publishers' }
@@ -294,6 +296,20 @@ function AuthenticatedApp({ congregation, onSignedOut }: AuthenticatedAppProps):
             <BlockEditorScreen territory={route.territory} block={route.block} />
           </PushedScreen>
         )
+      case 'territory-settings':
+        // `onSaved`/`onDeleted` both go home for the same reason the
+        // territory editor does: `HomeScreen` refetches on mount, so
+        // returning to it is already the invalidation the new name, the new
+        // rotation or the missing territory needs.
+        return (
+          <PushedScreen onBack={goHome}>
+            <TerritorySettingsScreen
+              territory={route.territory}
+              onSaved={goHome}
+              onDeleted={goHome}
+            />
+          </PushedScreen>
+        )
       case 'designations':
         return <DesignationsScreen fallbackCenter={fallbackCenter} />
       case 'history':
@@ -314,6 +330,7 @@ function AuthenticatedApp({ congregation, onSignedOut }: AuthenticatedAppProps):
             onEditTerritory={(territory, neighbours) =>
               setRoute({ kind: 'territory-editor', territory, neighbours })
             }
+            onOpenSettings={(territory) => setRoute({ kind: 'territory-settings', territory })}
             onAddBlock={(territory) => setRoute({ kind: 'block-editor', territory })}
             onEditBlock={(territory, block) => setRoute({ kind: 'block-editor', territory, block })}
             onShowHistory={(territory, block) =>

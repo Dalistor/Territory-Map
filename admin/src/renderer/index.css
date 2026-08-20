@@ -428,6 +428,20 @@ button[type='submit']:hover:not(:disabled),
   color: var(--color-danger);
 }
 
+/* The "Marcar como trabalhada" form, opened inside the block action modal. */
+.block-mark-worked {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 10px 4px;
+}
+
+.block-mark-worked-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 [role='toolbar'] {
   display: flex;
   gap: 8px;
@@ -993,4 +1007,58 @@ button[type='submit']:hover:not(:disabled),
   width: 100%;
   max-width: 360px;
   margin: 4px 0 12px;
+}
+
+/* TerritorySettingsScreen (spec 0009, Task 09): one readable column of
+   settings, not a full-width form -- the fields are short and the summary is
+   a definition list, both of which read badly stretched across the content
+   area. */
+.settings-screen {
+  max-width: 520px;
+}
+
+/* The sentence under the rotation field. It is not an error, so it must not
+   look like `.field-error`: an empty rotation is a legitimate value, and this
+   is what says so on screen instead of only in the code. */
+.field-hint {
+  margin: -10px 0 16px;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.settings-summary {
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+.settings-summary h3 {
+  margin: 0 0 10px;
+  font-size: 1rem;
+}
+
+/* Label on the left, value on the right, one line per fact. */
+.settings-summary dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 16px;
+}
+
+.settings-summary dt {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.settings-summary dd {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: right;
+}
+
+.settings-danger {
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
 }

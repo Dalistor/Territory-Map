@@ -114,6 +114,7 @@ function makeApi(overrides: Partial<IpcApi> = {}): IpcApi {
     workLogs: {
       listFor: vi.fn(),
       delete: vi.fn(),
+      markWorked: vi.fn(),
       ...overrides.workLogs
     },
     geo: {

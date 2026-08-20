@@ -122,6 +122,23 @@ async def test_the_app_reads_the_territories_of_its_own_congregation_only(
     assert [territory["name"] for territory in response.json()] == ["Centro"]
 
 
+async def test_the_map_carries_the_rotation_the_admin_configured(
+    client, make_admin, make_publisher, draw, session
+):
+    """The phone colours its cached map offline, so the threshold has to travel with it."""
+    congregation, _ = make_admin()
+    _, token = make_publisher(congregation)
+    territory, _ = draw(congregation, "Centro", square(-18.90, -48.30))
+    draw(congregation, "Norte", square(-17.90, -47.30))
+    territory.rotation_days = 45
+    session.flush()
+
+    response = await client.get("/app/territories", headers=bearer(token))
+
+    by_name = {item["name"]: item["rotation_days"] for item in response.json()}
+    assert by_name == {"Centro": 45, "Norte": None}
+
+
 async def test_a_territory_arrives_with_its_boundary_and_its_numbered_blocks(
     client, make_admin, make_publisher, draw
 ):

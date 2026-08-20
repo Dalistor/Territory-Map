@@ -34,6 +34,7 @@ function fakeApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     deleteBlock: vi.fn(),
     listWorkLogs: vi.fn(),
     deleteWorkLog: vi.fn(),
+    markBlockWorked: vi.fn(),
     ...overrides
   }
 }

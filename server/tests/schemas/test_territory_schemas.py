@@ -84,7 +84,14 @@ def test_territory_out_carries_the_boundary_and_the_blocks_inside_it():
         blocks=[BlockOut(id=uuid4(), number=1, polygon=SQUARE, last_worked_at=None)],
     )
 
-    assert set(dto.model_dump()) == {"id", "name", "boundary", "blocks", "assigned_user"}
+    assert set(dto.model_dump()) == {
+        "id",
+        "name",
+        "boundary",
+        "blocks",
+        "assigned_user",
+        "rotation_days",
+    }
     assert dto.blocks[0].number == 1
 
 
@@ -113,3 +120,50 @@ def test_territory_out_does_not_share_its_default_block_list_between_instances()
     second = TerritoryOut(id=uuid4(), name="Bairro", boundary=SQUARE)
 
     assert second.blocks == []
+
+
+def test_territory_patch_in_tells_an_absent_rotation_from_an_explicit_null():
+    # The router reads `model_fields_set` to decide between "do not touch the rotation"
+    # and "put this territory back on the default"; both leave the attribute at None.
+    absent = TerritoryPatchIn(name="Centro")
+    explicit = TerritoryPatchIn(rotation_days=None)
+
+    assert absent.rotation_days is None
+    assert "rotation_days" not in absent.model_fields_set
+    assert explicit.rotation_days is None
+    assert "rotation_days" in explicit.model_fields_set
+
+
+@pytest.mark.parametrize("days", [1, 120, 3650])
+def test_territory_patch_in_accepts_a_rotation_from_one_day_to_ten_years(days):
+    assert TerritoryPatchIn(rotation_days=days).rotation_days == days
+
+
+@pytest.mark.parametrize("days", [0, -1, 3651])
+def test_territory_patch_in_rejects_a_rotation_outside_one_day_to_ten_years(days):
+    # A cycle of zero or fewer days is not a configuration a human meant, and one longer
+    # than a decade is a client bug -- neither should reach the column.
+    with pytest.raises(ValidationError):
+        TerritoryPatchIn(rotation_days=days)
+
+
+def test_territory_out_serialises_a_territory_that_uses_the_default_rotation():
+    dto = TerritoryOut(id=uuid4(), name="Centro", boundary=SQUARE)
+
+    assert dto.rotation_days is None
+    assert dto.model_dump()["rotation_days"] is None
+
+
+def test_territory_out_carries_the_rotation_the_admin_configured():
+    row = SimpleNamespace(
+        id=uuid4(),
+        name="Centro",
+        boundary=[
+            LatLng(lat=-23.5, lng=-46.6),
+            LatLng(lat=-23.5, lng=-46.5),
+            LatLng(lat=-23.4, lng=-46.5),
+        ],
+        rotation_days=60,
+    )
+
+    assert TerritoryOut.model_validate(row).rotation_days == 60

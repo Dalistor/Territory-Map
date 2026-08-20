@@ -145,6 +145,7 @@ function fakeApi(overrides: Partial<IpcApi> = {}): IpcApi {
     workLogs: {
       listFor: vi.fn(),
       delete: vi.fn(),
+      markWorked: vi.fn(),
       ...overrides.workLogs
     },
     geo: {
@@ -787,7 +788,8 @@ describe('AuthenticatedApp navigation', () => {
         },
         workLogs: {
           listFor: vi.fn().mockResolvedValue([]),
-          delete: vi.fn()
+          delete: vi.fn(),
+          markWorked: vi.fn()
         }
       })
     )
@@ -826,6 +828,42 @@ describe('AuthenticatedApp navigation', () => {
     expect(screen.queryByRole('button', { name: '← Voltar' })).not.toBeInTheDocument()
 
     await user.click(within(nav).getByRole('button', { name: 'Mapa' }))
+
+    expect(await screen.findByRole('button', { name: 'Recarregar' })).toBeInTheDocument()
+  })
+})
+
+describe('AuthenticatedApp territory settings route', () => {
+  it('opens the settings screen from a territory\'s "Configurações" action and returns home on "← Voltar"', async () => {
+    const user = userEvent.setup()
+    const territory = makeTerritory({ name: 'Bairro Sul - N7' })
+    vi.stubGlobal(
+      'api',
+      authedApi({
+        territories: {
+          listWithBlocks: vi.fn().mockResolvedValue([territory]),
+          create: vi.fn(),
+          update: vi.fn(),
+          delete: vi.fn()
+        }
+      })
+    )
+
+    render(<App />)
+    await screen.findByRole('button', { name: 'Novo território' })
+
+    await user.click(screen.getByRole('button', { name: 'Opções de Bairro Sul - N7' }))
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'Configurações de Bairro Sul - N7' })
+    )
+
+    expect(
+      await screen.findByRole('heading', { name: 'Configurações de Bairro Sul - N7' })
+    ).toBeInTheDocument()
+    // Pushed inside the content area -- the sidebar stays visible.
+    expect(screen.getByRole('navigation')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '← Voltar' }))
 
     expect(await screen.findByRole('button', { name: 'Recarregar' })).toBeInTheDocument()
   })

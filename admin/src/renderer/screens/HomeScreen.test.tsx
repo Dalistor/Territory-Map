@@ -6,7 +6,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { IpcApi } from '../../shared/ipc-contract'
-import type { Block, Territory } from '../../shared/models'
+import type { Block, Publisher, Territory } from '../../shared/models'
 import { HomeScreen } from './HomeScreen'
 
 // The real TerritoryMap pulls in react-leaflet, which needs a real DOM layout
@@ -106,6 +106,7 @@ function makeApi(overrides: Partial<IpcApi> = {}): IpcApi {
     workLogs: {
       listFor: vi.fn(),
       delete: vi.fn(),
+      markWorked: vi.fn(),
       ...overrides.workLogs
     },
     geo: {
@@ -206,7 +207,7 @@ async function openTerritoryMenu(
 }
 
 describe('HomeScreen territory actions', () => {
-  it('the "⋮" menu offers exactly three actions: add block, edit boundary and delete territory', async () => {
+  it('the "⋮" menu offers exactly four actions: add block, edit boundary, settings and delete territory', async () => {
     const territory = makeTerritory({ name: 'Bairro Sul' })
     const api = makeApi({
       territories: {
@@ -227,8 +228,30 @@ describe('HomeScreen territory actions', () => {
     expect(items.map((item) => item.textContent)).toEqual([
       'Adicionar quadra em Bairro Sul',
       'Editar demarcação de Bairro Sul',
+      'Configurações de Bairro Sul',
       'Apagar território Bairro Sul'
     ])
+  })
+
+  it('asks the caller to open the settings of the territory whose menu was used', async () => {
+    const territory = makeTerritory({ name: 'Bairro Sul' })
+    const api = makeApi({
+      territories: {
+        listWithBlocks: vi.fn().mockResolvedValue([territory]),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn()
+      }
+    })
+    vi.stubGlobal('api', api)
+    const onOpenSettings = vi.fn()
+    const user = userEvent.setup()
+
+    render(<HomeScreen onOpenSettings={onOpenSettings} />)
+    await openTerritoryMenu(user, 'Bairro Sul')
+    await user.click(await screen.findByRole('menuitem', { name: /configurações de bairro sul/i }))
+
+    expect(onOpenSettings).toHaveBeenCalledWith(territory)
   })
 
   it('shows "Designado a {name}" on the territory row when a publisher is designated', async () => {
@@ -751,5 +774,156 @@ describe('HomeScreen tapping a block on the map', () => {
     expect(screen.queryByRole('menuitem', { name: 'Ver histórico' })).not.toBeInTheDocument()
     expect(onShowHistory).not.toHaveBeenCalled()
     expect(onEditBlock).not.toHaveBeenCalled()
+  })
+})
+
+describe('HomeScreen marking a block as worked', () => {
+  const TODAY = new Date(2026, 7, 19, 10, 30)
+
+  function makePublisher(overrides: Partial<Publisher> = {}): Publisher {
+    return { id: 'publisher-1', name: 'Ana', isActive: true, ...overrides }
+  }
+
+  async function openMarkWorkedForm(
+    api = makeApi(),
+    territoryOverrides: Partial<Territory> = {}
+  ): Promise<{ block: Block; user: ReturnType<typeof userEvent.setup> }> {
+    const block = makeBlock({ number: 7 })
+    const territory = makeTerritory({ name: 'Bairro Sul', blocks: [block], ...territoryOverrides })
+    api.territories.listWithBlocks = vi.fn().mockResolvedValue([territory])
+    vi.stubGlobal('api', api)
+    const user = userEvent.setup()
+
+    render(<HomeScreen now={TODAY} />)
+    await user.click(await screen.findByRole('button', { name: 'Quadra 7' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Marcar como trabalhada' }))
+
+    return { block, user }
+  }
+
+  it('offers "Marcar como trabalhada" in the block action menu', async () => {
+    const block = makeBlock({ number: 7 })
+    const territory = makeTerritory({ blocks: [block] })
+    const api = makeApi()
+    api.territories.listWithBlocks = vi.fn().mockResolvedValue([territory])
+    vi.stubGlobal('api', api)
+    const user = userEvent.setup()
+
+    render(<HomeScreen now={TODAY} />)
+    await user.click(await screen.findByRole('button', { name: 'Quadra 7' }))
+
+    expect(screen.getByRole('menuitem', { name: 'Marcar como trabalhada' })).toBeInTheDocument()
+  })
+
+  it('lists the congregation publishers in the form it opens', async () => {
+    const api = makeApi()
+    api.publishers.list = vi
+      .fn()
+      .mockResolvedValue([makePublisher(), makePublisher({ id: 'publisher-2', name: 'Bruno' })])
+
+    await openMarkWorkedForm(api)
+
+    const select = await screen.findByLabelText('Publicador')
+    expect(within(select).getByRole('option', { name: 'Ana' })).toBeInTheDocument()
+    expect(within(select).getByRole('option', { name: 'Bruno' })).toBeInTheDocument()
+  })
+
+  it('preselects the publisher the territory is assigned to', async () => {
+    const api = makeApi()
+    api.publishers.list = vi
+      .fn()
+      .mockResolvedValue([makePublisher(), makePublisher({ id: 'publisher-2', name: 'Bruno' })])
+
+    await openMarkWorkedForm(api, { assignedUser: { id: 'publisher-2', name: 'Bruno' } })
+
+    expect(await screen.findByLabelText('Publicador')).toHaveValue('publisher-2')
+  })
+
+  it('preselects nobody when the territory has no open assignment', async () => {
+    const api = makeApi()
+    api.publishers.list = vi.fn().mockResolvedValue([makePublisher()])
+
+    await openMarkWorkedForm(api)
+
+    expect(await screen.findByLabelText('Publicador')).toHaveValue('')
+  })
+
+  it('defaults the date to today', async () => {
+    const api = makeApi()
+    api.publishers.list = vi.fn().mockResolvedValue([makePublisher()])
+
+    await openMarkWorkedForm(api)
+
+    expect(await screen.findByLabelText('Data')).toHaveValue('2026-08-19')
+  })
+
+  it('records the chosen publisher and the chosen date when confirmed', async () => {
+    const api = makeApi()
+    api.publishers.list = vi
+      .fn()
+      .mockResolvedValue([makePublisher(), makePublisher({ id: 'publisher-2', name: 'Bruno' })])
+    api.workLogs.markWorked = vi.fn().mockResolvedValue(undefined)
+    const { block, user } = await openMarkWorkedForm(api)
+
+    await user.selectOptions(await screen.findByLabelText('Publicador'), 'publisher-2')
+    await user.clear(screen.getByLabelText('Data'))
+    await user.type(screen.getByLabelText('Data'), '2026-08-10')
+    await user.click(screen.getByRole('button', { name: 'Marcar' }))
+
+    await waitFor(() =>
+      expect(api.workLogs.markWorked).toHaveBeenCalledWith(
+        block.id,
+        'publisher-2',
+        new Date(2026, 7, 10)
+      )
+    )
+  })
+
+  it('records nothing when the form is cancelled', async () => {
+    const api = makeApi()
+    api.publishers.list = vi.fn().mockResolvedValue([makePublisher()])
+    api.workLogs.markWorked = vi.fn()
+    const { user } = await openMarkWorkedForm(api)
+
+    await user.click(await screen.findByRole('button', { name: 'Cancelar' }))
+
+    expect(api.workLogs.markWorked).not.toHaveBeenCalled()
+    expect(screen.queryByLabelText('Publicador')).not.toBeInTheDocument()
+  })
+
+  it('reloads the territories after a successful marking, so the map recolours', async () => {
+    const api = makeApi()
+    api.publishers.list = vi.fn().mockResolvedValue([makePublisher()])
+    api.workLogs.markWorked = vi.fn().mockResolvedValue(undefined)
+    const { user } = await openMarkWorkedForm(api)
+
+    await user.selectOptions(await screen.findByLabelText('Publicador'), 'publisher-1')
+    await user.click(screen.getByRole('button', { name: 'Marcar' }))
+
+    await waitFor(() => expect(api.territories.listWithBlocks).toHaveBeenCalledTimes(2))
+  })
+
+  it('shows the API error and does not reload when the marking fails', async () => {
+    const api = makeApi()
+    api.publishers.list = vi.fn().mockResolvedValue([makePublisher()])
+    api.workLogs.markWorked = vi
+      .fn()
+      .mockRejectedValue(new Error('A data da visita está no futuro.'))
+    const { user } = await openMarkWorkedForm(api)
+
+    await user.selectOptions(await screen.findByLabelText('Publicador'), 'publisher-1')
+    await user.click(screen.getByRole('button', { name: 'Marcar' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('A data da visita está no futuro.')
+    expect(api.territories.listWithBlocks).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows the API error when the publishers cannot be loaded', async () => {
+    const api = makeApi()
+    api.publishers.list = vi.fn().mockRejectedValue(new Error('Sem conexão com o servidor.'))
+
+    await openMarkWorkedForm(api)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Sem conexão com o servidor.')
   })
 })

@@ -28,6 +28,28 @@ class WorkedIn(BaseModel):
     worked_at: AwareDatetime
 
 
+class AdminWorkedIn(BaseModel):
+    """The admin recording, from the desktop, that a block was worked.
+
+    No `log_id`, unlike `WorkedIn` above: that id exists because a phone marking a block
+    with no signal keeps it in a local queue and may send it more than once, and the
+    client-side id is what lets the server recognise the resend. The admin has no such
+    queue -- the request either reaches the server or visibly fails -- so the id is
+    minted here, where nothing can collide with it.
+
+    `user_id` is a field precisely because the admin is not reporting their own work:
+    they are writing down someone else's visit, so the person has to be named.
+
+    `worked_at` must carry an offset for the same reason as in `WorkedIn`: the service
+    compares the moment against a clock to refuse a date in the future, and a naive
+    timestamp is not a point on the timeline to compare with. Whether the moment is
+    plausible is the service's call; this layer only demands that it be a moment at all.
+    """
+
+    user_id: UUID
+    worked_at: AwareDatetime
+
+
 class WorkLogOut(OutSchema):
     """One recorded visit, as the admin browses the history of a block.
 

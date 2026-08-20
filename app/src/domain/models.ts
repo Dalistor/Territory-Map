@@ -51,6 +51,14 @@ export interface Territory {
   readonly boundary: LatLng[]
   readonly blocks: Block[]
   readonly assignedUser?: PublisherBrief
+  /**
+   * How many days a full rotation of this territory takes: once a block has
+   * gone longer than this without being worked, it shows as overdue on the
+   * map. `undefined` (absent) means the territory uses the default rotation
+   * (`DEFAULT_ROTATION_DAYS` in `blockColor.ts`), which is what every
+   * territory did before the admin could configure the setting.
+   */
+  readonly rotationDays?: number
 }
 
 /**

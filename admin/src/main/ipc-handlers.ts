@@ -171,6 +171,9 @@ export function registerIpcHandlers({
   handle(IPC_CHANNELS.workLogsDelete, (logId: string) =>
     session.run(() => api.deleteWorkLog(logId))
   )
+  handle(IPC_CHANNELS.workLogsMarkWorked, (blockId: string, publisherId: string, workedAt: Date) =>
+    session.run(() => api.markBlockWorked(blockId, { userId: publisherId, workedAt }))
+  )
 
   handle(IPC_CHANNELS.exportAssignments, async (): Promise<string | null> => {
     const rows = await session.run(async () => {

@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime
+from enum import Enum
+from typing import Final, Literal
 from uuid import UUID
 
 from app.core.exceptions import (
@@ -19,6 +21,26 @@ from app.core.geo import LatLng, points_to_wkt, validate_polygon, wkt_to_points
 from app.models.territory import Territory
 from app.repositories.block import BlockRepository
 from app.repositories.territory import TerritoryRepository
+
+
+class _Unset(Enum):
+    """A one-member enum, so `Literal[_Unset.TOKEN]` narrows the type of `UNSET`.
+
+    `object()` would read the same at the call site but type-checks as `object`,
+    which would let any value through the signature.
+    """
+
+    TOKEN = "unset"
+
+
+# Three intentions have to fit in one optional argument of `update`: leave the
+# rotation as it is, set it to N days, or put the territory back on the client
+# default. The last one *is* `None` in the domain, so `None` cannot double as "not
+# provided" the way it does for `name` and `points`. Hence a module-level sentinel:
+# `rotation_days=UNSET` means untouched, `rotation_days=None` means default cycle.
+# Do not "simplify" this back to a plain `None` default -- it would silently clear
+# the rotation of every territory renamed through a partial PATCH.
+UNSET: Final = _Unset.TOKEN
 
 
 def _join_numbers(numbers: list[int]) -> str:
@@ -85,8 +107,14 @@ class TerritoryService:
         *,
         name: str | None = None,
         points: list[LatLng] | None = None,
+        rotation_days: int | None | Literal[_Unset.TOKEN] = UNSET,
     ) -> Territory:
-        """Rename a territory, redraw it, or both. `None` means "leave as it is"."""
+        """Rename a territory, redraw it, change its rotation, or any combination.
+
+        For `name` and `points`, `None` means "leave as it is" -- neither column is
+        nullable, so the value is free to carry that meaning. `rotation_days` is
+        nullable, so it uses the `UNSET` sentinel instead: see the note on it above.
+        """
         territory = self.get(congregation_id, territory_id)
 
         # A PATCH that resends the current name is not a rename, so it must not be
@@ -104,7 +132,10 @@ class TerritoryService:
             self._refuse_overlap(congregation_id, wkt, exclude_id=territory_id)
             self._refuse_orphaned_blocks(territory_id, wkt)
 
-        return self._territories.update(territory, name=name, wkt=wkt)
+        self._territories.update(territory, name=name, wkt=wkt)
+        if rotation_days is not UNSET:
+            self._territories.set_rotation_days(territory, rotation_days)
+        return territory
 
     def delete(self, congregation_id: UUID, territory_id: UUID) -> None:
         """Remove a territory and, with it, every block drawn inside it.

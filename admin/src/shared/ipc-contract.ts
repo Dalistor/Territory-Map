@@ -47,6 +47,12 @@ export interface TerritoryCreateInput {
 export interface TerritoryUpdateInput {
   readonly name?: string
   readonly boundary?: LatLng[]
+  /**
+   * Left out entirely leaves the rotation as it is; `null` puts the territory
+   * back on the clients' default rotation. The two are deliberately different
+   * requests, all the way down to the body the main process sends.
+   */
+  readonly rotationDays?: number | null
 }
 
 export interface BlockCreateInput {
@@ -106,6 +112,7 @@ export const IPC_CHANNELS = {
   exportAssignments: 'export:assignments',
   workLogsListFor: 'workLogs:listFor',
   workLogsDelete: 'workLogs:delete',
+  workLogsMarkWorked: 'workLogs:markWorked',
   geoGeocodeCity: 'geo:geocodeCity'
 } as const
 
@@ -177,6 +184,12 @@ export interface IpcApi {
     listFor(blockId: string): Promise<WorkLog[]>
     /** Removing a log recomputes the block's `lastWorkedAt` on the server. */
     delete(logId: string): Promise<void>
+    /**
+     * Records that a publisher worked the block on a given date. The admin
+     * names whoever did the work -- unlike the Android app, this is not
+     * limited to the territory's current assignment.
+     */
+    markWorked(blockId: string, publisherId: string, workedAt: Date): Promise<WorkLog>
   }
   readonly geo: {
     /**

@@ -159,6 +159,32 @@ Histórico de todas as implementações realizadas neste projeto.
 
 | [0136](0136/README.md) | CLAUDE.md: página de Histórico, rota `GET /admin/assignments` e planilha formatada (spec 0008, Task 10) | 2026-08-18 | Concluído | `CLAUDE.md` |
 
+| [0137](0137/README.md) | `Territory.rotation_days`: modelo e migration (spec 0009, Task 01) | 2026-08-19 | Concluído | `server/app/models/territory.py`, `server/migrations/versions/20260819_0900_a1c7e4f92b83_add_territory_rotation_days.py` |
+
+| [0138](0138/README.md) | Admin: `rotationDays` no modelo compartilhado e na regra de cor (spec 0009, Task 07) | 2026-08-19 | Concluído | `admin/src/shared/models.ts`, `admin/src/shared/models.test.ts`, `admin/src/renderer/map/blockColor.ts`, `admin/src/renderer/map/blockColor.test.ts` |
+
+| [0139](0139/README.md) | DTOs: `rotation_days` no território e o corpo da marcação do admin (spec 0009, Task 02) | 2026-08-19 | Concluído | `server/app/schemas/territory.py`, `server/app/schemas/work_log.py`, `server/tests/schemas/test_territory_schemas.py`, `server/tests/schemas/test_work_log_schemas.py` |
+
 ---
 
 _Atualizado automaticamente pelas skills `/centaur-driven-tdd` e `/centaur-driven-implement`_
+
+| [0140](0140/README.md) | WorkLogService: marcação de quadra feita pelo admin (spec 0009, Task 04) | 2026-08-19 | Concluído | `server/app/services/work_log.py`, `server/tests/services/test_work_log_service.py`, `server/app/routers/admin_blocks.py`, `server/app/routers/app_client.py` |
+
+| [0141](0141/README.md) | Repository e service do território escrevem a rotação (spec 0009, Task 03) | 2026-08-19 | Concluído | `server/app/repositories/territory.py`, `server/app/services/territory.py`, `server/tests/services/test_territory_service.py` |
+
+| [0142](0142/README.md) | Rotas: rotação no PATCH do território e `POST /admin/blocks/{id}/worked` (spec 0009, Task 05) | 2026-08-19 | Concluído | `server/app/routers/admin_territories.py`, `server/app/routers/admin_blocks.py`, `server/app/routers/app_client.py`, `server/tests/routers/test_admin_territories_routes.py`, `server/tests/routers/test_admin_blocks_routes.py`, `server/tests/routers/test_app_client_routes.py` |
+
+| [0143](0143/README.md) | Teste de integração: rotação e marcação pelo admin ponta a ponta (spec 0009, Task 06) | 2026-08-19 | Concluído | `server/tests/integration/test_admin_marking_integration.py` |
+
+| [0144](0144/README.md) | Admin: main e IPC ganham a rotação do território e a marcação de quadra (spec 0009, Task 08) | 2026-08-19 | Concluído | `admin/src/main/api-client.ts`, `admin/src/main/api-client.test.ts`, `admin/src/shared/ipc-contract.ts`, `admin/src/main/ipc-handlers.ts`, `admin/src/main/ipc-handlers.test.ts`, `admin/src/main/session.test.ts`, `admin/src/preload/index.ts` |
+
+| [0145](0145/README.md) | App: `rotationDays` no domínio e no cliente HTTP (spec 0009, Task 11) | 2026-08-19 | Concluído | `app/src/domain/models.ts`, `app/src/domain/models.test.ts`, `app/src/domain/blockColor.ts`, `app/src/domain/blockColor.test.ts`, `app/src/data/api-client.ts`, `app/src/data/api-client.test.ts`, `app/src/data/territory-cache.test.ts` |
+
+| [0146](0146/README.md) | App: o mapa passa a rotação do território para a cor da quadra (spec 0009, Task 12) | 2026-08-19 | Concluído | `app/src/presentation/map/TerritoryMapView.tsx` |
+
+| [0147](0147/README.md) | Admin: a página de configurações do território (spec 0009, Task 09) | 2026-08-19 | Concluído | `admin/src/renderer/screens/TerritorySettingsScreen.tsx`, `admin/src/renderer/screens/TerritorySettingsScreen.test.tsx`, `admin/src/renderer/screens/confirmMessages.ts`, `admin/src/renderer/screens/HomeScreen.tsx`, `admin/src/renderer/screens/HomeScreen.test.tsx`, `admin/src/renderer/App.tsx`, `admin/src/renderer/App.test.tsx`, `admin/src/renderer/index.css` |
+
+| [0148](0148/README.md) | Admin: marcar quadra como trabalhada, e o mapa colorindo pela rotação (spec 0009, Task 10) | 2026-08-19 | Concluído | `admin/src/renderer/screens/HomeScreen.tsx`, `admin/src/renderer/screens/HomeScreen.test.tsx`, `admin/src/renderer/map/TerritoryMap.tsx`, `admin/src/renderer/map/TerritoryMap.test.tsx`, `admin/src/renderer/map/blockColor.ts`, `admin/src/renderer/index.css` |
+
+| [0149](0149/README.md) | CLAUDE.md: rotação por território e marcação de quadra pelo admin (spec 0009, Task 13) | 2026-08-19 | Concluído | `CLAUDE.md` |
