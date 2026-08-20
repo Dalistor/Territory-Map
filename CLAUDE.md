@@ -96,16 +96,29 @@ só (`GET /admin/assignments`): os mesmos registros em **duas visões alternadas
 quem passou por ele) —, mais um campo de **busca por nome** que filtra pelo nome de quem a visão
 atual agrupa, e um botão de **apagar** em cada linha (com confirmação antes). Designar e concluir
 continuam só em Designações, onde o mapa dá o contexto.
-Publicadores tem busca por nome e contadores por situação. Cada território tem ainda uma
+Publicadores tem busca por nome, contadores por situação e, em cada linha, gerar novo código,
+desativar/reativar e **apagar** (spec 0011 — a confirmação avisa que o histórico da pessoa fica, e
+uma recusa por designação aberta aparece com a mensagem do próprio servidor). Cada território tem ainda uma
 **página de configurações** (`TerritorySettingsScreen`, spec 0009), aberta pelo menu "⋮" da lista:
 nome, **tempo de rotação** em dias (vazio = o padrão de 120, dito na própria interface, porque campo
 vazio parece esquecimento), um resumo somente-leitura (quantas quadras, quantas vencidas pela
-rotação em vigor, publicador designado, data da última visita) e o **apagar território**, com a
-mesma confirmação que antes vivia só na Home. Ela não desenha nada — a demarcação continua sendo
-tarefa do `TerritoryEditorScreen`. Os editores de território e de quadra são telas empurradas
+rotação em vigor, publicador designado, data da última visita), o **apagar território**, com a
+mesma confirmação que antes vivia só na Home, e — desde a spec 0010 — a **tabela das quadras** do
+território (número, status por extenso e última visita, ordenada por número, dizendo quando o status
+é forçado). Clicar numa linha expande ali mesmo, sem sair da página, o `BlockWorkPanel`: o histórico
+de trabalho daquela quadra, **adicionar** um registro (publicador + data, pelo `MarkWorkedForm`,
+componente extraído da `HomeScreen` para não virar duas cópias), **apagar** um registro e **forçar o
+status** para "Vencida", "Nunca trabalhada" ou de volta a "Automático". É de propósito que o painel
+abra dentro da página: o admin percorre várias quadras seguidas sem ir e voltar. Ela continua não
+desenhando nada — a demarcação é tarefa do `TerritoryEditorScreen`, e editar ou apagar o desenho da
+quadra continua no menu dela no mapa da Home, assim como a `BlockHistorySheet`, a tela empurrada que
+mostra o histórico de uma quadra a partir do mapa. As duas convivem: a `BlockHistorySheet` é o
+caminho de quem já está com a quadra na frente, o `BlockWorkPanel` é o de quem está percorrendo o
+território inteiro. Os editores de território e de quadra são telas empurradas
 ("← Voltar") em **layout lado a lado** (painel compacto à esquerda, mapa grande à direita); o de
 quadra ainda sugere o próximo número da sequência após cada salvamento. As nove telas são cobertas
-por teste (Vitest + React Testing Library), mais o roteamento/sidebar em `App.test.tsx`. O `app/` (React Native) também está implementado — ativação por código, dashboard,
+por teste (Vitest + React Testing Library), assim como os dois componentes acima, mais o
+roteamento/sidebar em `App.test.tsx`. O `app/` (React Native) também está implementado — ativação por código, dashboard,
 mapa com MapLibre e localização em tempo real, marcação de quadra restrita ao território designado,
 marcação sempre confirmada pelo servidor e cache local de leitura —, com as telas de
 `presentation/` e as camadas de `domain/`/`data/`
@@ -257,7 +270,8 @@ Um período em que um publicador foi responsável por um território — uma lin
 |-------|------|-------|
 | `id` | UUID | PK |
 | `territory_id` | UUID | FK → Territory, `ON DELETE CASCADE` |
-| `user_id` | UUID | FK → User, **`ON DELETE RESTRICT`** — o histórico nomeia uma pessoa e não a perde em silêncio |
+| `user_id` | UUID | **Sem FK.** UUID solto do publicador que dirigiu o território |
+| `user_name` | str | `String(120)`, `NOT NULL`. O nome copiado no momento em que a designação foi aberta |
 | `started_at` | datetime | quando a designação começou (relógio do servidor, nunca do cliente) |
 | `completed_at` | datetime? | **nulo = designação aberta**; preenchido = virou histórico |
 | `created_at` | datetime | |
@@ -269,8 +283,8 @@ garantindo **no máximo uma designação aberta por território**, mesmo com dua
 simultâneas.
 
 Apagar o território leva o histórico junto (`CASCADE`), pela mesma razão das quadras: o registro só
-significa alguma coisa em relação à área que descreve. `User` **não** tem coleção `assignments` do
-outro lado, de propósito — mesmo cuidado já tomado com `BlockWorkLog.user`.
+significa alguma coisa em relação à área que descreve. Já apagar o **publicador** não leva nada:
+veja "O nome na linha, em vez da FK" logo abaixo de `BlockWorkLog`.
 
 A migration que criou a tabela (`d3ab774c1b2f`) **zera `territories.assigned_user_id`** e não faz
 backfill: as designações que existiam não tinham data de início, e inventar uma poria data errada
@@ -284,10 +298,26 @@ no que vira histórico. O admin redesigna pela tela, com a data correta.
 | `number` | int | único dentro do território |
 | `polygon` | `GEOMETRY(POLYGON, 4326)` | o contorno da quadra |
 | `last_worked_at` | datetime? | **derivado** do `BlockWorkLog` mais recente. Nulo = nunca trabalhada. |
+| `status_override` | str? | `VARCHAR(16) NULL`, restrito a `overdue` ou `never` por CHECK (`ck_blocks_status_override`). O status que o **admin forçou** para a quadra. Nulo = derive a cor dos registros. |
 | `created_at` | datetime | |
 
 `last_worked_at` é cache de leitura, não fonte de verdade: quem manda é o `BlockWorkLog`. Recalcular
 sempre que um log for inserido ou removido — nunca escrever nele direto a partir de um endpoint.
+
+`status_override` (spec 0010) é a exceção que o admin liga à mão quando sabe algo que os registros
+não contam — a quadra está para ser trabalhada, ou o que está lá não vale mais. **Nulo não é
+"faltando preencher"**: é "derive a cor dos registros de trabalho, como sempre", que é exatamente o
+comportamento de toda quadra que já existia. Por isso a migration que criou a coluna **não faz
+backfill** e não define `server_default` — gravar um status em toda linha diria que alguém escolheu
+um, e ninguém escolheu. O CHECK só admite os dois estados que o admin pode forçar: não existe
+forçar "recente", porque um registro de trabalho novo já produz isso, e a ausência é o caminho de
+volta.
+
+**A coluna não substitui `last_worked_at`, convive com ela.** O `BlockWorkLog` continua sendo a
+verdade sobre **quem esteve lá e quando**; o override só diz **como pintar**. São perguntas
+diferentes, e é por isso que forçar a cor não inventa visita nenhuma — o caminho alternativo, criar
+um registro antigo para deixar a quadra laranja, foi descartado porque exigiria nomear um publicador
+que nunca esteve ali, e registro falso é pior que uma coluna a mais.
 
 ### BlockWorkLog
 Registro de que uma quadra foi trabalhada. Append-only pelo app.
@@ -296,11 +326,43 @@ Registro de que uma quadra foi trabalhada. Append-only pelo app.
 |-------|------|-------|
 | `id` | UUID | PK |
 | `block_id` | UUID | FK → Block |
-| `user_id` | UUID | FK → User. Preservado mesmo se o usuário for desativado. |
+| `user_id` | UUID | **Sem FK.** UUID solto de quem trabalhou a quadra |
+| `user_name` | str | `String(120)`, `NOT NULL`. O nome copiado no momento em que o registro foi gravado |
 | `worked_at` | datetime | quando a quadra foi concluída |
 | `created_at` | datetime | quando o registro chegou ao servidor (pode diferir de `worked_at` por causa do offline) |
 
 Índice em `(block_id, worked_at DESC)`.
+
+### O nome na linha, em vez da FK
+
+Vale para as **duas** tabelas de histórico — `BlockWorkLog` e `TerritoryAssignment`. Antes da spec
+0011 as duas apontavam para `users` com `ON DELETE RESTRICT`, justamente para que o histórico não
+perdesse a pessoa em silêncio; a consequência é que o banco recusava apagar qualquer publicador que
+já tivesse trabalhado uma quadra ou aparecido num cartão S-13 — ou seja, todo mundo que importava.
+
+A intenção continua a mesma, o mecanismo é outro: **a linha guarda o nome**, copiado no momento em
+que ela é escrita, e o `user_name` é `NOT NULL` pela mesma razão que `user_id` sempre foi
+obrigatório — registro sem autor não serve para nada. Assim o histórico não depende mais de a pessoa
+continuar existindo para ser legível. `user_id` sobrevive como UUID **sem constraint**: serve para
+agrupar "por dirigente" enquanto o publicador existe, e vira um id órfão inofensivo depois que ele é
+apagado, porque quem responde "quem foi" é o nome ao lado. As relationships `BlockWorkLog.user` e
+`TerritoryAssignment.user` deixaram de existir junto com as FKs — sem chave estrangeira elas seriam
+um join que o banco não garante, devolvendo `None` exatamente no caso que a mudança existe para
+resolver. Os DTOs continuam com o mesmo `{id, name}` aninhado de sempre, só que montado no router a
+partir de `user_id` + `user_name`; nenhuma tela e nem o app perceberam a troca.
+
+Duas consequências foram aceitas de propósito:
+
+- **O nome é uma fotografia.** Renomear um publicador não reescreve o que já foi gravado — o
+  histórico fica com o nome que a pessoa tinha no dia. É o preço de desnormalizar, e é exatamente
+  o que faz o registro sobreviver à exclusão dela.
+- **Dois homônimos ficam indistinguíveis** no histórico depois que um dos dois é apagado. Enquanto
+  ambos existirem, o `user_id` sem FK ainda os separa.
+
+A migration (`e7b34c1d5a80`) **faz backfill** a partir de `users` antes de derrubar as FKs, e por
+isso é exata — o projeto ainda não está em produção, então não há linha órfã a tratar. É o oposto
+do que as migrations de `d3ab774c1b2f` e `a1c7e4f92b83` fizeram, e pela razão contrária: lá o dado
+correto não existia para ser copiado; aqui ele existe.
 
 ### Divergências em relação ao brief inicial (e o porquê)
 
@@ -364,6 +426,21 @@ Registro de que uma quadra foi trabalhada. Append-only pelo app.
 - Acesso é **imediato** — quem resgatou o código já usa e já marca quadra. Sem fila de aprovação.
 - O admin pode **desativar** um usuário (`is_active = false`). A partir daí o token é recusado, mas
   os `BlockWorkLog` daquela pessoa permanecem — histórico não se apaga com revogação.
+- O admin pode **apagar** um usuário (`DELETE /admin/users/{id}`, 204). A pessoa sai da lista e o
+  aparelho dela perde o acesso na hora; o que ela produziu **fica**, com o nome preservado em cada
+  linha (ver "O nome na linha, em vez da FK"). Ter histórico — registros de trabalho, designações já
+  concluídas — **não** impede a exclusão; é justamente para isso que o nome passou a viver na linha.
+- **A única barreira é a designação aberta.** Apagar quem ainda tem território em vigor responde
+  **409** (`PublisherHasOpenAssignmentError`), com a mensagem dizendo o que fazer: concluir a
+  designação antes. Nada é encerrado por tabela — soltar o território de alguém é decisão do admin,
+  não efeito colateral de um clique em "Apagar". Publicador de outra congregação e id inexistente
+  respondem o mesmo **404**.
+- **Desativar e apagar não são a mesma coisa, e as duas existem de propósito.** Desativar revoga o
+  acesso e **mantém a pessoa na lista** — é para quem parou de sair em campo e pode voltar, e para
+  quem se quer continuar designando no admin. Apagar **tira a pessoa do sistema** e deixa só o
+  rastro dela no histórico — é para o cadastro errado, o duplicado, ou quem saiu da congregação. A
+  confirmação na tela diz isso com todas as letras, para o admin não escolher o botão errado por
+  medo de perder o histórico.
 - O admin nunca vê o código de outra congregação, e um código só serve para a congregação dele.
 
 ### Marcar quadra como trabalhada
@@ -410,6 +487,23 @@ configurou nada (`DEFAULT_ROTATION_DAYS`). A regra é função pura e vive em do
 deliberadamente idênticos, `admin/src/renderer/map/blockColor.ts` e `app/src/domain/blockColor.ts`
 — mudar um sem o outro faz o mesmo território ter cores diferentes na mesa do admin e no celular do
 publicador. Exatamente no limiar a quadra ainda é recente; só estritamente acima vira vencida.
+
+Acima de tudo isso vem o `status_override` da quadra (spec 0010): os dois clientes o consultam
+**antes** do cálculo por data, então `never` pinta de vermelho e `overdue` de laranja por mais
+recente que seja a última visita, e ausente cai na regra de datas de sempre. Só há esses dois
+valores — forçar "recente" seria forçar a interface a dizer que houve trabalho onde não houve.
+
+**Qualquer registro de trabalho novo limpa o override**, tanto pela rota do app quanto pela do
+admin, no mesmo ponto em que `last_worked_at` é recomputado: uma visita recém-registrada é a
+evidência mais forte que existe sobre a quadra, e mantê-la vermelha depois disso seria a interface
+mentindo para quem acabou de trabalhar ali. **Apagar** um registro, ao contrário, **não** mexe no
+override — apagar é o admin corrigindo o histórico, e adivinhar dali a intenção dele sobre a cor
+erraria mais do que acertaria. A assimetria é deliberada, e é o que um refactor futuro mais
+provavelmente quebra: `server/tests/integration/test_block_status_override_integration.py` existe
+para pegar isso. Um reenvio de `log_id` já conhecido também não limpa nada, porque volta antes de
+gravar. A interface do admin **diz na tela** que o forçado vale no mapa dele e no celular do
+publicador e que o primeiro trabalho novo o desfaz — senão o admin acharia que o sistema desfez a
+escolha dele sozinho.
 
 ### Designação de território
 A designação é um **registro datado com histórico** (`TerritoryAssignment`), não um campo que se
@@ -483,6 +577,12 @@ uma pasta com um roteador por endereço.
   sobrescrever. O número é único dentro do território.
 - Alterar a demarcação de um território que já tem quadras precisa revalidar todas as quadras: se
   alguma ficar fora, a alteração é rejeitada com a lista das quadras afetadas.
+- **Forçar o status** da quadra entra pelo `PATCH /admin/blocks/{block_id}` que já existia, no campo
+  `status_override`, junto de `number` e `polygon` — não ganhou rota própria porque é mais um
+  atributo da quadra, não outro recurso. Vale aqui a mesma distinção que `rotation_days` tem no
+  `PATCH` do território: **campo ausente não toca a coluna** (um PATCH que só renumera não pode
+  apagar o status que o admin forçou) e **campo nulo devolve a quadra ao automático**. Quem traduz
+  as duas intenções é o router, por `model_fields_set`, para um sentinela que o service entende.
 
 ### Chave de aplicação (`X-App-Key`)
 - Toda requisição precisa trazer o header `X-App-Key` com o valor de `APP_SECRET`. **Os dois
@@ -837,7 +937,8 @@ Documentar o "abrir mesmo assim" para o admin. Assinar exige certificado pago.
 Build verde só prova que compila — ninguém clica num binário. Quem valida comportamento são os
 testes (Vitest + React Testing Library), que existem e cobrem as nove telas (configuração inicial,
 `HomeScreen` e as cores do mapa, Designações com o painel de histórico, Histórico, publicadores, os
-dois editores, as configurações do território e o histórico da quadra), mais o roteamento com a
+dois editores, as configurações do território com a tabela de quadras e o histórico da quadra), os
+componentes `BlockWorkPanel` e `MarkWorkedForm`, mais o roteamento com a
 sidebar (`App.test.tsx`), o main
 process (incluindo a montagem e a formatação da planilha em `excel-export.test.ts`) e o que se abre com `npm run dev`
 durante o desenvolvimento.
@@ -939,10 +1040,10 @@ o `.env` exige gerar o `.apk` de novo. Detalhes em `app/README.md`.
   só o admin consegue devolver o acesso. Se isso virar chamado frequente, o remédio é o admin poder
   gerar o código em lote e a tela deixar isso a dois cliques — não afrouxar a regra.
 - Se o admin precisa de uma **listagem** de quadras não trabalhadas há mais de N dias — o N deixou
-  de ser hipótese e já é o `rotation_days` do território (spec 0009): o mapa destaca por cor (nunca
-  trabalhada, vencida pela rotação, recente) e a página de configurações do território conta
-  quantas estão vencidas. O que falta é a lista em si, a congregação inteira de uma vez, para levar
-  no papel a campo; o índice já está preparado para ela.
+  de ser hipótese e já é o `rotation_days` do território (spec 0009), e a lista **existe por
+  território** desde a spec 0010: a página de configurações mostra a tabela das quadras com status e
+  última visita, além do contador de vencidas. O que ainda falta é a visão da **congregação
+  inteira de uma vez**, para levar no papel a campo; o índice já está preparado para ela.
 
 **Resolvidos, para não voltarem à mesa:** o desfazer do editor de polígono existe — é o controller
 próprio `usePolygonEditor` (`admin/src/renderer/map/usePolygonEditor.ts`), com o Leaflet-Geoman só
@@ -954,7 +1055,13 @@ publicador em React Native já existe. A designação também virou **histórico
 para Excel** (spec 0007): designar, concluir e apagar registro estão na interface, e
 `assigned_user_id` passou a ser projeção da designação aberta. E o histórico ganhou **página
 própria** (spec 0008), com as visões por dirigente e por território, busca por nome e apagar em
-cada linha — a planilha exportada, na mesma spec, passou a sair formatada e impressável.
+cada linha — a planilha exportada, na mesma spec, passou a sair formatada e impressável. Por fim, o
+admin já **corrige o registro de trabalho de uma quadra pela interface** e já **força a cor** dela
+quando os registros não contam a história toda (spec 0010): adicionar, apagar e forçar status estão
+na tabela de quadras da página de configurações do território, e o forçado se desfaz sozinho na
+primeira visita nova. E **apagar publicador** deixou de ser impossível (spec 0011): o histórico
+passou a guardar o nome em vez de uma FK, então a pessoa some sem levar junto o que ela trabalhou —
+só quem tem designação aberta é recusado, até que a designação seja concluída.
 
 ## Implementações
 

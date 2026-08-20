@@ -2,6 +2,7 @@
 
 import ast
 import inspect
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -11,11 +12,21 @@ from app.core.exceptions import (
     InactiveUserError,
     InvalidAccessCodeError,
     NotFoundError,
+    PublisherHasOpenAssignmentError,
 )
+from app.core.geo import LatLng, points_to_wkt
 from app.core.security import ACCESS_CODE_ALPHABET, ACCESS_CODE_LENGTH, decode_token
+from app.models.block import Block
+from app.models.territory import Territory
 from app.models.user import User
+from app.repositories.block import BlockRepository
+from app.repositories.block_work_log import BlockWorkLogRepository
+from app.repositories.territory import TerritoryRepository
+from app.repositories.territory_assignment import TerritoryAssignmentRepository
+from app.repositories.user import UserRepository
 from app.services import user as user_service
 from app.services.user import UserService
+from sqlalchemy.orm import Session
 
 NOW = datetime(2026, 8, 2, 12, 0, tzinfo=UTC)
 
@@ -93,8 +104,30 @@ class FakeUserRepository:
         return len(stale)
 
 
-def make_service(repository: FakeUserRepository | None = None) -> UserService:
-    return UserService(repository or FakeUserRepository(), now_provider=lambda: NOW)
+class FakeAssignmentRepository:
+    """In-memory stand-in for the slice of `TerritoryAssignmentRepository` this service uses.
+
+    `UserService` asks the assignment history exactly one question -- does this
+    person still hold a territory -- so that is all the fake answers. The publishers
+    listed in `open_for` are the ones with an assignment in force.
+    """
+
+    def __init__(self, open_for: set[UUID] | None = None) -> None:
+        self.open_for: set[UUID] = set(open_for or ())
+
+    def has_open_for_user(self, user_id: UUID) -> bool:
+        return user_id in self.open_for
+
+
+def make_service(
+    repository: FakeUserRepository | None = None,
+    assignments: FakeAssignmentRepository | None = None,
+) -> UserService:
+    return UserService(
+        repository or FakeUserRepository(),
+        assignments or FakeAssignmentRepository(),
+        now_provider=lambda: NOW,
+    )
 
 
 def test_create_mints_an_eight_character_code_from_the_unambiguous_alphabet():
@@ -142,6 +175,7 @@ def test_create_draws_another_code_when_the_first_one_is_already_taken():
     drawn = iter(["AAAAAAAA", "BBBBBBBB"])
     service = UserService(
         taken,
+        FakeAssignmentRepository(),
         now_provider=lambda: NOW,
         generate_access_code=lambda: next(drawn),
     )
@@ -157,6 +191,7 @@ def test_create_gives_up_instead_of_retrying_forever_when_every_draw_collides():
     taken.create(congregation_id=uuid4(), name="Bia", access_code="AAAAAAAA")
     service = UserService(
         taken,
+        FakeAssignmentRepository(),
         now_provider=lambda: NOW,
         generate_access_code=lambda: "AAAAAAAA",
     )
@@ -497,6 +532,7 @@ def test_the_code_generation_failure_does_not_repeat_the_code_it_could_not_place
     taken.create(congregation_id=uuid4(), name="Bia", access_code="AAAAAAAA")
     service = UserService(
         taken,
+        FakeAssignmentRepository(),
         now_provider=lambda: NOW,
         generate_access_code=lambda: "AAAAAAAA",
     )
@@ -596,3 +632,219 @@ def test_the_service_never_reads_the_clock_itself():
             called.add(".".join(reversed(parts)))
 
     assert not (called & {"datetime.now", "datetime.utcnow", "time.time"})
+
+
+# --- Deleting a publisher -----------------------------------------------------
+#
+# Unlike everything above, these tests run against a real database. Deletion is
+# only interesting because of what it must *not* take with it -- the work logs,
+# the completed assignments, the territory the person used to hold -- and every
+# one of those guarantees lives in the schema (a foreign key that was dropped, a
+# `SET NULL`), not in Python. An in-memory fake would answer all of them from a
+# list and prove nothing about the rows that actually survive.
+
+
+@pytest.fixture
+def db_service(session: Session) -> UserService:
+    return UserService(
+        UserRepository(session),
+        TerritoryAssignmentRepository(session),
+        now_provider=lambda: NOW,
+    )
+
+
+@pytest.fixture
+def make_territory(session: Session) -> Callable[..., Territory]:
+    """Draw a territory straight through the repository.
+
+    `TerritoryService` owns the geometric rules (unique name, no overlap) and none
+    of them matter here: what a deletion needs from a territory is only that it
+    exists, inside a congregation. So every territory is the same square, told
+    apart by a name, and no test here draws two that would have to coexist.
+    """
+    drawn = 0
+
+    def _make(congregation_id: UUID) -> Territory:
+        nonlocal drawn
+        drawn += 1
+        return TerritoryRepository(session).create(
+            congregation_id, f"Centro {drawn}", _square_wkt(0.0, 0.0, 1.0)
+        )
+
+    return _make
+
+
+@pytest.fixture
+def make_block(session: Session, make_territory) -> Callable[..., Block]:
+    """A block sitting well inside a territory of its own."""
+
+    def _make(congregation_id: UUID) -> Block:
+        territory = make_territory(congregation_id)
+        return BlockRepository(session).create(territory.id, 1, _square_wkt(0.1, 0.1, 0.5))
+
+    return _make
+
+
+def _square_wkt(lat: float, lng: float, size: float) -> str:
+    return points_to_wkt(
+        [
+            LatLng(lat, lng),
+            LatLng(lat, lng + size),
+            LatLng(lat + size, lng + size),
+            LatLng(lat + size, lng),
+        ]
+    )
+
+
+def test_deleting_a_freshly_registered_publisher_takes_them_off_the_list(
+    db_service: UserService,
+    make_congregation,
+):
+    congregation = make_congregation()
+    user = db_service.create(congregation.id, name="Ana")
+
+    db_service.delete(congregation.id, user.id)
+
+    assert db_service.list(congregation.id) == []
+
+
+def test_deleting_a_publisher_who_has_worked_blocks_still_removes_them(
+    db_service: UserService,
+    session: Session,
+    make_congregation,
+    make_block,
+):
+    """Having a past is not a reason to refuse: that is what the copied name is for."""
+    congregation = make_congregation()
+    user = db_service.create(congregation.id, name="Ana")
+    block = make_block(congregation.id)
+    BlockWorkLogRepository(session).create(
+        log_id=uuid4(),
+        block_id=block.id,
+        user_id=user.id,
+        user_name=user.name,
+        worked_at=NOW,
+    )
+
+    db_service.delete(congregation.id, user.id)
+
+    assert db_service.list(congregation.id) == []
+
+
+def test_the_work_logs_of_a_deleted_publisher_survive_still_naming_them(
+    db_service: UserService,
+    session: Session,
+    make_congregation,
+    make_block,
+):
+    congregation = make_congregation()
+    user = db_service.create(congregation.id, name="Ana")
+    block = make_block(congregation.id)
+    logs = BlockWorkLogRepository(session)
+    logs.create(
+        log_id=uuid4(),
+        block_id=block.id,
+        user_id=user.id,
+        user_name=user.name,
+        worked_at=NOW,
+    )
+
+    db_service.delete(congregation.id, user.id)
+
+    assert [(log.user_id, log.user_name) for log in logs.list_by_block(block.id)] == [
+        (user.id, "Ana")
+    ]
+
+
+def test_deleting_a_publisher_whose_assignments_are_all_completed_removes_them(
+    db_service: UserService,
+    session: Session,
+    make_congregation,
+    make_territory,
+):
+    """A closed stretch of the S-13 card is history, not a reason to hold the person."""
+    congregation = make_congregation()
+    user = db_service.create(congregation.id, name="Ana")
+    territory = make_territory(congregation.id)
+    assignments = TerritoryAssignmentRepository(session)
+    assignment = assignments.create(
+        territory_id=territory.id,
+        user_id=user.id,
+        user_name=user.name,
+        started_at=NOW - timedelta(days=60),
+    )
+    assignments.close(assignment, completed_at=NOW - timedelta(days=1))
+
+    db_service.delete(congregation.id, user.id)
+
+    assert db_service.list(congregation.id) == []
+    assert [a.user_name for a in assignments.list_by_territory(territory.id)] == ["Ana"]
+
+
+def test_deleting_a_publisher_who_still_holds_a_territory_is_refused(
+    db_service: UserService,
+    session: Session,
+    make_congregation,
+    make_territory,
+):
+    """Nothing is closed by proxy: the admin completes the assignment first."""
+    congregation = make_congregation()
+    user = db_service.create(congregation.id, name="Ana")
+    territory = make_territory(congregation.id)
+    TerritoryAssignmentRepository(session).create(
+        territory_id=territory.id,
+        user_id=user.id,
+        user_name=user.name,
+        started_at=NOW,
+    )
+
+    with pytest.raises(PublisherHasOpenAssignmentError):
+        db_service.delete(congregation.id, user.id)
+
+    assert [u.name for u in db_service.list(congregation.id)] == ["Ana"]
+
+
+def test_deleting_a_publisher_of_another_congregation_raises_not_found(
+    db_service: UserService,
+    make_congregation,
+):
+    """404 and not 403: a refusal that says "yours it is not" confirms they exist."""
+    mine = make_congregation("Central", "São Paulo")
+    theirs = make_congregation("Norte", "Campinas")
+    stranger = db_service.create(theirs.id, name="Ana")
+
+    with pytest.raises(NotFoundError):
+        db_service.delete(mine.id, stranger.id)
+
+    assert [u.name for u in db_service.list(theirs.id)] == ["Ana"]
+
+
+def test_deleting_a_publisher_who_does_not_exist_raises_the_same_not_found(
+    db_service: UserService,
+    make_congregation,
+):
+    congregation = make_congregation()
+
+    with pytest.raises(NotFoundError):
+        db_service.delete(congregation.id, uuid4())
+
+
+def test_deleting_a_publisher_leaves_their_former_territory_standing(
+    db_service: UserService,
+    session: Session,
+    make_congregation,
+    make_territory,
+):
+    """The territory outlives the person; only the stale designation drops."""
+    congregation = make_congregation()
+    user = db_service.create(congregation.id, name="Ana")
+    territory = make_territory(congregation.id)
+    territories = TerritoryRepository(session)
+    territories.set_assigned_user(territory, user.id)
+
+    db_service.delete(congregation.id, user.id)
+
+    session.expire_all()
+    still_there = territories.get(congregation.id, territory.id)
+    assert still_there is not None
+    assert still_there.assigned_user_id is None

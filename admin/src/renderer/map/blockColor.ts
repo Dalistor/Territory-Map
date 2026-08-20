@@ -19,9 +19,14 @@ export const DEFAULT_OVERDUE_AFTER_MS = DEFAULT_ROTATION_DAYS * DAY_MS
 export type BlockColorCategory = 'never' | 'overdue' | 'recent'
 
 /**
- * `'never'` when the block has no work log yet; `'overdue'` once the time
- * since it was last worked is strictly greater than the rotation; `'recent'`
- * otherwise (including exactly at the threshold).
+ * A status the admin forced on the block wins outright: it is read before any
+ * date is looked at, so a block pinned to `'overdue'` or `'never'` shows that
+ * whatever its work logs and whatever rotation the territory runs. Absent or
+ * `undefined` means nothing was forced, and the rule below decides.
+ *
+ * Otherwise: `'never'` when the block has no work log yet; `'overdue'` once
+ * the time since it was last worked is strictly greater than the rotation;
+ * `'recent'` otherwise (including exactly at the threshold).
  *
  * `rotationDays` is the territory's own rotation. Absent or `undefined` means
  * the territory never had one configured, and the default of
@@ -33,6 +38,10 @@ export function blockColorCategory(
   now: Date,
   rotationDays?: number
 ): BlockColorCategory {
+  if (block.statusOverride !== undefined && block.statusOverride !== null) {
+    return block.statusOverride
+  }
+
   const timeSinceWorked = blockTimeSinceWorked(block, now)
 
   if (timeSinceWorked === null) {

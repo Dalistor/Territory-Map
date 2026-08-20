@@ -9,31 +9,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { LatLngTuple } from 'leaflet'
 import { compareTerritoriesByNumber } from '../../shared/models'
-import type { Block, Congregation, Publisher, Territory } from '../../shared/models'
+import type { Block, Congregation, Territory } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
 import { TerritoryMap } from '../map/TerritoryMap'
 import { deleteBlockConfirmMessage, deleteTerritoryConfirmMessage } from './confirmMessages'
+import { MarkWorkedForm } from './MarkWorkedForm'
 
 const GENERIC_ERROR_MESSAGE = 'Não foi possível completar a operação.'
-
-/**
- * A `Date` as `<input type="date">` wants it: `YYYY-MM-DD` in the admin's own
- * timezone. `toISOString()` would answer in UTC, which lands on the previous
- * day for anyone west of Greenwich -- Brazil included.
- */
-function toDateInputValue(date: Date): string {
-  const two = (value: number): string => value.toString().padStart(2, '0')
-  return `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())}`
-}
-
-/**
- * The inverse of {@link toDateInputValue}: local midnight of the day the admin
- * picked. Deliberately not `new Date(value)`, which reads the string as UTC.
- */
-function fromDateInputValue(value: string): Date {
-  const [year, month, day] = value.split('-').map(Number)
-  return new Date(year, month - 1, day)
-}
 
 export interface HomeScreenProps {
   /**
@@ -105,9 +87,6 @@ export function HomeScreen({
   )
   const [openTerritoryMenuId, setOpenTerritoryMenuId] = useState<string | null>(null)
   const [isMarkingWorked, setIsMarkingWorked] = useState(false)
-  const [publishers, setPublishers] = useState<Publisher[]>([])
-  const [workedPublisherId, setWorkedPublisherId] = useState('')
-  const [workedAtValue, setWorkedAtValue] = useState('')
 
   const load = useCallback(async () => {
     setIsLoading(true)
@@ -195,44 +174,32 @@ export function HomeScreen({
     [load, runConfirmed]
   )
 
-  const openMarkWorked = useCallback(async () => {
-    if (activeBlock === null) return
+  const openMarkWorked = useCallback(() => {
     setActionError(null)
-    // The assigned publisher is the right guess almost every time, so it comes
-    // pre-selected -- but the admin can still record someone else's work.
-    setWorkedPublisherId(activeBlock.territory.assignedUser?.id ?? '')
-    setWorkedAtValue(toDateInputValue(now ?? new Date()))
     setIsMarkingWorked(true)
-    try {
-      setPublishers(await window.api.publishers.list())
-    } catch (error) {
-      setActionError(errorMessage(error))
-    }
-  }, [activeBlock, now])
+  }, [])
 
   const closeMarkWorked = useCallback(() => {
     setIsMarkingWorked(false)
-    setPublishers([])
   }, [])
 
-  const confirmMarkWorked = useCallback(() => {
-    if (activeBlock === null || workedPublisherId === '' || workedAtValue === '') {
-      return Promise.resolve()
-    }
-    const blockId = activeBlock.block.id
-    return runAction(async () => {
-      await window.api.workLogs.markWorked(
-        blockId,
-        workedPublisherId,
-        fromDateInputValue(workedAtValue)
-      )
-      closeMarkWorked()
-      setActiveBlock(null)
-      // The block's colour is derived from `lastWorkedAt`, which the server
-      // just recomputed -- reloading is what makes the map catch up.
-      await load()
-    })
-  }, [activeBlock, closeMarkWorked, load, runAction, workedAtValue, workedPublisherId])
+  // The form only hands over the pair the admin chose; writing it -- and
+  // deciding what a failure looks like on this screen -- stays here.
+  const confirmMarkWorked = useCallback(
+    (publisherId: string, workedAt: Date) => {
+      if (activeBlock === null) return Promise.resolve()
+      const blockId = activeBlock.block.id
+      return runAction(async () => {
+        await window.api.workLogs.markWorked(blockId, publisherId, workedAt)
+        closeMarkWorked()
+        setActiveBlock(null)
+        // The block's colour is derived from `lastWorkedAt`, which the server
+        // just recomputed -- reloading is what makes the map catch up.
+        await load()
+      })
+    },
+    [activeBlock, closeMarkWorked, load, runAction]
+  )
 
   const title = congregation ? `${congregation.name} — ${congregation.city}` : 'Territory Map'
 
@@ -388,52 +355,20 @@ export function HomeScreen({
               Editar contorno ou número
             </button>
             {!isMarkingWorked && (
-              <button
-                role="menuitem"
-                className="block-action"
-                onClick={() => void openMarkWorked()}
-              >
+              <button role="menuitem" className="block-action" onClick={openMarkWorked}>
                 Marcar como trabalhada
               </button>
             )}
             {isMarkingWorked && (
-              <div className="block-mark-worked">
-                <label className="field">
-                  <span>Publicador</span>
-                  <select
-                    value={workedPublisherId}
-                    onChange={(event) => setWorkedPublisherId(event.target.value)}
-                  >
-                    <option value="">Selecione…</option>
-                    {publishers.map((publisher) => (
-                      <option key={publisher.id} value={publisher.id}>
-                        {publisher.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field">
-                  <span>Data</span>
-                  <input
-                    type="date"
-                    value={workedAtValue}
-                    onChange={(event) => setWorkedAtValue(event.target.value)}
-                  />
-                </label>
-                <div className="block-mark-worked-actions">
-                  <button
-                    type="button"
-                    className="button-primary"
-                    disabled={workedPublisherId === '' || workedAtValue === ''}
-                    onClick={() => void confirmMarkWorked()}
-                  >
-                    Marcar
-                  </button>
-                  <button type="button" onClick={closeMarkWorked}>
-                    Cancelar
-                  </button>
-                </div>
-              </div>
+              <MarkWorkedForm
+                now={now}
+                // The assigned publisher is the right guess almost every time,
+                // so it comes pre-selected -- but the admin can still record
+                // someone else's work.
+                preselectedPublisherId={activeBlock.territory.assignedUser?.id}
+                onConfirm={(publisherId, workedAt) => void confirmMarkWorked(publisherId, workedAt)}
+                onCancel={closeMarkWorked}
+              />
             )}
             <button
               role="menuitem"

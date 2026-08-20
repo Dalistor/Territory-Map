@@ -16,6 +16,7 @@ import type {
   Assignment,
   AssignmentWithTerritory,
   Block,
+  BlockStatusOverride,
   Congregation,
   Publisher,
   PublisherBrief,
@@ -64,6 +65,7 @@ export interface ApiClient {
   regenerateAccessCode(publisherId: string): Promise<Publisher>
   /** Revokes or restores access. The work log is kept either way. */
   setPublisherActive(publisherId: string, isActive: boolean): Promise<Publisher>
+  deletePublisher(publisherId: string): Promise<void>
 
   listTerritories(): Promise<Territory[]>
   /** The detail endpoint, which is the one that carries the blocks. */
@@ -94,7 +96,19 @@ export interface ApiClient {
 
   /** `number` left out asks the server for the lowest free integer. */
   createBlock(input: { territoryId: string; polygon: LatLng[]; number?: number }): Promise<Block>
-  updateBlock(blockId: string, input: { number?: number; polygon?: LatLng[] }): Promise<Block>
+  /**
+   * Same key-presence contract `updateTerritory` uses: `statusOverride` left
+   * out does not touch the forced status, while `null` puts the block back on
+   * the automatic colour.
+   */
+  updateBlock(
+    blockId: string,
+    input: {
+      number?: number
+      polygon?: LatLng[]
+      statusOverride?: BlockStatusOverride | null
+    }
+  ): Promise<Block>
   deleteBlock(blockId: string): Promise<void>
 
   listWorkLogs(blockId: string): Promise<WorkLog[]>
@@ -199,7 +213,11 @@ function parseBlock(json: Record<string, unknown>): Block {
     id: json.id as string,
     number: json.number as number,
     polygon: ringFromJson(json.polygon as { lat: number; lng: number }[]),
-    lastWorkedAt: parseOptionalDate(json.last_worked_at)
+    lastWorkedAt: parseOptionalDate(json.last_worked_at),
+    // Absent and explicitly `null` are the same answer -- nothing was forced,
+    // so the colour comes from the work records -- and both collapse to
+    // `undefined`, the treatment `last_worked_at` already gets.
+    statusOverride: (json.status_override as BlockStatusOverride | null | undefined) ?? undefined
   }
 }
 
@@ -326,6 +344,10 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
       return parsePublisher(json as Record<string, unknown>)
     },
 
+    async deletePublisher(publisherId) {
+      await request('DELETE', `/admin/users/${publisherId}`)
+    },
+
     async setPublisherActive(publisherId, isActive) {
       const json = await request('PATCH', `/admin/users/${publisherId}`, { is_active: isActive })
       return parsePublisher(json as Record<string, unknown>)
@@ -395,11 +417,18 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
       return parseBlock(json as Record<string, unknown>)
     },
 
-    async updateBlock(blockId, { number, polygon }) {
+    async updateBlock(blockId, input) {
+      const { number, polygon } = input
       if (polygon !== undefined) validateRing(polygon)
       const json = await request('PATCH', `/admin/blocks/${blockId}`, {
         ...(number !== undefined && { number }),
-        ...(polygon !== undefined && { polygon: ringToJson(polygon) })
+        ...(polygon !== undefined && { polygon: ringToJson(polygon) }),
+        // Keyed on the property being there at all, not on its value: the
+        // server tells "not sent" from "sent as null" by which keys arrived,
+        // and `null` is how the admin gives the block back to the automatic
+        // colour. The `?? null` keeps an explicit `undefined` from being
+        // dropped by `JSON.stringify` and read as "not sent".
+        ...('statusOverride' in input && { status_override: input.statusOverride ?? null })
       })
       return parseBlock(json as Record<string, unknown>)
     },

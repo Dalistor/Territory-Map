@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { IPC_CHANNELS } from '../shared/ipc-contract'
+import { IPC_CHANNELS, type BlockUpdateInput } from '../shared/ipc-contract'
 import type { Assignment, AssignmentWithTerritory, Territory, WorkLog } from '../shared/models'
 import type { ApiClient } from './api-client'
 import type { Session } from './session'
@@ -165,6 +165,82 @@ describe('assignments:listAll', () => {
   })
 })
 
+describe('blocks:update', () => {
+  it('forwards the forced status to the API client, through the session', async () => {
+    const updated = { id: 'block-1', number: 3, polygon: [], statusOverride: 'overdue' as const }
+    const api = fakeApi({ updateBlock: vi.fn(async () => updated) })
+    const session = fakeSession()
+    registerIpcHandlers({
+      session,
+      api,
+      geocoder: fakeGeocoder,
+      dialog: { showSaveDialog: vi.fn() }
+    })
+
+    await expect(
+      invoke(IPC_CHANNELS.blocksUpdate, 'block-1', {
+        statusOverride: 'overdue'
+      } satisfies BlockUpdateInput)
+    ).resolves.toEqual(updated)
+    expect(api.updateBlock).toHaveBeenCalledWith('block-1', { statusOverride: 'overdue' })
+    expect(session.run).toHaveBeenCalledOnce()
+  })
+
+  it('forwards a null statusOverride untouched, so the block goes back to automatic', async () => {
+    const updated = { id: 'block-1', number: 3, polygon: [] }
+    const api = fakeApi({ updateBlock: vi.fn(async () => updated) })
+    registerIpcHandlers({
+      session: fakeSession(),
+      api,
+      geocoder: fakeGeocoder,
+      dialog: { showSaveDialog: vi.fn() }
+    })
+
+    await invoke(IPC_CHANNELS.blocksUpdate, 'block-1', {
+      statusOverride: null
+    } satisfies BlockUpdateInput)
+
+    expect(api.updateBlock).toHaveBeenCalledWith('block-1', { statusOverride: null })
+  })
+
+  it('re-authenticates once and retries when the server answers 401', async () => {
+    const credentials = { name: 'Congregação Central', city: 'São Paulo', password: 'pw' }
+    const store: CredentialsStore = {
+      read: vi.fn(async () => credentials),
+      write: vi.fn(),
+      clear: vi.fn()
+    }
+    const updated = { id: 'block-1', number: 3, polygon: [], statusOverride: 'never' as const }
+    let attempt = 0
+    const api = fakeApi({
+      login: vi.fn(async () => ({
+        accessToken: 'token',
+        congregation: { id: 'cong-1', name: credentials.name, city: credentials.city }
+      })),
+      setToken: vi.fn(),
+      updateBlock: vi.fn(async () => {
+        attempt += 1
+        if (attempt === 1) throw new ApiErrorException(401, 'unauthorized', 'token expirado')
+        return updated
+      })
+    })
+    registerIpcHandlers({
+      session: createSession({ api, store }),
+      api,
+      geocoder: fakeGeocoder,
+      dialog: { showSaveDialog: vi.fn() }
+    })
+
+    await expect(
+      invoke(IPC_CHANNELS.blocksUpdate, 'block-1', {
+        statusOverride: 'never'
+      } satisfies BlockUpdateInput)
+    ).resolves.toEqual(updated)
+    expect(attempt).toBe(2)
+    expect(api.login).toHaveBeenCalledTimes(2) // first sign-in + the retry's
+  })
+})
+
 describe('workLogs:markWorked', () => {
   it('forwards the block, the publisher and the date to the API client, through the session', async () => {
     const api = fakeApi()
@@ -248,6 +324,83 @@ describe('workLogs:markWorked', () => {
     await expect(
       invoke(IPC_CHANNELS.workLogsMarkWorked, 'block-1', 'pub-1', new Date())
     ).resolves.toEqual(WORK_LOG)
+    expect(attempt).toBe(2)
+    expect(api.login).toHaveBeenCalledTimes(2) // first sign-in + the retry's
+  })
+})
+
+describe('publishers:delete', () => {
+  it('forwards the publisher id to the API client, through the session', async () => {
+    const api = fakeApi({ deletePublisher: vi.fn(async () => undefined) })
+    const session = fakeSession()
+    registerIpcHandlers({
+      session,
+      api,
+      geocoder: fakeGeocoder,
+      dialog: { showSaveDialog: vi.fn() }
+    })
+
+    await expect(invoke(IPC_CHANNELS.publishersDelete, 'pub-1')).resolves.toBeUndefined()
+    expect(api.deletePublisher).toHaveBeenCalledWith('pub-1')
+    expect(session.run).toHaveBeenCalledOnce()
+  })
+
+  it('propagates a refused deletion as a serialized error, code and status included', async () => {
+    const api = fakeApi({
+      deletePublisher: vi.fn(async () => {
+        throw new ApiErrorException(
+          409,
+          'publisher_has_open_assignment',
+          'Conclua a designação em vigor antes de apagar o publicador.'
+        )
+      })
+    })
+    registerIpcHandlers({
+      session: fakeSession(),
+      api,
+      geocoder: fakeGeocoder,
+      dialog: { showSaveDialog: vi.fn() }
+    })
+
+    const error = await invoke(IPC_CHANNELS.publishersDelete, 'pub-1').catch(
+      (thrown: Error) => thrown
+    )
+
+    expect(JSON.parse((error as Error).message)).toEqual({
+      name: 'ApiErrorException',
+      message: 'Conclua a designação em vigor antes de apagar o publicador.',
+      code: 'publisher_has_open_assignment',
+      statusCode: 409
+    })
+  })
+
+  it('re-authenticates once and retries when the server answers 401', async () => {
+    const credentials = { name: 'Congregação Central', city: 'São Paulo', password: 'pw' }
+    const store: CredentialsStore = {
+      read: vi.fn(async () => credentials),
+      write: vi.fn(),
+      clear: vi.fn()
+    }
+    let attempt = 0
+    const api = fakeApi({
+      login: vi.fn(async () => ({
+        accessToken: 'token',
+        congregation: { id: 'cong-1', name: credentials.name, city: credentials.city }
+      })),
+      setToken: vi.fn(),
+      deletePublisher: vi.fn(async () => {
+        attempt += 1
+        if (attempt === 1) throw new ApiErrorException(401, 'unauthorized', 'token expirado')
+      })
+    })
+    registerIpcHandlers({
+      session: createSession({ api, store }),
+      api,
+      geocoder: fakeGeocoder,
+      dialog: { showSaveDialog: vi.fn() }
+    })
+
+    await expect(invoke(IPC_CHANNELS.publishersDelete, 'pub-1')).resolves.toBeUndefined()
     expect(attempt).toBe(2)
     expect(api.login).toHaveBeenCalledTimes(2) // first sign-in + the retry's
   })

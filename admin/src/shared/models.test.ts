@@ -10,6 +10,7 @@ import {
   workLogWasSyncedLate,
   type Assignment,
   type Block,
+  type BlockStatusOverride,
   type Publisher,
   type PublisherBrief,
   type Territory,
@@ -71,6 +72,29 @@ function makeTerritory(overrides: Partial<Territory> = {}): Territory {
     ...overrides
   }
 }
+
+describe('Block status override', () => {
+  it('carries the status the admin forced for the block', () => {
+    const block = makeBlock({ statusOverride: 'overdue' })
+
+    expect(block.statusOverride).toBe('overdue')
+  })
+
+  it('leaves statusOverride undefined when the status derives from the work records', () => {
+    const block = makeBlock()
+
+    expect(block.statusOverride).toBeUndefined()
+  })
+
+  it('names both forced statuses, and no third one for "recent"', () => {
+    const forced: BlockStatusOverride[] = ['overdue', 'never']
+
+    expect(forced.map((status) => makeBlock({ statusOverride: status }).statusOverride)).toEqual([
+      'overdue',
+      'never'
+    ])
+  })
+})
 
 describe('Territory rotation', () => {
   it('carries the rotation the admin configured, in days', () => {

@@ -192,6 +192,36 @@ describe('createApiClient', () => {
 
       expect(territory.rotationDays).toBeUndefined();
     });
+
+    it('parses the status the admin forced on a block from status_override', async () => {
+      const forcedBlock = { ...TERRITORY_JSON.blocks[0], status_override: 'never' };
+      const { client } = makeClient(
+        jsonResponse(200, [{ ...TERRITORY_JSON, blocks: [forcedBlock] }]),
+      );
+
+      const [territory] = await client.listTerritories('app-token');
+
+      expect(territory.blocks[0].statusOverride).toBe('never');
+    });
+
+    it('parses a block with no forced status (status_override: null) as statusOverride: undefined', async () => {
+      const derivedBlock = { ...TERRITORY_JSON.blocks[0], status_override: null };
+      const { client } = makeClient(
+        jsonResponse(200, [{ ...TERRITORY_JSON, blocks: [derivedBlock] }]),
+      );
+
+      const [territory] = await client.listTerritories('app-token');
+
+      expect(territory.blocks[0].statusOverride).toBeUndefined();
+    });
+
+    it('parses a block whose payload omits status_override as statusOverride: undefined', async () => {
+      const { client } = makeClient(jsonResponse(200, [TERRITORY_JSON]));
+
+      const [territory] = await client.listTerritories('app-token');
+
+      expect(territory.blocks[0].statusOverride).toBeUndefined();
+    });
   });
 
   describe('listWorkedTerritories', () => {

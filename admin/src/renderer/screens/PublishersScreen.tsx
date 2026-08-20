@@ -80,6 +80,22 @@ function errorMessage(error: unknown): string {
   return parseIpcError(error, GENERIC_ERROR_MESSAGE).message
 }
 
+/**
+ * Spells out the one thing that separates deleting from deactivating, because
+ * the two sit side by side in the same menu and the difference is invisible
+ * from their names: the person goes, the record of what she did stays. Since
+ * spec 0011 the history carries the name it was written with, so nothing in
+ * it turns anonymous when the row in `users` disappears -- saying so here is
+ * what keeps an admin from reaching for "Desativar" out of fear.
+ */
+function deletePublisherConfirmMessage(publisher: Publisher): string {
+  return (
+    `Apagar ${publisher.name}?\n\n` +
+    'A pessoa sai da lista e perde o acesso ao aplicativo. O histórico de trabalho e as ' +
+    'designações dela continuam no sistema, com o nome preservado. Não há como desfazer.'
+  )
+}
+
 /** What the code dialog is currently showing -- whose code, and the code itself. */
 interface CodeDialogState {
   readonly publisherName: string
@@ -188,6 +204,19 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
     })
   }
 
+  /**
+   * Asks first -- the same `window.confirm` the rest of the admin uses, for
+   * the same reason: there is no modal component of its own yet.
+   */
+  async function deletePublisher(publisher: Publisher): Promise<void> {
+    setOpenMenuId(null)
+    if (!window.confirm(deletePublisherConfirmMessage(publisher))) return
+    await runWrite(async () => {
+      await window.api.publishers.delete(publisher.id)
+      await load()
+    })
+  }
+
   function showExistingCode(publisher: Publisher): void {
     setOpenMenuId(null)
     setCodeDialog({ publisherName: publisher.name, code: publisher.accessCode ?? '—' })
@@ -291,6 +320,16 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
                   <li>
                     <button type="button" onClick={() => toggleActive(publisher)}>
                       {publisher.isActive ? 'Desativar' : 'Reativar'}
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      className="block-action-danger"
+                      aria-label={`Apagar ${publisher.name}`}
+                      onClick={() => void deletePublisher(publisher)}
+                    >
+                      Apagar
                     </button>
                   </li>
                 </ul>

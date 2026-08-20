@@ -44,7 +44,8 @@ const api: IpcApi = {
     regenerateCode: (publisherId: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.publishersRegenerateCode, publisherId),
     setActive: (publisherId: string, isActive: boolean) =>
-      ipcRenderer.invoke(IPC_CHANNELS.publishersSetActive, publisherId, isActive)
+      ipcRenderer.invoke(IPC_CHANNELS.publishersSetActive, publisherId, isActive),
+    delete: (publisherId: string) => ipcRenderer.invoke(IPC_CHANNELS.publishersDelete, publisherId)
   },
   assignments: {
     listFor: (territoryId: string) =>

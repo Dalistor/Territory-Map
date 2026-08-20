@@ -15,6 +15,7 @@ from app.core.exceptions import (
     InvalidAccessCodeError,
     InvalidCredentialsError,
     NotFoundError,
+    PublisherHasOpenAssignmentError,
     TerritoryNotAssignedError,
 )
 from app.core.rate_limit import limiter, rate_limit_exceeded_handler
@@ -50,6 +51,7 @@ DOMAIN_ERROR_STATUS: dict[type[DomainError], int] = {
     InvalidAccessCodeError: status.HTTP_401_UNAUTHORIZED,
     InactiveUserError: status.HTTP_401_UNAUTHORIZED,
     DuplicateNameError: status.HTTP_409_CONFLICT,
+    PublisherHasOpenAssignmentError: status.HTTP_409_CONFLICT,
     DuplicateBlockNumberError: status.HTTP_409_CONFLICT,
     TerritoryNotAssignedError: status.HTTP_403_FORBIDDEN,
 }

@@ -1,15 +1,28 @@
 // The per-territory settings page (spec 0009, Task 09): the name, the
 // rotation, a read-only summary and the delete action.
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import type { Territory } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
+import type { BlockColorCategory } from '../map/blockColor'
 import { DEFAULT_ROTATION_DAYS, blockColorCategory } from '../map/blockColor'
 import { deleteTerritoryConfirmMessage } from './confirmMessages'
+import { BlockWorkPanel } from './BlockWorkPanel'
 
 /** `dd/mm/yyyy` in local time -- the same shape `BlockHistorySheet` shows a visit in. */
 function formatDate(moment: Date): string {
   const two = (value: number): string => value.toString().padStart(2, '0')
   return `${two(moment.getDate())}/${two(moment.getMonth() + 1)}/${moment.getFullYear()}`
+}
+
+/**
+ * How each colour of the map reads in words. The table says the status out
+ * loud instead of relying on the colour alone -- the same three categories
+ * `blockColorCategory` already decides, never a second copy of the rule.
+ */
+const CATEGORY_LABEL: Record<BlockColorCategory, string> = {
+  never: 'Nunca trabalhada',
+  overdue: 'Vencida',
+  recent: 'Recente'
 }
 
 const BLANK_NAME_ERROR_MESSAGE = 'O nome do território não pode ficar em branco.'
@@ -47,6 +60,14 @@ export function TerritorySettingsScreen({
   onSaved,
   onDeleted
 }: TerritorySettingsScreenProps): React.JSX.Element {
+  // The caller hands the territory over already loaded, so a change made in
+  // the work panel below would otherwise leave this page showing the state of
+  // the moment the admin arrived. This holds the version fetched after such a
+  // change; the prop stays the fallback, and the id guard makes a navigation
+  // to another territory drop a stale refresh instead of showing it.
+  const [refreshed, setRefreshed] = useState<Territory | null>(null)
+  const current = refreshed !== null && refreshed.id === territory.id ? refreshed : territory
+
   const [name, setName] = useState(territory.name)
   // A string, not a number: the empty string is a meaningful value here
   // ("use the default rotation"), and the field also has to be able to hold
@@ -66,8 +87,8 @@ export function TerritorySettingsScreen({
     let overdue = 0
     let never = 0
     let lastVisit: Date | null = null
-    for (const block of territory.blocks) {
-      const category = blockColorCategory(block, moment, territory.rotationDays)
+    for (const block of current.blocks) {
+      const category = blockColorCategory(block, moment, current.rotationDays)
       if (category === 'overdue') overdue += 1
       if (category === 'never') never += 1
       const workedAt = block.lastWorkedAt
@@ -75,11 +96,50 @@ export function TerritorySettingsScreen({
         lastVisit = workedAt
       }
     }
-    return { total: territory.blocks.length, overdue, never, lastVisit }
-  }, [now, territory.blocks, territory.rotationDays])
+    return { total: current.blocks.length, overdue, never, lastVisit }
+  }, [now, current.blocks, current.rotationDays])
+
+  // Ordered here rather than trusted from the API: the table is read as a
+  // numbered list, and a territory whose blocks came back in creation order
+  // would read as shuffled.
+  const sortedBlocks = useMemo(
+    () => [...current.blocks].sort((a, b) => a.number - b.number),
+    [current.blocks]
+  )
+
+  const rows = useMemo(() => {
+    const moment = now ?? new Date()
+    return sortedBlocks.map((block) => ({
+      block,
+      category: blockColorCategory(block, moment, current.rotationDays)
+    }))
+  }, [now, sortedBlocks, current.rotationDays])
+
+  // Which block has its work panel open, or `null` for none. A single id,
+  // not a set: opening another row moves the panel instead of stacking a
+  // second one, which is what keeps the page readable while the admin walks
+  // block by block.
+  const [openBlockId, setOpenBlockId] = useState<string | null>(null)
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  /**
+   * Re-reads this territory after the work panel changed something. There is
+   * no per-territory read on the bridge -- `listWithBlocks` is the one call
+   * that brings blocks along -- so the page picks its own territory out of
+   * the listing. A territory gone from it means someone else deleted it, and
+   * the page keeps what it has rather than blanking the table.
+   */
+  async function handleBlocksChanged(): Promise<void> {
+    try {
+      const territories = await window.api.territories.listWithBlocks()
+      const fresh = territories.find((candidate) => candidate.id === territory.id)
+      if (fresh !== undefined) setRefreshed(fresh)
+    } catch (thrown) {
+      setError(parseIpcError(thrown, 'Não foi possível recarregar as quadras.').message)
+    }
+  }
 
   async function handleSave(): Promise<void> {
     const trimmedName = name.trim()
@@ -110,7 +170,7 @@ export function TerritorySettingsScreen({
   }
 
   async function handleDelete(): Promise<void> {
-    if (!window.confirm(deleteTerritoryConfirmMessage(territory))) return
+    if (!window.confirm(deleteTerritoryConfirmMessage(current))) return
     setError(null)
     try {
       await window.api.territories.delete(territory.id)
@@ -123,7 +183,7 @@ export function TerritorySettingsScreen({
   return (
     <div>
       <header>
-        <h2>Configurações de {territory.name}</h2>
+        <h2>Configurações de {current.name}</h2>
       </header>
       <main className="settings-screen">
         <label className="field">
@@ -171,12 +231,85 @@ export function TerritorySettingsScreen({
             <dt>Quadras nunca trabalhadas</dt>
             <dd data-testid="summary-never-count">{summary.never}</dd>
             <dt>Designado a</dt>
-            <dd data-testid="summary-assigned-user">{territory.assignedUser?.name ?? 'Nenhum'}</dd>
+            <dd data-testid="summary-assigned-user">{current.assignedUser?.name ?? 'Nenhum'}</dd>
             <dt>Última visita registrada</dt>
             <dd data-testid="summary-last-visit">
               {summary.lastVisit === null ? 'Nunca trabalhada' : formatDate(summary.lastVisit)}
             </dd>
           </dl>
+        </section>
+
+        <section className="settings-blocks">
+          <h3>Quadras do território</h3>
+          {rows.length === 0 ? (
+            <p>
+              Este território ainda não tem nenhuma quadra. Desenhe a primeira pelo mapa da tela
+              inicial.
+            </p>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Número</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Última visita</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(({ block, category }) => (
+                  <Fragment key={block.id}>
+                    <tr>
+                      <td>
+                        {/* The number itself is the control, so the cell still
+                            reads as the number it is; the label is what names
+                            the row for a screen reader. */}
+                        <button
+                          type="button"
+                          className="block-row-toggle"
+                          aria-label={`Quadra ${block.number}`}
+                          aria-expanded={openBlockId === block.id}
+                          onClick={() =>
+                            setOpenBlockId((current) => (current === block.id ? null : block.id))
+                          }
+                        >
+                          {block.number}
+                        </button>
+                      </td>
+                      <td>
+                        {CATEGORY_LABEL[category]}
+                        {block.statusOverride !== undefined && block.statusOverride !== null && (
+                          /* Without this the row would silently contradict the
+                             date in the next column, and the admin would read
+                             the calculation as broken instead of as his own
+                             choice. */
+                          <span className="block-status-forced"> (forçado)</span>
+                        )}
+                      </td>
+                      <td>
+                        {block.lastWorkedAt === undefined || block.lastWorkedAt === null
+                          ? 'Nunca trabalhada'
+                          : formatDate(block.lastWorkedAt)}
+                      </td>
+                    </tr>
+                    {openBlockId === block.id && (
+                      <tr>
+                        <td colSpan={3}>
+                          <section aria-label={`Trabalho da quadra ${block.number}`}>
+                            <BlockWorkPanel
+                              territory={current}
+                              block={block}
+                              now={now}
+                              onChanged={() => void handleBlocksChanged()}
+                            />
+                          </section>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          )}
         </section>
 
         <section className="settings-danger">

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from geoalchemy2 import Geometry, WKBElement
-from sqlalchemy import DateTime, ForeignKey, Integer, UniqueConstraint
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -23,6 +23,15 @@ class Block(Base, EntityMixin):
     never a source of truth. It is recomputed whenever a log is inserted or removed
     and must not be written directly from an endpoint - the log is what survives an
     offline sync, the column is only what makes the map fast to draw.
+
+    `status_override` is the status the *admin* forced on this block, and both
+    clients honour it above the date-based calculation when they pick a colour.
+    NULL - the value of every block that already exists - means "derive the colour
+    from the work logs, as always", which is exactly today's behaviour.
+
+    The override lives alongside `last_worked_at` instead of replacing it: the work
+    log stays the truth about *who was there and when*, and the override only says
+    *how to paint* the block.
     """
 
     __tablename__ = "blocks"
@@ -31,6 +40,13 @@ class Block(Base, EntityMixin):
         # so they are chosen by the admin; uniqueness is only required inside the
         # territory that owns them.
         UniqueConstraint("territory_id", "number", name="uq_blocks_territory_number"),
+        # Only the two states the admin can force are spellable: "recent" is never
+        # forced (it is what a fresh work log already produces), so the database
+        # rejects anything but these two and NULL.
+        CheckConstraint(
+            "status_override IN ('overdue', 'never')",
+            name="ck_blocks_status_override",
+        ),
     )
 
     territory_id: Mapped[UUID] = mapped_column(
@@ -48,6 +64,7 @@ class Block(Base, EntityMixin):
         DateTime(timezone=True),
         nullable=True,
     )
+    status_override: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
     territory: Mapped["Territory"] = relationship(back_populates="blocks")
     work_logs: Mapped[list["BlockWorkLog"]] = relationship(

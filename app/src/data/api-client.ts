@@ -17,6 +17,7 @@
 import Config from 'react-native-config';
 import type {
   Block,
+  BlockStatusOverride,
   Congregation,
   LatLng,
   PublisherBrief,
@@ -156,6 +157,9 @@ function parseBlock(json: Record<string, unknown>): Block {
     number: json.number as number,
     polygon: ((json.polygon as Record<string, unknown>[] | undefined) ?? []).map(parseLatLng),
     lastWorkedAt: parseOptionalDate(json.last_worked_at),
+    // Absent and `null` both mean "nothing was forced, derive the status from
+    // the work records" -- the same distinction `rotation_days` makes.
+    statusOverride: (json.status_override as BlockStatusOverride | null) ?? undefined,
   };
 }
 

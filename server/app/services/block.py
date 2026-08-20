@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime
+from enum import Enum
+from typing import Final, Literal
 from uuid import UUID
 
 from app.core.exceptions import (
@@ -19,6 +21,33 @@ from app.core.geo import LatLng, points_to_wkt, validate_polygon, wkt_to_points
 from app.models.block import Block
 from app.repositories.block import BlockRepository
 from app.repositories.territory import TerritoryRepository
+
+
+class _Unset(Enum):
+    """A one-member enum, so `Literal[_Unset.TOKEN]` narrows the type of `UNSET`.
+
+    `object()` would read the same at the call site but type-checks as `object`,
+    which would let any value through the signature.
+    """
+
+    TOKEN = "unset"
+
+
+# Three intentions have to fit in one optional argument of `update`: leave the
+# forced status as it is, force it to "overdue"/"never", or put the block back on
+# the colour derived from its work logs. The last one *is* `None` in the domain, so
+# `None` cannot double as "not provided" the way it does for `number` and `points`.
+# Hence a module-level sentinel: `status_override=UNSET` means untouched,
+# `status_override=None` means back to automatic. Do not "simplify" this back to a
+# plain `None` default -- it would silently clear the forced status of every block
+# renumbered or redrawn through a partial PATCH.
+#
+# This is a deliberate twin of the `UNSET` in `app/services/territory.py`, which
+# guards `rotation_days` for exactly the same reason. The two are kept apart rather
+# than promoted to a shared module because moving either one would reshuffle the
+# imports of the routers that read them, for no gain in behaviour; if a third ever
+# appears, that is the moment to unify them.
+UNSET: Final = _Unset.TOKEN
 
 
 class BlockService:
@@ -87,8 +116,14 @@ class BlockService:
         *,
         number: int | None = None,
         points: list[LatLng] | None = None,
+        status_override: str | None | Literal[_Unset.TOKEN] = UNSET,
     ) -> Block:
-        """Renumber a block, redraw it, or both. `None` means "leave as it is"."""
+        """Renumber a block, redraw it, force its status, or any combination.
+
+        For `number` and `points`, `None` means "leave as it is" -- neither column is
+        nullable, so the value is free to carry that meaning. `status_override` is
+        nullable, so it uses the `UNSET` sentinel instead: see the note on it above.
+        """
         block = self._require_block(congregation_id, block_id)
 
         # A PATCH that resends the current number is not a renumbering, so it must
@@ -105,7 +140,11 @@ class BlockService:
             # outline almost always overlaps the one it replaces, and comparing the
             # block against its own stored polygon would reject every edit.
             self._refuse_overlap(block.territory_id, wkt, exclude_id=block.id)
-        return self._blocks.update(block, number=number, wkt=wkt)
+
+        self._blocks.update(block, number=number, wkt=wkt)
+        if status_override is not UNSET:
+            self._blocks.set_status_override(block, status_override)
+        return block
 
     def delete(self, congregation_id: UUID, block_id: UUID) -> None:
         """Remove a block and, with it, the record of the work done on it.

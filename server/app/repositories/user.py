@@ -116,6 +116,19 @@ class UserRepository:
         self._session.flush()
         return user
 
+    def delete(self, user: User) -> None:
+        """Remove the publisher's row, and flush.
+
+        Only the person goes. The history they produced is stored with a plain
+        `user_id` and a copied `user_name` and no foreign key back to this table,
+        so their work logs and assignments stay exactly where they are, still
+        naming them. The one row that does react is `territories.assigned_user_id`,
+        whose `ON DELETE SET NULL` drops a stale designation instead of taking the
+        territory down with the person.
+        """
+        self._session.delete(user)
+        self._session.flush()
+
     def expire_codes(self, now: datetime) -> int:
         """Wipe every access code already past its validity; return how many.
 

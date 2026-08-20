@@ -106,6 +106,24 @@ describe('territory-cache', () => {
       expect(cached?.[0].rotationDays).toBe(60);
       expect(cached?.[1].rotationDays).toBeUndefined();
     });
+
+    it('keeps the status the admin forced on a block across the round trip', async () => {
+      // Same reason as `rotationDays`: the offline map paints from the cache,
+      // and losing `statusOverride` there would quietly repaint a block the
+      // admin pinned back to whatever its dates say.
+      const [territory] = TERRITORIES;
+      const [worked, neverWorked] = territory.blocks;
+
+      await saveTerritories([
+        { ...territory, blocks: [{ ...worked, statusOverride: 'overdue' }, neverWorked] },
+      ]);
+
+      const cached = await getCachedTerritories();
+
+      expect(cached?.[0].blocks[0].statusOverride).toBe('overdue');
+      expect(cached?.[0].blocks[0].lastWorkedAt).toEqual(worked.lastWorkedAt);
+      expect(cached?.[0].blocks[1].statusOverride).toBeUndefined();
+    });
   });
 
   describe('clearCache', () => {

@@ -100,7 +100,15 @@ def record_work(session):
     """
 
     def _record(block_id: UUID, user: User, worked_at: datetime = WORKED_AT) -> BlockWorkLog:
-        log = BlockWorkLog(id=uuid4(), block_id=block_id, user_id=user.id, worked_at=worked_at)
+        log = BlockWorkLog(
+            id=uuid4(),
+            block_id=block_id,
+            user_id=user.id,
+            # Copied at write time, exactly as the service does it: the row has to
+            # keep naming the publisher after the publisher is gone.
+            user_name=user.name,
+            worked_at=worked_at,
+        )
         session.add(log)
         block = session.get(Block, block_id)
         block.last_worked_at = worked_at
@@ -258,6 +266,47 @@ async def test_the_history_of_a_block_names_the_publisher(
     assert body[0]["user"]["name"] == "Irmã Maria"
     assert body[0]["block_id"] == block["id"]
     assert "access_code" not in body[0]["user"]
+
+
+async def test_the_visit_names_the_publisher_with_the_same_nested_shape_as_before(
+    client, make_admin, make_publisher, record_work
+):
+    """The DTO is built from the row now, and the wire must not notice.
+
+    `user` stays the nested `{id, name}` object it always was -- the admin screens
+    read `user.id` to group the history by publisher, so dropping it while keeping
+    the name would break them just as thoroughly as dropping both.
+    """
+    congregation, token = make_admin()
+    territory_id = await draw_territory(client, token)
+    block = (await draw_block(client, token, territory_id)).json()
+    publisher = make_publisher(congregation.id, name="Irmã Maria")
+    record_work(UUID(block["id"]), publisher)
+
+    response = await client.get(f"/admin/blocks/{block['id']}/work-logs", headers=bearer(token))
+
+    assert response.json()[0]["user"] == {"id": str(publisher.id), "name": "Irmã Maria"}
+
+
+async def test_the_history_keeps_the_name_written_at_the_time_of_the_visit(
+    client, make_admin, make_publisher, record_work, session
+):
+    """The name in the row is a photograph, not a lookup.
+
+    Renaming the publisher afterwards must not rewrite what was recorded -- which is
+    only observable because the route no longer reads the name off `users`.
+    """
+    congregation, token = make_admin()
+    territory_id = await draw_territory(client, token)
+    block = (await draw_block(client, token, territory_id)).json()
+    publisher = make_publisher(congregation.id, name="Irmã Maria")
+    record_work(UUID(block["id"]), publisher)
+    publisher.name = "Irmã Maria Silva"
+    session.flush()
+
+    response = await client.get(f"/admin/blocks/{block['id']}/work-logs", headers=bearer(token))
+
+    assert response.json()[0]["user"]["name"] == "Irmã Maria"
 
 
 async def test_deleting_a_visit_gives_the_block_back_its_previous_state(
@@ -488,3 +537,134 @@ async def test_no_route_here_is_reachable_without_an_admin_token(client, method,
     response = await client.request(method.upper(), path, json=body)
 
     assert response.status_code == 401
+
+
+async def test_forcing_the_status_answers_with_the_value_that_was_stored(client, make_admin):
+    """The admin pins a colour the dates would not give: 'this area is due'."""
+    _, token = make_admin()
+    territory_id = await draw_territory(client, token)
+    block = (await draw_block(client, token, territory_id)).json()
+    assert block["status_override"] is None
+
+    response = await client.patch(
+        f"/admin/blocks/{block['id']}",
+        json={"status_override": "overdue"},
+        headers=bearer(token),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status_override"] == "overdue"
+
+
+async def test_a_patch_that_only_renumbers_leaves_the_forced_status_where_it_was(
+    client, make_admin
+):
+    """Absent is not null: renumbering must not undo the colour the admin pinned."""
+    _, token = make_admin()
+    territory_id = await draw_territory(client, token)
+    block = (await draw_block(client, token, territory_id)).json()
+    await client.patch(
+        f"/admin/blocks/{block['id']}",
+        json={"status_override": "never"},
+        headers=bearer(token),
+    )
+
+    response = await client.patch(
+        f"/admin/blocks/{block['id']}",
+        json={"number": 7},
+        headers=bearer(token),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["number"] == 7
+    assert body["status_override"] == "never"
+
+
+async def test_an_explicit_null_hands_the_block_back_to_the_automatic_colour(client, make_admin):
+    """The way out of a pinned status: null is a value here, not a missing field."""
+    _, token = make_admin()
+    territory_id = await draw_territory(client, token)
+    block = (await draw_block(client, token, territory_id)).json()
+    await client.patch(
+        f"/admin/blocks/{block['id']}",
+        json={"status_override": "overdue"},
+        headers=bearer(token),
+    )
+
+    response = await client.patch(
+        f"/admin/blocks/{block['id']}",
+        json={"status_override": None},
+        headers=bearer(token),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status_override"] is None
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param("recent", id="a-third-colour-nobody-asked-for"),
+        pytest.param("OVERDUE", id="wrong-case"),
+        pytest.param(3, id="not-even-a-string"),
+    ],
+)
+async def test_a_status_outside_the_two_the_map_paints_is_422(client, make_admin, value):
+    """Only the two states the map already has can be pinned; 'recent' is not one."""
+    _, token = make_admin()
+    territory_id = await draw_territory(client, token)
+    block = (await draw_block(client, token, territory_id)).json()
+
+    response = await client.patch(
+        f"/admin/blocks/{block['id']}",
+        json={"status_override": value},
+        headers=bearer(token),
+    )
+
+    assert response.status_code == 422
+
+
+async def test_the_admin_marking_the_block_undoes_the_forced_status(
+    client, make_admin, make_publisher
+):
+    """A visit just recorded is the strongest evidence there is about the block."""
+    congregation, token = make_admin()
+    territory_id = await draw_territory(client, token)
+    block = (await draw_block(client, token, territory_id)).json()
+    await client.patch(
+        f"/admin/blocks/{block['id']}",
+        json={"status_override": "never"},
+        headers=bearer(token),
+    )
+    publisher = make_publisher(congregation.id)
+    before = await client.get(f"/admin/territories/{territory_id}", headers=bearer(token))
+    assert before.json()["blocks"][0]["status_override"] == "never"
+
+    await client.post(
+        f"/admin/blocks/{block['id']}/worked",
+        json={"user_id": str(publisher.id), "worked_at": WORKED_AT.isoformat()},
+        headers=bearer(token),
+    )
+
+    detail = await client.get(f"/admin/territories/{territory_id}", headers=bearer(token))
+    reread = detail.json()["blocks"][0]
+    assert reread["status_override"] is None
+    assert reread["last_worked_at"].startswith("2026-07-20T15:30:00")
+
+
+async def test_forcing_the_status_of_a_block_of_another_congregation_is_404(client, make_admin):
+    """The pinned colour is no way around the tenant boundary either."""
+    _, token = make_admin(name="Central", city="Uberlândia")
+    _, other_token = make_admin(name="Norte", city="Contagem")
+    stranger_territory = await draw_territory(client, other_token, name="Vila Rica")
+    stranger_block = (await draw_block(client, other_token, stranger_territory)).json()
+
+    response = await client.patch(
+        f"/admin/blocks/{stranger_block['id']}",
+        json={"status_override": "overdue"},
+        headers=bearer(token),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "not_found"

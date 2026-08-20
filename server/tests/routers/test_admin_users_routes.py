@@ -15,6 +15,22 @@ from app.models.user import User
 
 pytestmark = pytest.mark.anyio
 
+# Geometry and a date, because two of these tests need a publisher with a past: a
+# recorded visit and a stint on a card. They are drawn over HTTP like the admin would.
+SQUARE = [
+    {"lat": 0.0, "lng": 0.0},
+    {"lat": 0.0, "lng": 1.0},
+    {"lat": 1.0, "lng": 1.0},
+    {"lat": 1.0, "lng": 0.0},
+]
+INNER_SQUARE = [
+    {"lat": 0.1, "lng": 0.1},
+    {"lat": 0.1, "lng": 0.3},
+    {"lat": 0.3, "lng": 0.3},
+    {"lat": 0.3, "lng": 0.1},
+]
+WORKED_AT = "2026-07-20T15:30:00+00:00"
+
 
 def bearer(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
@@ -101,11 +117,109 @@ async def test_deactivating_a_publisher_reports_the_new_state(client, make_admin
     assert response.json()["is_active"] is False
 
 
+async def test_deleting_a_publisher_answers_204_and_takes_them_off_the_list(client, make_admin):
+    _, token = make_admin()
+    created = (await register(client, token)).json()
+
+    response = await client.delete(f"/admin/users/{created['id']}", headers=bearer(token))
+
+    assert response.status_code == 204
+    assert response.content == b""
+    listing = await client.get("/admin/users", headers=bearer(token))
+    assert listing.json() == []
+
+
+async def test_a_publisher_with_recorded_work_can_be_deleted_and_stays_named_in_it(
+    client, make_admin
+):
+    """The reason the name was copied into the row: the history outlives the person."""
+    _, token = make_admin()
+    publisher = (await register(client, token, name="Irmã Maria")).json()
+    territory_id = (
+        await client.post(
+            "/admin/territories",
+            json={"name": "Centro", "boundary": SQUARE},
+            headers=bearer(token),
+        )
+    ).json()["id"]
+    block = (
+        await client.post(
+            f"/admin/territories/{territory_id}/blocks",
+            json={"polygon": INNER_SQUARE},
+            headers=bearer(token),
+        )
+    ).json()
+    await client.post(
+        f"/admin/blocks/{block['id']}/worked",
+        json={"user_id": publisher["id"], "worked_at": WORKED_AT},
+        headers=bearer(token),
+    )
+
+    response = await client.delete(f"/admin/users/{publisher['id']}", headers=bearer(token))
+
+    assert response.status_code == 204
+    history = await client.get(f"/admin/blocks/{block['id']}/work-logs", headers=bearer(token))
+    assert [entry["user"]["name"] for entry in history.json()] == ["Irmã Maria"]
+
+
+async def test_deleting_a_publisher_who_still_holds_a_territory_is_409(client, make_admin):
+    """A valid request the current state forbids -- and the message says what to do."""
+    _, token = make_admin()
+    publisher = (await register(client, token)).json()
+    territory_id = (
+        await client.post(
+            "/admin/territories",
+            json={"name": "Centro", "boundary": SQUARE},
+            headers=bearer(token),
+        )
+    ).json()["id"]
+    await client.post(
+        f"/admin/territories/{territory_id}/assignments",
+        json={"user_id": publisher["id"]},
+        headers=bearer(token),
+    )
+
+    response = await client.delete(f"/admin/users/{publisher['id']}", headers=bearer(token))
+
+    assert response.status_code == 409
+    body = response.json()
+    assert body["code"] == "publisher_has_open_assignment"
+    assert "Designações" in body["detail"]
+    listing = await client.get("/admin/users", headers=bearer(token))
+    assert [user["id"] for user in listing.json()] == [publisher["id"]]
+
+
+async def test_a_publisher_whose_stint_was_completed_can_be_deleted(client, make_admin):
+    """Only the *open* stint blocks the deletion; a closed card is just history."""
+    _, token = make_admin()
+    publisher = (await register(client, token)).json()
+    territory_id = (
+        await client.post(
+            "/admin/territories",
+            json={"name": "Centro", "boundary": SQUARE},
+            headers=bearer(token),
+        )
+    ).json()["id"]
+    await client.post(
+        f"/admin/territories/{territory_id}/assignments",
+        json={"user_id": publisher["id"]},
+        headers=bearer(token),
+    )
+    await client.post(
+        f"/admin/territories/{territory_id}/assignments/complete", headers=bearer(token)
+    )
+
+    response = await client.delete(f"/admin/users/{publisher['id']}", headers=bearer(token))
+
+    assert response.status_code == 204
+
+
 @pytest.mark.parametrize(
     ("method", "suffix", "body"),
     [
         pytest.param("post", "/access-code", None, id="regenerate-code"),
         pytest.param("patch", "", {"is_active": False}, id="patch"),
+        pytest.param("delete", "", None, id="delete"),
     ],
 )
 async def test_a_publisher_of_another_congregation_is_404_and_not_403(
@@ -152,6 +266,7 @@ async def test_a_publisher_that_never_existed_is_404_too(client, make_admin):
         pytest.param("get", "/admin/users", None, id="list"),
         pytest.param("post", f"/admin/users/{uuid4()}/access-code", None, id="regenerate-code"),
         pytest.param("patch", f"/admin/users/{uuid4()}", {"is_active": True}, id="patch"),
+        pytest.param("delete", f"/admin/users/{uuid4()}", None, id="delete"),
     ],
 )
 async def test_no_route_here_is_reachable_without_an_admin_token(client, method, path, body):
@@ -169,6 +284,20 @@ async def test_an_app_token_never_reaches_an_admin_route(client, make_admin, ses
     response = await client.post(
         "/admin/users",
         json={"name": "Irmã Maria"},
+        headers=bearer(create_app_token(user.id, congregation.id, user.token_version)),
+    )
+
+    assert response.status_code == 401
+
+
+async def test_an_app_token_never_reaches_the_deletion_route(client, make_admin, session):
+    """Removing a publisher is the admin's call; the phone must not be able to ask."""
+    congregation, token = make_admin()
+    created = (await register(client, token)).json()
+    user = session.get(User, UUID(created["id"]))
+
+    response = await client.delete(
+        f"/admin/users/{created['id']}",
         headers=bearer(create_app_token(user.id, congregation.id, user.token_version)),
     )
 

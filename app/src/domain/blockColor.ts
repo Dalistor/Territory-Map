@@ -3,7 +3,8 @@
 // (recently worked) on the map. Copied rather than shared — the app does not
 // depend on the admin — but kept identical on purpose: same default rotation
 // of 120 days, same territory-level `rotationDays` override, same "strictly
-// greater than" boundary.
+// greater than" boundary, and the same status the admin forced on the block
+// read ahead of any date.
 import type { Block } from './models'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -21,9 +22,14 @@ export const OVERDUE_AFTER_MS = DEFAULT_ROTATION_DAYS * DAY_MS
 export type BlockColorCategory = 'never' | 'overdue' | 'recent'
 
 /**
- * `'never'` when the block has no work log yet; `'overdue'` once the time
- * since it was last worked is strictly greater than the rotation; `'recent'`
- * otherwise (including exactly at the threshold).
+ * A status the admin forced on the block wins outright: it is read before any
+ * date is looked at, so a block pinned to `'overdue'` or `'never'` shows that
+ * whatever its work logs and whatever rotation the territory runs. Absent or
+ * `undefined` means nothing was forced, and the rule below decides.
+ *
+ * Otherwise: `'never'` when the block has no work log yet; `'overdue'` once
+ * the time since it was last worked is strictly greater than the rotation;
+ * `'recent'` otherwise (including exactly at the threshold).
  *
  * `rotationDays` is the rotation of the territory that owns the block. Absent
  * or `undefined` means the territory never had one configured, and
@@ -35,6 +41,10 @@ export function blockColorCategory(
   now: Date,
   rotationDays?: number,
 ): BlockColorCategory {
+  if (block.statusOverride !== undefined && block.statusOverride !== null) {
+    return block.statusOverride
+  }
+
   if (block.lastWorkedAt === undefined) {
     return 'never'
   }

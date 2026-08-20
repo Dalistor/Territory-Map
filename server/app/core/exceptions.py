@@ -67,6 +67,21 @@ class InactiveUserError(DomainError):
     )
 
 
+class PublisherHasOpenAssignmentError(DomainError):
+    """The publisher still holds a territory, so deleting them would orphan the card.
+
+    Refused rather than resolved for them: closing the assignment stamps a
+    completion date on the S-13 card, and inventing that date on the way to a
+    deletion would write a fact nobody stated.
+    """
+
+    code = "publisher_has_open_assignment"
+    default_message = (
+        "Este publicador ainda tem um território designado a ele. Marque a designação "
+        "como concluída na página Designações e depois apague o cadastro."
+    )
+
+
 class InvalidPolygonError(DomainError):
     """Geometry is not a valid, simple polygon."""
 

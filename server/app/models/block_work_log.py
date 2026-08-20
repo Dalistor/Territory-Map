@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Index, text
+from sqlalchemy import DateTime, ForeignKey, Index, String, text
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -12,7 +12,6 @@ from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.block import Block
-    from app.models.user import User
 
 
 class BlockWorkLog(Base, TimestampMixin):
@@ -46,18 +45,32 @@ class BlockWorkLog(Base, TimestampMixin):
         ForeignKey("blocks.id", ondelete="CASCADE"),
         nullable=False,
     )
-    # RESTRICT, unlike every other FK in the schema: the history of who worked where
-    # must not disappear with the person. Revoking access is `User.is_active = False`,
-    # never a row deletion.
+    # No foreign key, on purpose. The row has to outlive the publisher: the admin
+    # can delete a person, and the record of who covered which block must still be
+    # readable afterwards. A key pointing at `users` would either block that
+    # deletion or leave the row unable to name anyone, so the name is copied into
+    # the row at write time instead - see `user_name` below.
+    #
+    # What is left here is a plain id with no constraint behind it. While the
+    # publisher exists it is still the reliable way to group work by person (and to
+    # tell two namesakes apart); once they are deleted it is an orphan id that
+    # points nowhere, which is harmless because the name is already stored.
     user_id: Mapped[UUID] = mapped_column(
         PgUUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )
+    # A photograph of the publisher's name at the moment the visit was recorded,
+    # not a live view of it. Accepted consequence: renaming a publisher does not
+    # rewrite the history - old rows keep the name the person had that day. That is
+    # the price of denormalising, and it is exactly what lets the record survive the
+    # deletion of the person. Same length as `User.name`, and NOT NULL for the same
+    # reason `user_id` always was: a log with no author would be of no use.
+    user_name: Mapped[str] = mapped_column(String(120), nullable=False)
     worked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     block: Mapped["Block"] = relationship(back_populates="work_logs")
-    # One-sided on purpose: `User` deliberately has no `work_logs` collection, so
-    # that nothing invites cascading a user deletion into the history.
-    user: Mapped["User"] = relationship()
+    # There is deliberately no `user` relationship. With the foreign key gone the
+    # database no longer guarantees that join, and it would resolve to None in
+    # precisely the case this design exists to serve - a deleted publisher. Readers
+    # build the author from `user_id` + `user_name`, which are always there.

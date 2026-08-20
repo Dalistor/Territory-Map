@@ -353,3 +353,28 @@ async def test_the_rotation_comes_back_in_the_listing_and_in_the_detail(client, 
 
     assert [item["rotation_days"] for item in listing.json()] == [45]
     assert detail.json()["rotation_days"] == 45
+
+
+async def test_the_detail_reports_the_forced_status_of_every_block(client, make_admin):
+    """The map is drawn from this answer, so the pinned colour has to be in it."""
+    _, token = make_admin()
+    territory = (await draw(client, token)).json()
+    blocks = []
+    for corner in ((0.1, 0.1), (0.4, 0.1)):
+        drawn = await client.post(
+            f"/admin/territories/{territory['id']}/blocks",
+            json={"polygon": square(*corner, size=0.2)},
+            headers=bearer(token),
+        )
+        blocks.append(drawn.json())
+    await client.patch(
+        f"/admin/blocks/{blocks[0]['id']}",
+        json={"status_override": "overdue"},
+        headers=bearer(token),
+    )
+
+    response = await client.get(f"/admin/territories/{territory['id']}", headers=bearer(token))
+
+    assert response.status_code == 200
+    reported = {item["number"]: item["status_override"] for item in response.json()["blocks"]}
+    assert reported == {blocks[0]["number"]: "overdue", blocks[1]["number"]: None}

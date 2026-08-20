@@ -188,3 +188,43 @@ _Atualizado automaticamente pelas skills `/centaur-driven-tdd` e `/centaur-drive
 | [0148](0148/README.md) | Admin: marcar quadra como trabalhada, e o mapa colorindo pela rotação (spec 0009, Task 10) | 2026-08-19 | Concluído | `admin/src/renderer/screens/HomeScreen.tsx`, `admin/src/renderer/screens/HomeScreen.test.tsx`, `admin/src/renderer/map/TerritoryMap.tsx`, `admin/src/renderer/map/TerritoryMap.test.tsx`, `admin/src/renderer/map/blockColor.ts`, `admin/src/renderer/index.css` |
 
 | [0149](0149/README.md) | CLAUDE.md: rotação por território e marcação de quadra pelo admin (spec 0009, Task 13) | 2026-08-19 | Concluído | `CLAUDE.md` |
+
+| [0150](0150/README.md) | `Block.status_override`: modelo e migration (spec 0010, Task 01) | 2026-08-20 | Concluído | `server/app/models/block.py`, `server/migrations/versions/20260820_0900_c5e21f0a7d94_add_block_status_override.py` |
+
+| [0151](0151/README.md) | DTOs: o status forçado na entrada e na saída da quadra (spec 0010, Task 02) | 2026-08-20 | Concluído | `server/app/schemas/block.py`, `server/tests/schemas/test_block_schemas.py` |
+
+| [0152](0152/README.md) | Admin: o status forçado no modelo compartilhado e na regra de cor (spec 0010, Task 06) | 2026-08-20 | Concluído | `admin/src/shared/models.ts`, `admin/src/shared/models.test.ts`, `admin/src/renderer/map/blockColor.ts`, `admin/src/renderer/map/blockColor.test.ts` |
+
+| [0153](0153/README.md) | Admin: o formulário de "publicador + data" virou componente próprio (spec 0010, Task 08) | 2026-08-20 | Concluído | `admin/src/renderer/screens/MarkWorkedForm.tsx`, `admin/src/renderer/screens/MarkWorkedForm.test.tsx`, `admin/src/renderer/screens/HomeScreen.tsx` |
+
+| [0154](0154/README.md) | Services: gravar o status forçado da quadra e limpá-lo quando chega trabalho novo (spec 0010, Task 03) | 2026-08-20 | Concluído | `server/app/repositories/block.py`, `server/app/services/block.py`, `server/app/services/work_log.py`, `server/tests/services/test_block_service.py`, `server/tests/services/test_work_log_service.py` |
+
+| [0155](0155/README.md) | Rotas: o status forçado no PATCH da quadra e nas leituras (spec 0010, Task 04) | 2026-08-20 | Concluído | `server/app/routers/admin_blocks.py`, `server/app/routers/admin_territories.py`, `server/app/routers/app_client.py`, `server/tests/routers/test_admin_blocks_routes.py`, `server/tests/routers/test_admin_territories_routes.py`, `server/tests/routers/test_app_client_routes.py` |
+
+| [0156](0156/README.md) | Teste de integração: forçar o status da quadra e vê-lo se desfazer sozinho (spec 0010, Task 05) | 2026-08-20 | Concluído | `server/tests/integration/test_block_status_override_integration.py` |
+
+| [0157](0157/README.md) | App: o status forçado no domínio e no cliente HTTP (spec 0010, Task 11) | 2026-08-20 | Concluído | `app/src/domain/models.ts`, `app/src/domain/models.test.ts`, `app/src/domain/blockColor.ts`, `app/src/domain/blockColor.test.ts`, `app/src/data/api-client.ts`, `app/src/data/api-client.test.ts`, `app/src/data/territory-cache.test.ts` |
+
+| [0158](0158/README.md) | Admin: main e IPC levam o status forçado da quadra (spec 0010, Task 07) | 2026-08-20 | Concluído | `admin/src/main/api-client.ts`, `admin/src/main/api-client.test.ts`, `admin/src/shared/ipc-contract.ts`, `admin/src/main/ipc-handlers.test.ts` |
+
+| [0159](0159/README.md) | Admin: o painel de trabalho da quadra (spec 0010, Task 09) | 2026-08-20 | Concluído | `admin/src/renderer/screens/BlockWorkPanel.tsx`, `admin/src/renderer/screens/BlockWorkPanel.test.tsx`, `admin/src/renderer/index.css` |
+
+| [0160](0160/README.md) | Admin: a tabela de quadras na página de configurações do território (spec 0010, Task 10) | 2026-08-20 | Concluído | `admin/src/renderer/screens/TerritorySettingsScreen.tsx`, `admin/src/renderer/screens/TerritorySettingsScreen.test.tsx`, `admin/src/renderer/index.css` |
+
+| [0161](0161/README.md) | Documentar o status forçado e a tabela de quadras no `CLAUDE.md` (spec 0010, Task 12) | 2026-08-20 | Concluído | `CLAUDE.md` |
+
+| [0162](0162/README.md) | O nome na linha do histórico: modelos e migration (spec 0011, Task 01) | 2026-08-20 | Concluído | `server/app/models/block_work_log.py`, `server/app/models/territory_assignment.py`, `server/migrations/versions/20260820_1000_e7b34c1d5a80_add_history_user_name.py` |
+
+| [0163](0163/README.md) | O nome do publicador gravado junto com o registro (spec 0011, Task 02) | 2026-08-20 | Concluído | `server/app/repositories/block_work_log.py`, `server/app/repositories/territory_assignment.py`, `server/app/services/work_log.py`, `server/app/services/assignment.py`, `server/tests/services/test_work_log_service.py`, `server/tests/services/test_assignment_service.py` |
+
+| [0164](0164/README.md) | Apagar publicador, recusando quem tem designação aberta (spec 0011, Task 03) | 2026-08-20 | Concluído | `server/app/core/exceptions.py`, `server/app/repositories/territory_assignment.py`, `server/app/repositories/user.py`, `server/app/services/user.py`, `server/app/routers/auth.py`, `server/app/jobs/expire_codes.py`, `server/tests/services/test_user_service.py` |
+
+| [0165](0165/README.md) | Rotas: `DELETE /admin/users/{id}` e o DTO montado a partir do nome (spec 0011, Task 04) | 2026-08-20 | Concluído | `server/app/routers/history_dto.py`, `server/app/routers/admin_users.py`, `server/app/routers/admin_blocks.py`, `server/app/routers/admin_assignments.py`, `server/app/routers/app_client.py`, `server/app/main.py`, `server/tests/routers/test_admin_users_routes.py`, `server/tests/routers/test_admin_blocks_routes.py`, `server/tests/routers/test_admin_assignments_routes.py`, `server/tests/routers/test_app_client_routes.py` |
+
+| [0166](0166/README.md) | Admin: `publishers.delete` no main e no IPC (spec 0011, Task 06) | 2026-08-20 | Concluído | `admin/src/main/api-client.ts`, `admin/src/main/api-client.test.ts`, `admin/src/shared/ipc-contract.ts`, `admin/src/main/ipc-handlers.ts`, `admin/src/main/ipc-handlers.test.ts`, `admin/src/preload/index.ts`, `admin/src/main/session.test.ts`, fakes de `window.api.publishers` nos testes do renderer |
+
+| [0167](0167/README.md) | Teste de integração: a pessoa some, o histórico fica (spec 0011, Task 05) | 2026-08-20 | Concluído | `server/tests/integration/test_publisher_deletion_integration.py` |
+
+| [0168](0168/README.md) | Admin: apagar publicador pela tela (spec 0011, Task 07) | 2026-08-20 | Concluído | `admin/src/renderer/screens/PublishersScreen.tsx`, `admin/src/renderer/screens/PublishersScreen.test.tsx` |
+
+| [0169](0169/README.md) | Documentar a exclusão de publicador no `CLAUDE.md` (spec 0011, Task 08) | 2026-08-20 | Concluído | `CLAUDE.md` |

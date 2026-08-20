@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_session
 from app.core.rate_limit import ACTIVATE_RATE_LIMIT, LOGIN_RATE_LIMIT, limiter
 from app.repositories.congregation import CongregationRepository
+from app.repositories.territory_assignment import TerritoryAssignmentRepository
 from app.repositories.user import UserRepository
 from app.schemas.auth import CongregationOut, LoginIn, TokenOut
 from app.schemas.user import ActivateIn, ActivateOut, UserBriefOut
@@ -41,7 +42,11 @@ def get_auth_service(session: DbSession) -> AuthService:
 
 
 def get_user_service(session: DbSession) -> UserService:
-    return UserService(UserRepository(session), utc_now)
+    return UserService(
+        UserRepository(session),
+        TerritoryAssignmentRepository(session),
+        utc_now,
+    )
 
 
 @router.post("/auth/login", tags=["auth"])

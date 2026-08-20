@@ -19,11 +19,12 @@ class TerritoryAssignmentRepository:
     already made for work logs -- which is what lets the admin panel and the Excel
     export read a territory's past instead of only its present.
 
-    Reads that feed `AssignmentOut` pull the publisher in the same statement with
-    `joinedload`. There is no eager-loading precedent elsewhere in this layer, so
-    the choice is stated here: the relationship is many-to-one and always needed
-    (the DTO carries the publisher's name), and a join keeps it to one round trip
-    instead of one extra SELECT per row of the history.
+    The publisher is *not* joined in: there is no relationship to join any more,
+    because the foreign key to `users` is gone. Each row carries `user_id` and
+    `user_name` of its own, so a reader names the author without a second table --
+    which is the whole point, since that author may since have been deleted. The
+    one eager load left is `territory`, in `list_by_congregation`, where every row
+    is displayed as "publisher -- territory".
     """
 
     def __init__(self, session: Session) -> None:
@@ -33,6 +34,7 @@ class TerritoryAssignmentRepository:
         self,
         territory_id: UUID,
         user_id: UUID,
+        user_name: str,
         started_at: datetime,
     ) -> TerritoryAssignment:
         """Open an assignment for this publisher, and flush.
@@ -41,6 +43,10 @@ class TerritoryAssignmentRepository:
         the card, which is not necessarily today -- the clock is read by the router
         or the job, never here.
 
+        `user_name` is stored alongside `user_id` rather than looked up on read: the
+        line has to keep naming its holder after the publisher is deleted, and the
+        caller already holds the person, so the name is copied in here at write time.
+
         The flush is what surfaces a second open assignment for the same territory
         as an integrity error from `uq_territory_assignments_open`, inside the
         caller's transaction, rather than at commit time far from the cause.
@@ -48,6 +54,7 @@ class TerritoryAssignmentRepository:
         assignment = TerritoryAssignment(
             territory_id=territory_id,
             user_id=user_id,
+            user_name=user_name,
             started_at=started_at,
         )
         self.session.add(assignment)
@@ -62,13 +69,30 @@ class TerritoryAssignmentRepository:
         invariant, not optimism: more than one row here is a bug worth raising.
         """
         return self.session.scalars(
-            select(TerritoryAssignment)
-            .options(joinedload(TerritoryAssignment.user))
-            .where(
+            select(TerritoryAssignment).where(
                 TerritoryAssignment.territory_id == territory_id,
                 TerritoryAssignment.completed_at.is_(None),
             )
         ).one_or_none()
+
+    def has_open_for_user(self, user_id: UUID) -> bool:
+        """Whether this publisher is currently responsible for any territory.
+
+        Asked before deleting the person, and answered in SQL rather than by
+        loading their history: the caller needs a yes or a no, and the rows behind
+        it are of no use to anybody. `user_id` carries no foreign key any more, so
+        this is a plain column filter -- which is also why it is safe after a
+        deletion: an orphan id simply matches nothing.
+        """
+        return (
+            self.session.scalars(
+                select(TerritoryAssignment.id).where(
+                    TerritoryAssignment.user_id == user_id,
+                    TerritoryAssignment.completed_at.is_(None),
+                )
+            ).first()
+            is not None
+        )
 
     def list_by_territory(self, territory_id: UUID) -> list[TerritoryAssignment]:
         """The whole history of a territory, most recent assignment first.
@@ -80,7 +104,6 @@ class TerritoryAssignmentRepository:
         return list(
             self.session.scalars(
                 select(TerritoryAssignment)
-                .options(joinedload(TerritoryAssignment.user))
                 .where(TerritoryAssignment.territory_id == territory_id)
                 .order_by(TerritoryAssignment.started_at.desc())
             )
@@ -106,10 +129,7 @@ class TerritoryAssignmentRepository:
             self.session.scalars(
                 select(TerritoryAssignment)
                 .join(Territory, TerritoryAssignment.territory_id == Territory.id)
-                .options(
-                    joinedload(TerritoryAssignment.user),
-                    joinedload(TerritoryAssignment.territory),
-                )
+                .options(joinedload(TerritoryAssignment.territory))
                 .where(Territory.congregation_id == congregation_id)
                 .order_by(TerritoryAssignment.started_at.desc())
             )
@@ -132,7 +152,6 @@ class TerritoryAssignmentRepository:
         return self.session.scalars(
             select(TerritoryAssignment)
             .join(Territory, TerritoryAssignment.territory_id == Territory.id)
-            .options(joinedload(TerritoryAssignment.user))
             .where(
                 TerritoryAssignment.id == assignment_id,
                 Territory.congregation_id == congregation_id,

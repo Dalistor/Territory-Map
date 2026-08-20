@@ -444,3 +444,42 @@ def test_list_all_does_not_show_the_assignment_of_another_congregation(
     service.designate(theirs.id, their_territory.id, make_user(theirs.id).id)
 
     assert [a.id for a in service.list_all(ours.id)] == [mine.id]
+
+
+def test_designate_stores_the_publishers_name_on_the_assignment(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+    make_user,
+) -> None:
+    """The S-13 line names the person, so it stays readable after they are deleted."""
+    congregation = make_congregation()
+    territory = make_territory(congregation.id)
+    publisher = make_user(congregation.id, name="Bruno")
+
+    assignment = service.designate(congregation.id, territory.id, publisher.id)
+
+    assert (assignment.user_id, assignment.user_name) == (publisher.id, "Bruno")
+
+
+def test_renaming_the_publisher_afterwards_does_not_rewrite_the_assignments_already_opened(
+    service: AssignmentService,
+    session: Session,
+    make_congregation,
+    make_territory,
+    make_user,
+) -> None:
+    """The name on the line is a photograph, not a live view.
+
+    Accepted price of dropping the foreign key, and precisely what lets the card
+    survive the deletion of the person it names.
+    """
+    congregation = make_congregation()
+    territory = make_territory(congregation.id)
+    publisher = make_user(congregation.id, name="Bruno")
+    assignment = service.designate(congregation.id, territory.id, publisher.id)
+
+    publisher.name = "Bruno Alves"
+    session.flush()
+
+    assert assignment.user_name == "Bruno"

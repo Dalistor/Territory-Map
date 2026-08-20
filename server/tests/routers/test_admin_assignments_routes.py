@@ -72,6 +72,68 @@ async def test_designating_answers_201_with_the_open_stint(client, make_admin, m
     assert body["completed_at"] is None
 
 
+async def test_the_stint_names_the_publisher_with_the_same_nested_shape_as_before(
+    client, make_admin, make_publisher
+):
+    """The DTO is built from the row now, and the wire must not notice.
+
+    `user` stays the nested `{id, name}` object it always was -- the History page
+    groups by `user.id`, so dropping it while keeping the name would break the screen
+    just as thoroughly as dropping both.
+    """
+    congregation, token = make_admin()
+    territory_id = await draw_territory(client, token)
+    publisher = make_publisher(congregation.id, name="Irmã Maria")
+
+    response = await client.post(
+        f"/admin/territories/{territory_id}/assignments",
+        json={"user_id": str(publisher.id)},
+        headers=bearer(token),
+    )
+
+    assert response.json()["user"] == {"id": str(publisher.id), "name": "Irmã Maria"}
+
+
+async def test_the_general_listing_names_the_publisher_the_same_way(
+    client, make_admin, make_publisher
+):
+    """`GET /admin/assignments` reads the same rows, so it must shape them the same."""
+    congregation, token = make_admin()
+    territory_id = await draw_territory(client, token)
+    publisher = make_publisher(congregation.id, name="Irmã Maria")
+    await client.post(
+        f"/admin/territories/{territory_id}/assignments",
+        json={"user_id": str(publisher.id)},
+        headers=bearer(token),
+    )
+
+    response = await client.get("/admin/assignments", headers=bearer(token))
+
+    assert response.json()[0]["user"] == {"id": str(publisher.id), "name": "Irmã Maria"}
+
+
+async def test_the_card_keeps_the_name_the_publisher_had_when_designated(
+    client, make_admin, make_publisher, session
+):
+    """The name in the row is a photograph: renaming does not rewrite the card."""
+    congregation, token = make_admin()
+    territory_id = await draw_territory(client, token)
+    publisher = make_publisher(congregation.id, name="Irmã Maria")
+    await client.post(
+        f"/admin/territories/{territory_id}/assignments",
+        json={"user_id": str(publisher.id)},
+        headers=bearer(token),
+    )
+    publisher.name = "Irmã Maria Silva"
+    session.flush()
+
+    response = await client.get(
+        f"/admin/territories/{territory_id}/assignments", headers=bearer(token)
+    )
+
+    assert response.json()[0]["user"]["name"] == "Irmã Maria"
+
+
 async def test_the_history_lists_every_stint_most_recent_first(client, make_admin, make_publisher):
     congregation, token = make_admin()
     territory_id = await draw_territory(client, token)

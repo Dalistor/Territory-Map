@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal
+from app.repositories.territory_assignment import TerritoryAssignmentRepository
 from app.repositories.user import UserRepository
 from app.services.user import UserService
 
@@ -55,7 +56,11 @@ def run(
     """
     session = session_factory()
     try:
-        cleared = UserService(UserRepository(session), now_provider).expire_codes()
+        cleared = UserService(
+            UserRepository(session),
+            TerritoryAssignmentRepository(session),
+            now_provider,
+        ).expire_codes()
         session.commit()
     except Exception:
         session.rollback()

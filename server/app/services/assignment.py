@@ -12,6 +12,7 @@ from uuid import UUID
 from app.core.exceptions import NotFoundError
 from app.models.territory import Territory
 from app.models.territory_assignment import TerritoryAssignment
+from app.models.user import User
 from app.repositories.territory import TerritoryRepository
 from app.repositories.territory_assignment import TerritoryAssignmentRepository
 from app.repositories.user import UserRepository
@@ -66,13 +67,14 @@ class AssignmentService:
         """
         now = now if now is not None else self._now_provider()
         territory = self._territory_of_congregation(congregation_id, territory_id)
-        self._refuse_stranger_publisher(congregation_id, user_id)
+        publisher = self._publisher_of_congregation(congregation_id, user_id)
         open_assignment = self._assignments.get_open(territory.id)
         if open_assignment is not None:
             self._assignments.close(open_assignment, now)
         assignment = self._assignments.create(
             territory_id=territory.id,
-            user_id=user_id,
+            user_id=publisher.id,
+            user_name=publisher.name,
             started_at=now,
         )
         self._territories.set_assigned_user(territory, user_id)
@@ -143,8 +145,13 @@ class AssignmentService:
             raise NotFoundError
         return territory
 
-    def _refuse_stranger_publisher(self, congregation_id: UUID, user_id: UUID) -> None:
-        """Reject an id that does not name a publisher of this congregation.
+    def _publisher_of_congregation(self, congregation_id: UUID, user_id: UUID) -> User:
+        """Return the publisher, provided they belong to this congregation.
+
+        This was a pure check until the S-13 line started carrying `user_name`. It
+        now returns the person as well, because the name written into the row is
+        the one they have at this moment -- and the validation had already loaded
+        them, so naming the holder costs no extra query.
 
         Deliberately the same `NotFoundError` the territory check raises, so the
         caller cannot learn which of the two ids was the bad one -- and therefore
@@ -153,6 +160,7 @@ class AssignmentService:
         user = self._users.get(user_id)
         if user is None or user.congregation_id != congregation_id:
             raise NotFoundError
+        return user
 
     def _refresh_assigned_user(self, territory: Territory) -> None:
         """Rewrite the territory's read cache from the assignment that is open now.

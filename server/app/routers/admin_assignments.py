@@ -34,6 +34,7 @@ from app.repositories.territory_assignment import TerritoryAssignmentRepository
 from app.repositories.user import UserRepository
 from app.routers.admin_territories import AdminCongregation
 from app.routers.auth import utc_now
+from app.routers.history_dto import with_user
 from app.schemas.assignment import (
     AssignmentCreateIn,
     AssignmentOut,
@@ -81,7 +82,7 @@ def list_assignments(
     order the paper card is read in and the order the admin panel shows.
     """
     return [
-        AssignmentOut.model_validate(assignment)
+        AssignmentOut.model_validate(with_user(assignment))
         for assignment in assignments.list(congregation.id, territory_id)
     ]
 
@@ -100,7 +101,7 @@ def designate_assignment(
     changing dirigente stays the single click it is today.
     """
     assignment = assignments.designate(congregation.id, territory_id, payload.user_id)
-    return AssignmentOut.model_validate(assignment)
+    return AssignmentOut.model_validate(with_user(assignment))
 
 
 @router.post("/complete")
@@ -116,7 +117,7 @@ def complete_assignment(
     territory with nothing open is a 404: there is no stint to address.
     """
     assignment = assignments.complete(congregation.id, territory_id)
-    return AssignmentOut.model_validate(assignment)
+    return AssignmentOut.model_validate(with_user(assignment))
 
 
 @router.delete("/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -152,6 +153,6 @@ def list_all_assignments(
     read it from, and the delete route needs that id to address the record.
     """
     return [
-        AssignmentWithTerritoryOut.model_validate(assignment)
+        AssignmentWithTerritoryOut.model_validate(with_user(assignment))
         for assignment in assignments.list_all(congregation.id)
     ]

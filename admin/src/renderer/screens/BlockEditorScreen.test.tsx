@@ -109,7 +109,8 @@ function makeApi(overrides: Partial<IpcApi['blocks']> = {}): IpcApi {
       list: vi.fn(),
       create: vi.fn(),
       regenerateCode: vi.fn(),
-      setActive: vi.fn()
+      setActive: vi.fn(),
+      delete: vi.fn()
     },
     assignments: {
       listAll: vi.fn().mockResolvedValue([]),

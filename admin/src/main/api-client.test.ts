@@ -185,6 +185,36 @@ describe('createApiClient', () => {
       expect(JSON.parse(init.body as string)).toEqual({ is_active: false })
     })
 
+    it('deletePublisher DELETEs /admin/users/{id} and resolves with no value', async () => {
+      const { client, fetchImpl } = makeClient(emptyResponse())
+
+      await expect(client.deletePublisher('pub-1')).resolves.toBeUndefined()
+
+      const [url, init] = fetchImpl.mock.calls[0]
+      expect(url).toBe(`${BASE_URL}/admin/users/pub-1`)
+      expect(init.method).toBe('DELETE')
+    })
+
+    // The screen has to tell "still has an open assignment" from any other
+    // failure, and the code is the only thing that says which is which.
+    it('deletePublisher surfaces a 409 with the code and the status preserved', async () => {
+      const { client } = makeClient(
+        jsonResponse(409, {
+          code: 'publisher_has_open_assignment',
+          detail: 'Conclua a designação em vigor antes de apagar o publicador.'
+        })
+      )
+
+      const error = await client.deletePublisher('pub-1').catch((e) => e)
+
+      expect(error).toBeInstanceOf(ApiErrorException)
+      expect(error).toMatchObject({
+        statusCode: 409,
+        code: 'publisher_has_open_assignment',
+        detail: 'Conclua a designação em vigor antes de apagar o publicador.'
+      })
+    })
+
     it('parses a publisher whose access code has already been redeemed (no live code, activated)', async () => {
       const { client } = makeClient(
         jsonResponse(200, {
@@ -557,6 +587,32 @@ describe('createApiClient', () => {
       expect(fetchImpl).not.toHaveBeenCalled()
     })
 
+    it('parses status_override into statusOverride when the admin forced a status', async () => {
+      const { client } = makeClient(
+        jsonResponse(200, { ...BLOCK_JSON, status_override: 'overdue' })
+      )
+
+      const block = await client.updateBlock('block-1', { number: 7 })
+
+      expect(block.statusOverride).toBe('overdue')
+    })
+
+    it('parses a status_override of null as undefined, leaving the status automatic', async () => {
+      const { client } = makeClient(jsonResponse(200, { ...BLOCK_JSON, status_override: null }))
+
+      const block = await client.updateBlock('block-1', { number: 7 })
+
+      expect(block.statusOverride).toBeUndefined()
+    })
+
+    it('parses a block with no status_override at all as undefined', async () => {
+      const { client } = makeClient(jsonResponse(200, BLOCK_JSON))
+
+      const block = await client.updateBlock('block-1', { number: 7 })
+
+      expect(block.statusOverride).toBeUndefined()
+    })
+
     it('updateBlock PATCHes /admin/blocks/{id} sending only the number when polygon is omitted', async () => {
       const { client, fetchImpl } = makeClient(jsonResponse(200, BLOCK_JSON))
 
@@ -575,6 +631,33 @@ describe('createApiClient', () => {
 
       const [, init] = fetchImpl.mock.calls[0]
       expect(JSON.parse(init.body as string)).toEqual({ polygon: VALID_RING })
+    })
+
+    it('updateBlock sends status_override: null when statusOverride is explicitly null', async () => {
+      const { client, fetchImpl } = makeClient(jsonResponse(200, BLOCK_JSON))
+
+      await client.updateBlock('block-1', { statusOverride: null })
+
+      const [, init] = fetchImpl.mock.calls[0]
+      expect(JSON.parse(init.body as string)).toEqual({ status_override: null })
+    })
+
+    it('updateBlock sends the forced status as status_override', async () => {
+      const { client, fetchImpl } = makeClient(jsonResponse(200, BLOCK_JSON))
+
+      await client.updateBlock('block-1', { statusOverride: 'never' })
+
+      const [, init] = fetchImpl.mock.calls[0]
+      expect(JSON.parse(init.body as string)).toEqual({ status_override: 'never' })
+    })
+
+    it('updateBlock omits status_override entirely when statusOverride is not in the input', async () => {
+      const { client, fetchImpl } = makeClient(jsonResponse(200, BLOCK_JSON))
+
+      await client.updateBlock('block-1', { number: 7 })
+
+      const [, init] = fetchImpl.mock.calls[0]
+      expect(JSON.parse(init.body as string)).not.toHaveProperty('status_override')
     })
 
     it('updateBlock validates the polygon before sending any request when polygon is passed', async () => {

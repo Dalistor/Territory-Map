@@ -52,6 +52,7 @@ function makeApi(overrides: Partial<IpcApi> = {}): IpcApi {
       create: vi.fn(),
       regenerateCode: vi.fn(),
       setActive: vi.fn(),
+      delete: vi.fn(),
       ...overrides.publishers
     },
     assignments: {

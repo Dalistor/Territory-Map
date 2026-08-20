@@ -161,6 +161,9 @@ export function registerIpcHandlers({
   handle(IPC_CHANNELS.publishersRegenerateCode, (publisherId: string) =>
     session.run(() => api.regenerateAccessCode(publisherId))
   )
+  handle(IPC_CHANNELS.publishersDelete, (publisherId: string) =>
+    session.run(() => api.deletePublisher(publisherId))
+  )
   handle(IPC_CHANNELS.publishersSetActive, (publisherId: string, isActive: boolean) =>
     session.run(() => api.setPublisherActive(publisherId, isActive))
   )

@@ -44,9 +44,16 @@ class FakeBlockWorkLogRepository:
         log_id: UUID,
         block_id: UUID,
         user_id: UUID,
+        user_name: str,
         worked_at: datetime,
     ) -> BlockWorkLog:
-        log = BlockWorkLog(id=log_id, block_id=block_id, user_id=user_id, worked_at=worked_at)
+        log = BlockWorkLog(
+            id=log_id,
+            block_id=block_id,
+            user_id=user_id,
+            user_name=user_name,
+            worked_at=worked_at,
+        )
         self.logs[log_id] = log
         return log
 
@@ -83,6 +90,9 @@ class FakeBlockRepository:
 
     def set_last_worked_at(self, block: Block, worked_at: datetime | None) -> None:
         block.last_worked_at = worked_at
+
+    def set_status_override(self, block: Block, status: str | None) -> None:
+        block.status_override = status
 
 
 class FakeUserRepository:
@@ -812,3 +822,147 @@ def test_the_admin_marking_without_a_moment_of_its_own_reads_the_injected_clock(
             user.id,
             NOW + timedelta(hours=1),
         )
+
+
+def test_marking_a_block_clears_the_status_the_admin_had_forced_on_it(
+    service: WorkLogService,
+    user: User,
+    block: Block,
+) -> None:
+    """A visit just recorded is the strongest evidence there is about the block.
+
+    Leaving it painted "never worked" after someone reported working it would be the
+    interface contradicting the history right under it.
+    """
+    block.status_override = "never"
+
+    service.mark_worked(uuid4(), block.id, user, NOW - timedelta(hours=1), NOW)
+
+    assert block.status_override is None
+
+
+def test_the_admin_marking_a_block_clears_the_status_they_had_forced_on_it(
+    service: WorkLogService,
+    congregation_id: UUID,
+    user: User,
+    blocks: FakeBlockRepository,
+) -> None:
+    block = draw_block(blocks, congregation_id)
+    block.status_override = "overdue"
+
+    service.mark_worked_by_admin(
+        congregation_id,
+        block.id,
+        user.id,
+        NOW - timedelta(days=200),
+        NOW,
+    )
+
+    assert block.status_override is None
+
+
+def test_resending_an_already_recorded_marking_leaves_the_forced_status_alone(
+    service: WorkLogService,
+    user: User,
+    block: Block,
+) -> None:
+    """A resend records nothing, so it has no new evidence to overrule the admin."""
+    log_id = uuid4()
+    service.mark_worked(log_id, block.id, user, NOW - timedelta(hours=1), NOW)
+    block.status_override = "never"
+
+    service.mark_worked(log_id, block.id, user, NOW - timedelta(hours=1), NOW)
+
+    assert block.status_override == "never"
+
+
+def test_deleting_a_visit_leaves_the_forced_status_alone(
+    service: WorkLogService,
+    congregation_id: UUID,
+    user: User,
+    block: Block,
+) -> None:
+    """Deleting is the admin correcting the history; guessing their intention about
+    the colour would be worse than leaving it as they set it."""
+    log, _ = service.mark_worked(uuid4(), block.id, user, NOW - timedelta(hours=1), NOW)
+    block.status_override = "overdue"
+
+    service.delete(congregation_id, log.id)
+
+    assert block.status_override == "overdue"
+
+
+def test_marking_a_block_stores_the_publishers_name_on_the_row(
+    service: WorkLogService,
+    user: User,
+    block: Block,
+) -> None:
+    """The row names the person, so it stays readable after they are deleted."""
+    log, _ = service.mark_worked(uuid4(), block.id, user, NOW - timedelta(hours=3), NOW)
+
+    assert log.user_name == user.name
+
+
+def test_the_admin_marking_a_block_stores_the_name_of_the_publisher_they_chose(
+    service: WorkLogService,
+    congregation_id: UUID,
+    blocks: FakeBlockRepository,
+    users: FakeUserRepository,
+) -> None:
+    """The name on the row is the person the admin picked, not whoever holds the
+    territory: the admin is entering work that already happened, often for a cycle
+    that was closed long ago.
+    """
+    designated = make_user(congregation_id, name="Ana")
+    users.users[designated.id] = designated
+    worker = make_user(congregation_id, name="Bruno")
+    users.users[worker.id] = worker
+    block = draw_block(blocks, congregation_id, assigned_user_id=designated.id)
+
+    log = service.mark_worked_by_admin(
+        congregation_id, block.id, worker.id, NOW - timedelta(days=200), NOW
+    )
+
+    assert (log.user_id, log.user_name) == (worker.id, "Bruno")
+
+
+def test_renaming_the_publisher_afterwards_does_not_rewrite_the_rows_already_stored(
+    service: WorkLogService,
+    user: User,
+    block: Block,
+) -> None:
+    """The name on the row is a photograph, not a live view.
+
+    This is the accepted price of dropping the foreign key: the history keeps the
+    name the person had that day, which is precisely what lets it survive their
+    deletion.
+    """
+    log, _ = service.mark_worked(uuid4(), block.id, user, NOW - timedelta(hours=3), NOW)
+
+    user.name = "Ana Maria"
+
+    assert log.user_name == "Ana"
+
+
+def test_resending_a_known_log_id_neither_duplicates_the_row_nor_rewrites_its_name(
+    service: WorkLogService,
+    work_logs: FakeBlockWorkLogRepository,
+    user: User,
+    block: Block,
+) -> None:
+    """A resend is confirmed, never judged again -- and never rewritten either.
+
+    The phone retries a queued marking until the server confirms it. If the admin
+    renamed the publisher in between, the stored row must keep naming them as it
+    did when the visit was accepted.
+    """
+    log_id = uuid4()
+    first, _ = service.mark_worked(log_id, block.id, user, NOW - timedelta(hours=3), NOW)
+    user.name = "Ana Maria"
+
+    again, created = service.mark_worked(log_id, block.id, user, NOW - timedelta(hours=3), NOW)
+
+    assert created is False
+    assert again is first
+    assert again.user_name == "Ana"
+    assert len(work_logs.logs) == 1

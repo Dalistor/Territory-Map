@@ -2,7 +2,7 @@
 // read-only summary and the delete action. `window.api` is never the real
 // IPC bridge here -- a fake stubbed with `vi.stubGlobal` stands in, per the
 // convention every other renderer test already follows.
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
@@ -52,8 +52,33 @@ function makeApi(overrides: Partial<IpcApi['territories']> = {}): IpcApi {
       update: vi.fn().mockResolvedValue(makeTerritory()),
       delete: vi.fn().mockResolvedValue(undefined),
       ...overrides
+    },
+    // The block table expands `BlockWorkPanel` inside this page, and the panel
+    // talks to these three namespaces on mount. Stubbed here so a test about
+    // the table never fails for a reason belonging to the panel.
+    workLogs: {
+      listFor: vi.fn().mockResolvedValue([]),
+      delete: vi.fn().mockResolvedValue(undefined),
+      markWorked: vi.fn()
+    },
+    blocks: {
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn()
+    },
+    publishers: {
+      list: vi.fn().mockResolvedValue([]),
+      create: vi.fn(),
+      regenerateCode: vi.fn(),
+      setActive: vi.fn(),
+      delete: vi.fn()
     }
   } as unknown as IpcApi
+}
+
+/** The block rows of the table, in the order they are rendered. */
+function blockRows(): HTMLElement[] {
+  return within(screen.getByRole('table')).getAllByRole('row').slice(1)
 }
 
 beforeEach(() => {
@@ -319,5 +344,231 @@ describe('TerritorySettingsScreen deleting', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('O território não existe mais.')
     expect(onDeleted).not.toHaveBeenCalled()
+  })
+})
+
+describe('TerritorySettingsScreen block table', () => {
+  it('lists the territory blocks ordered by number', () => {
+    render(
+      <TerritorySettingsScreen
+        territory={makeTerritory({
+          blocks: [
+            makeBlock({ id: 'b3', number: 3 }),
+            makeBlock({ id: 'b1', number: 1 }),
+            makeBlock({ id: 'b2', number: 2 })
+          ]
+        })}
+        now={NOW}
+      />
+    )
+
+    expect(blockRows().map((row) => within(row).getAllByRole('cell')[0]?.textContent)).toEqual([
+      '1',
+      '2',
+      '3'
+    ])
+  })
+})
+
+describe('TerritorySettingsScreen block status column', () => {
+  const blocks = [
+    makeBlock({ id: 'b1', number: 1, lastWorkedAt: daysAgo(10) }),
+    makeBlock({ id: 'b2', number: 2, lastWorkedAt: daysAgo(45) }),
+    makeBlock({ id: 'b3', number: 3 })
+  ]
+
+  it('spells out the status of each block against the territory rotation', () => {
+    render(
+      <TerritorySettingsScreen territory={makeTerritory({ blocks, rotationDays: 30 })} now={NOW} />
+    )
+
+    // Words, not only a colour: the admin has to be able to read the status
+    // out loud, and 45 days is past a 30-day rotation while 10 is not.
+    expect(blockRows().map((row) => within(row).getAllByRole('cell')[1]?.textContent)).toEqual([
+      'Recente',
+      'Vencida',
+      'Nunca trabalhada'
+    ])
+  })
+
+  it('spells out the status against the default rotation when the territory has none', () => {
+    render(
+      <TerritorySettingsScreen
+        territory={makeTerritory({
+          blocks: [...blocks, makeBlock({ id: 'b4', number: 4, lastWorkedAt: daysAgo(200) })]
+        })}
+        now={NOW}
+      />
+    )
+
+    // 10 and 45 days are both inside the default 120-day rotation; only the
+    // 200-day-old one is past it.
+    expect(blockRows().map((row) => within(row).getAllByRole('cell')[1]?.textContent)).toEqual([
+      'Recente',
+      'Recente',
+      'Nunca trabalhada',
+      'Vencida'
+    ])
+  })
+
+  it('marks a forced status as forced, so the date beside it does not read as a bug', () => {
+    render(
+      <TerritorySettingsScreen
+        territory={makeTerritory({
+          blocks: [
+            makeBlock({ id: 'b1', number: 1, lastWorkedAt: daysAgo(1), statusOverride: 'overdue' })
+          ],
+          rotationDays: 30
+        })}
+        now={NOW}
+      />
+    )
+
+    // Worked yesterday, yet shown as overdue: without the word "forçado" the
+    // admin has no way to tell this from a broken calculation.
+    const statusCell = within(blockRows()[0]!).getAllByRole('cell')[1]!
+    expect(statusCell).toHaveTextContent(/vencida/i)
+    expect(statusCell).toHaveTextContent(/forçado/i)
+  })
+})
+
+describe('TerritorySettingsScreen block last visit column', () => {
+  it('shows the date of the last visit, and says so when there was none', () => {
+    render(
+      <TerritorySettingsScreen
+        territory={makeTerritory({
+          blocks: [
+            makeBlock({ id: 'b1', number: 1, lastWorkedAt: new Date('2026-08-10T09:00:00') }),
+            makeBlock({ id: 'b2', number: 2 })
+          ]
+        })}
+        now={NOW}
+      />
+    )
+
+    expect(blockRows().map((row) => within(row).getAllByRole('cell')[2]?.textContent)).toEqual([
+      '10/08/2026',
+      'Nunca trabalhada'
+    ])
+  })
+})
+
+describe('TerritorySettingsScreen block table when empty', () => {
+  it('says the territory has no blocks instead of showing an empty table', () => {
+    render(<TerritorySettingsScreen territory={makeTerritory({ blocks: [] })} now={NOW} />)
+
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    expect(screen.getByText(/nenhuma quadra/i)).toBeInTheDocument()
+  })
+})
+
+describe('TerritorySettingsScreen expanding a block', () => {
+  const blocks = [
+    makeBlock({ id: 'b1', number: 1 }),
+    makeBlock({ id: 'b2', number: 2 }),
+    makeBlock({ id: 'b3', number: 3 })
+  ]
+
+  function toggle(number: number): HTMLElement {
+    return screen.getByRole('button', { name: new RegExp(`quadra ${number}$`, 'i') })
+  }
+
+  it('opens the work panel of the clicked block and closes it on a second click', async () => {
+    const user = userEvent.setup()
+    render(<TerritorySettingsScreen territory={makeTerritory({ blocks })} now={NOW} />)
+
+    await user.click(toggle(2))
+
+    expect(await screen.findByRole('region', { name: /quadra 2/i })).toBeInTheDocument()
+
+    await user.click(toggle(2))
+
+    expect(screen.queryByRole('region', { name: /quadra 2/i })).not.toBeInTheDocument()
+  })
+
+  it('moves the panel to the other block instead of stacking two of them', async () => {
+    const user = userEvent.setup()
+    render(<TerritorySettingsScreen territory={makeTerritory({ blocks })} now={NOW} />)
+
+    await user.click(toggle(1))
+    await screen.findByRole('region', { name: /quadra 1/i })
+    await user.click(toggle(3))
+
+    expect(await screen.findByRole('region', { name: /quadra 3/i })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: /quadra 1/i })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('region')).toHaveLength(1)
+  })
+})
+
+describe('TerritorySettingsScreen reacting to the work panel', () => {
+  it('refreshes the row and the summary after a marking made in the panel', async () => {
+    const stale = makeTerritory({
+      blocks: [makeBlock({ id: 'b1', number: 1 })],
+      rotationDays: 30
+    })
+    const fresh = makeTerritory({
+      blocks: [makeBlock({ id: 'b1', number: 1, lastWorkedAt: new Date('2026-08-18T09:00:00') })],
+      rotationDays: 30
+    })
+    const api = makeApi({ listWithBlocks: vi.fn().mockResolvedValue([fresh]) })
+    const publisher = { id: 'pub-1', name: 'Maria Souza', isActive: true }
+    ;(api.publishers.list as ReturnType<typeof vi.fn>).mockResolvedValue([publisher])
+    vi.stubGlobal('api', api)
+    const user = userEvent.setup()
+
+    render(<TerritorySettingsScreen territory={stale} now={NOW} />)
+
+    expect(screen.getByTestId('summary-last-visit')).toHaveTextContent('Nunca trabalhada')
+
+    await user.click(screen.getByRole('button', { name: /quadra 1$/i }))
+    await user.click(await screen.findByRole('button', { name: 'Adicionar registro' }))
+    await user.selectOptions(await screen.findByLabelText('Publicador'), 'pub-1')
+    await user.click(screen.getByRole('button', { name: 'Marcar' }))
+
+    // The whole point of the task: the row the admin just changed has to stop
+    // saying the block was never worked, without leaving the page.
+    await waitFor(() =>
+      expect(within(blockRows()[0]!).getAllByRole('cell')[2]).toHaveTextContent('18/08/2026')
+    )
+    expect(within(blockRows()[0]!).getAllByRole('cell')[1]).toHaveTextContent('Recente')
+    expect(screen.getByTestId('summary-never-count')).toHaveTextContent('0')
+    expect(screen.getByTestId('summary-last-visit')).toHaveTextContent('18/08/2026')
+  })
+})
+
+describe('TerritorySettingsScreen refreshing after a panel change', () => {
+  const territory = makeTerritory({ blocks: [makeBlock({ id: 'b1', number: 1 })] })
+
+  async function forceStatusFromPanel(): Promise<void> {
+    const user = userEvent.setup()
+    render(<TerritorySettingsScreen territory={territory} now={NOW} />)
+    await user.click(screen.getByRole('button', { name: /quadra 1$/i }))
+    await user.selectOptions(await screen.findByLabelText(/status da quadra/i), 'overdue')
+  }
+
+  it('shows a failed refresh instead of leaving the table silently stale', async () => {
+    const api = makeApi({
+      listWithBlocks: vi.fn().mockRejectedValue(new Error('A conexão caiu.'))
+    })
+    vi.stubGlobal('api', api)
+
+    await forceStatusFromPanel()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('A conexão caiu.')
+  })
+
+  it('keeps what is on screen when the territory is no longer in the listing', async () => {
+    // Someone deleted the territory elsewhere. Blanking the table would be a
+    // worse answer than showing the last state this page knows.
+    const api = makeApi({ listWithBlocks: vi.fn().mockResolvedValue([]) })
+    vi.stubGlobal('api', api)
+
+    await forceStatusFromPanel()
+
+    await waitFor(() => expect(api.territories.listWithBlocks).toHaveBeenCalled())
+    // The expanded panel is a row of its own, so this counts the block by its
+    // toggle rather than by row count.
+    expect(screen.getByRole('button', { name: /quadra 1$/i })).toBeInTheDocument()
+    expect(screen.getByTestId('summary-block-count')).toHaveTextContent('1')
   })
 })

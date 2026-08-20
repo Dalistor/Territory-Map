@@ -29,8 +29,10 @@ from app.repositories.block_work_log import BlockWorkLogRepository
 from app.repositories.user import UserRepository
 from app.routers.admin_territories import AdminCongregation, Blocks, block_out, to_points
 from app.routers.auth import utc_now
+from app.routers.history_dto import with_user
 from app.schemas.block import BlockCreateIn, BlockOut, BlockPatchIn
 from app.schemas.work_log import AdminWorkedIn, WorkLogOut
+from app.services.block import UNSET
 from app.services.work_log import WorkLogService
 
 router = APIRouter(tags=["admin: blocks"])
@@ -80,12 +82,23 @@ def patch_block(
     congregation: AdminCongregation,
     blocks: Blocks,
 ) -> BlockOut:
-    """Renumber a block, reshape it, or both. A field left out is untouched."""
+    """Renumber a block, reshape it, pin its status, or any combination.
+
+    A field left out is untouched -- and for `status_override` that has to be read
+    off `model_fields_set` rather than off the value, because null is a value the
+    field actually takes: it is how the admin hands the block back to the colour its
+    dates give it. Judging it by the value would make `{"number": 7}` quietly wipe
+    the status the admin pinned on the block being renumbered, which is why the
+    service is handed `UNSET` instead of `None` when the key never arrived.
+    """
     block = blocks.update(
         congregation.id,
         block_id,
         number=payload.number,
         points=to_points(payload.polygon) if payload.polygon is not None else None,
+        status_override=payload.status_override
+        if "status_override" in payload.model_fields_set
+        else UNSET,
     )
     return block_out(blocks, block)
 
@@ -131,7 +144,7 @@ def mark_block_worked(
         payload.user_id,
         payload.worked_at,
     )
-    return WorkLogOut.model_validate(log)
+    return WorkLogOut.model_validate(with_user(log))
 
 
 @router.get("/admin/blocks/{block_id}/work-logs")
@@ -146,7 +159,8 @@ def list_work_logs(
     code: the admin always knows who covered what.
     """
     return [
-        WorkLogOut.model_validate(log) for log in work_logs.list_by_block(congregation.id, block_id)
+        WorkLogOut.model_validate(with_user(log))
+        for log in work_logs.list_by_block(congregation.id, block_id)
     ]
 
 

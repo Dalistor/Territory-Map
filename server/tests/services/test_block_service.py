@@ -458,3 +458,102 @@ def test_delete_of_a_block_of_another_congregation_is_not_found(
         service.delete(ours.id, stranger.id)
 
     assert [block.id for block in service.list(theirs.id, stranger_territory.id)] == [stranger.id]
+
+
+def test_update_forcing_a_status_records_it_on_the_block(
+    service: BlockService,
+    make_congregation,
+    make_territory,
+) -> None:
+    """The admin painting a block by hand: "consider this one never worked"."""
+    congregation = make_congregation()
+    territory = make_territory(congregation.id)
+    block = service.create(congregation.id, territory.id, square(0.1, 0.1, 0.1))
+
+    updated = service.update(congregation.id, block.id, status_override="never")
+
+    assert updated.status_override == "never"
+
+
+def test_update_with_a_null_status_puts_the_block_back_on_the_automatic_colour(
+    service: BlockService,
+    make_congregation,
+    make_territory,
+) -> None:
+    """Explicit `None` is the real value here, not "leave as it is"."""
+    congregation = make_congregation()
+    territory = make_territory(congregation.id)
+    block = service.create(congregation.id, territory.id, square(0.1, 0.1, 0.1))
+    service.update(congregation.id, block.id, status_override="overdue")
+
+    updated = service.update(congregation.id, block.id, status_override=None)
+
+    assert updated.status_override is None
+
+
+def test_update_without_a_status_leaves_a_forced_one_untouched(
+    service: BlockService,
+    make_congregation,
+    make_territory,
+) -> None:
+    """Renaming or redrawing through a partial PATCH must not repaint the block."""
+    congregation = make_congregation()
+    territory = make_territory(congregation.id)
+    block = service.create(congregation.id, territory.id, square(0.1, 0.1, 0.1))
+    service.update(congregation.id, block.id, status_override="overdue")
+
+    updated = service.update(congregation.id, block.id, number=42)
+
+    assert updated.status_override == "overdue"
+
+
+def test_update_without_a_status_leaves_an_automatic_block_automatic(
+    service: BlockService,
+    make_congregation,
+    make_territory,
+) -> None:
+    congregation = make_congregation()
+    territory = make_territory(congregation.id)
+    block = service.create(congregation.id, territory.id, square(0.1, 0.1, 0.1))
+
+    updated = service.update(congregation.id, block.id, number=7)
+
+    assert updated.status_override is None
+
+
+def test_update_forces_the_status_while_renumbering_and_redrawing_in_one_call(
+    service: BlockService,
+    make_congregation,
+    make_territory,
+) -> None:
+    congregation = make_congregation()
+    territory = make_territory(congregation.id)
+    block = service.create(congregation.id, territory.id, square(0.1, 0.1, 0.2))
+    redrawn = square(0.15, 0.15, 0.2)
+
+    updated = service.update(
+        congregation.id,
+        block.id,
+        number=9,
+        points=redrawn,
+        status_override="overdue",
+    )
+
+    assert (updated.number, updated.status_override) == (9, "overdue")
+    assert service.polygon_points(updated) == redrawn
+
+
+def test_update_forcing_the_status_of_a_block_of_another_congregation_is_not_found(
+    service: BlockService,
+    make_congregation,
+    make_territory,
+) -> None:
+    ours = make_congregation(name="Central")
+    theirs = make_congregation(name="Jardim", city="Campinas")
+    stranger_territory = make_territory(theirs.id)
+    stranger = service.create(theirs.id, stranger_territory.id, square(0.1, 0.1, 0.1))
+
+    with pytest.raises(NotFoundError):
+        service.update(ours.id, stranger.id, status_override="never")
+
+    assert service.list(theirs.id, stranger_territory.id)[0].status_override is None

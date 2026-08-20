@@ -86,3 +86,54 @@ describe('blockColorCategory with a configured rotation', () => {
     expect(blockColorCategory(block, now, undefined)).toBe(blockColorCategory(block, now))
   })
 })
+
+describe('blockColorCategory with a status the admin forced', () => {
+  const now = new Date('2026-08-08T12:00:00.000Z')
+  const yesterday = new Date(now.getTime() - DAY_MS)
+
+  it('is "overdue" for a block worked yesterday when the admin forced "overdue"', () => {
+    const block = makeBlock({ lastWorkedAt: yesterday, statusOverride: 'overdue' })
+
+    expect(blockColorCategory(block, now)).toBe('overdue')
+  })
+
+  it('is "never" for a block worked yesterday when the admin forced "never"', () => {
+    const block = makeBlock({ lastWorkedAt: yesterday, statusOverride: 'never' })
+
+    expect(blockColorCategory(block, now)).toBe('never')
+  })
+
+  it('is "overdue" for a never-worked block the admin marked as due to be worked', () => {
+    const block = makeBlock({ lastWorkedAt: undefined, statusOverride: 'overdue' })
+
+    expect(blockColorCategory(block, now)).toBe('overdue')
+  })
+
+  it('beats any rotation the territory configured', () => {
+    const block = makeBlock({ lastWorkedAt: yesterday, statusOverride: 'overdue' })
+
+    expect(blockColorCategory(block, now, 1)).toBe('overdue')
+    expect(blockColorCategory(block, now, 3650)).toBe('overdue')
+  })
+
+  it('keeps "never" over a rotation short enough to call the block overdue', () => {
+    const block = makeBlock({
+      lastWorkedAt: new Date(now.getTime() - 45 * DAY_MS),
+      statusOverride: 'never'
+    })
+
+    expect(blockColorCategory(block, now, 30)).toBe('never')
+  })
+
+  it('treats an explicit undefined override the same as an absent one', () => {
+    const worked = makeBlock({ lastWorkedAt: yesterday })
+    const neverWorked = makeBlock({ lastWorkedAt: undefined })
+
+    expect(blockColorCategory({ ...worked, statusOverride: undefined }, now)).toBe(
+      blockColorCategory(worked, now)
+    )
+    expect(blockColorCategory({ ...neverWorked, statusOverride: undefined }, now, 30)).toBe(
+      blockColorCategory(neverWorked, now, 30)
+    )
+  })
+})

@@ -86,9 +86,11 @@ class WorkLogService:
             log_id=log_id,
             block_id=block_id,
             user_id=user.id,
+            user_name=user.name,
             worked_at=worked_at,
         )
         self._refresh_last_worked_at(block)
+        self._clear_status_override(block)
         return log, True
 
     def mark_worked_by_admin(
@@ -129,9 +131,11 @@ class WorkLogService:
             log_id=uuid4(),
             block_id=block.id,
             user_id=publisher.id,
+            user_name=publisher.name,
             worked_at=worked_at,
         )
         self._refresh_last_worked_at(block)
+        self._clear_status_override(block)
         return log
 
     def list_by_block(self, congregation_id: UUID, block_id: UUID) -> list[BlockWorkLog]:
@@ -234,6 +238,24 @@ class WorkLogService:
         self._refuse_future_moment(worked_at, now)
         if worked_at < now - MAX_WORKED_AT_AGE:
             raise InvalidWorkedAtError
+
+    def _clear_status_override(self, block: Block) -> None:
+        """Drop the status the admin had forced, because work was just recorded.
+
+        A visit that has just been written is the strongest evidence the system has
+        about a block, stronger than a colour someone chose beforehand: keeping it
+        painted "never worked" right above a history that says otherwise would be the
+        interface contradicting itself. So both ways in -- the publisher's phone and
+        the admin's own entry -- undo the override as they record.
+
+        It sits next to `_refresh_last_worked_at` and is called in the same two
+        places, deliberately *not* inside it: `delete` recomputes the projection too,
+        and removing an entry must leave the override exactly as the admin set it.
+        Deleting is the admin correcting the history, and guessing what that means for
+        the colour would be worse than changing nothing. A resend never reaches here
+        either -- it returns before anything is written, so it brings no new evidence.
+        """
+        self._blocks.set_status_override(block, None)
 
     def _refresh_last_worked_at(self, block: Block) -> None:
         """Rewrite the block's read cache from the logs that currently exist.

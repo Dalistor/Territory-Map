@@ -161,6 +161,86 @@ async def test_a_territory_arrives_with_its_boundary_and_its_numbered_blocks(
     assert block["last_worked_at"] is None
 
 
+async def test_the_map_carries_the_status_the_admin_pinned_on_a_block(
+    client, make_admin, make_publisher, draw, session
+):
+    """The phone colours its cached map with no server to ask, so the pin must travel."""
+    congregation, _ = make_admin()
+    _, token = make_publisher(congregation)
+    _, block = draw(
+        congregation,
+        "Centro",
+        square(-18.90, -48.30),
+        block_ring=square(-18.898, -48.298, side=0.002),
+    )
+    block.status_override = "overdue"
+    session.flush()
+
+    response = await client.get("/app/territories", headers=bearer(token))
+
+    assert response.json()[0]["blocks"][0]["status_override"] == "overdue"
+
+
+async def test_a_block_nobody_pinned_reports_no_forced_status(
+    client, make_admin, make_publisher, draw
+):
+    """Null is the ordinary block: colour it from the dates, as the phone always did."""
+    congregation, _ = make_admin()
+    _, token = make_publisher(congregation)
+    draw(
+        congregation,
+        "Centro",
+        square(-18.90, -48.30),
+        block_ring=square(-18.898, -48.298, side=0.002),
+    )
+
+    response = await client.get("/app/territories", headers=bearer(token))
+
+    assert response.json()[0]["blocks"][0]["status_override"] is None
+
+
+async def test_marking_from_the_phone_undoes_the_forced_status(
+    client, make_admin, make_publisher, draw, assign_territory, session
+):
+    """Work just reported outranks anything the admin pinned before it happened."""
+    congregation, _ = make_admin()
+    user, token = make_publisher(congregation)
+    territory, block = draw(
+        congregation,
+        "Centro",
+        square(-18.90, -48.30),
+        block_ring=square(-18.898, -48.298, side=0.002),
+    )
+    assign_territory(territory, user)
+    block.status_override = "never"
+    session.flush()
+
+    assert (await mark(client, token, block.id, uuid4(), recent_moment())).status_code == 201
+
+    read = await client.get("/app/territories", headers=bearer(token))
+    assert read.json()[0]["blocks"][0]["status_override"] is None
+
+
+async def test_pinning_a_status_with_an_app_token_is_401(client, make_admin, make_publisher, draw):
+    """The named case of the sweep below: the phone never repaints the admin's map."""
+    congregation, _ = make_admin()
+    _, app_token = make_publisher(congregation)
+    _, block = draw(
+        congregation,
+        "Centro",
+        square(-18.90, -48.30),
+        block_ring=square(-18.898, -48.298, side=0.002),
+    )
+
+    response = await client.patch(
+        f"/admin/blocks/{block.id}",
+        json={"status_override": "overdue"},
+        headers=bearer(app_token),
+    )
+
+    assert response.status_code == 401
+
+
 async def test_marking_a_block_creates_the_log_and_the_next_read_shows_it(
     client, make_admin, make_publisher, draw, assign_territory
 ):
@@ -183,6 +263,25 @@ async def test_marking_a_block_creates_the_log_and_the_next_read_shows_it(
     read = await client.get("/app/territories", headers=bearer(token))
     reported = read.json()[0]["blocks"][0]["last_worked_at"]
     assert datetime.fromisoformat(reported) == worked_at
+
+
+async def test_the_marking_answers_with_the_publisher_nested_as_id_and_name(
+    client, make_admin, make_publisher, draw, assign_territory
+):
+    """The log row names its author now; the reply must keep the shape it always had."""
+    congregation, _ = make_admin()
+    user, token = make_publisher(congregation, name="Irmã Maria")
+    territory, block = draw(
+        congregation,
+        "Centro",
+        square(-18.90, -48.30),
+        block_ring=square(-18.898, -48.298, side=0.002),
+    )
+    assign_territory(territory, user)
+
+    response = await mark(client, token, block.id, uuid4(), recent_moment())
+
+    assert response.json()["user"] == {"id": str(user.id), "name": "Irmã Maria"}
 
 
 async def test_resending_the_same_log_id_answers_200_and_stores_nothing_new(

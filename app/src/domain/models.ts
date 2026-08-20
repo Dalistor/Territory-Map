@@ -32,12 +32,27 @@ export interface PublisherBrief {
 }
 
 /** A block, the numbered outline that is the real unit of field work (`BlockOut`). */
+/**
+ * The two statuses the admin can pin a block to, overriding what its work
+ * records say. There is deliberately no third value for "recent": forcing a
+ * block to look freshly worked is the one thing nobody asked for, and clearing
+ * the override (back to `undefined`) is the way back to the derived status.
+ * Same set as `admin/src/shared/models.ts`'s `BlockStatusOverride`.
+ */
+export type BlockStatusOverride = 'overdue' | 'never'
+
 export interface Block {
   readonly id: string
   readonly number: number
   readonly polygon: LatLng[]
   /** `undefined` means never covered — the state the map has to highlight. */
   readonly lastWorkedAt?: Date
+  /**
+   * The status the admin forced on this block, which both clients honour above
+   * the date calculation. `undefined` (absent) means "derive it from the work
+   * records" — the behaviour of every block before the override existed.
+   */
+  readonly statusOverride?: BlockStatusOverride
 }
 
 /**

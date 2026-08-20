@@ -90,12 +90,19 @@ def block_out(blocks: BlockService, block: Block) -> BlockOut:
     The polygon is asked of the service rather than taken off the model, so the
     stored geometry (WKB, or the `WKTElement` still attached right after a write) is
     decoded in exactly one place.
+
+    `status_override` rides along for the same reason `last_worked_at` does: it is
+    what the map paints with, and this is the one place the admin's block DTO is
+    assembled -- `app/routers/admin_blocks.py` imports this function rather than
+    building its own -- so creating, editing and reading a block all report the
+    pinned status without a second copy of the mapping to keep in step.
     """
     return BlockOut(
         id=block.id,
         number=block.number,
         polygon=to_ring_out(blocks.polygon_points(block)),
         last_worked_at=block.last_worked_at,
+        status_override=block.status_override,
     )
 
 

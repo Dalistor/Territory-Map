@@ -13,6 +13,8 @@ Planejamentos de implementações complexas, decompostos em tasks para subagente
 | [0007](0007/README.md) | Designação como registro histórico (estilo S-13) e exportação para Excel | 2026-08-18 | Concluída | 12 tasks |
 | [0008](0008/README.md) | Página de histórico de designações e formatação da planilha | 2026-08-18 | Concluída | 10 tasks |
 | [0009](0009/README.md) | Marcação de quadra pelo admin, rotação por território e página de configurações | 2026-08-19 | Concluída | 13 tasks |
+| [0010](0010/README.md) | Tabela de quadras na configuração do território, com histórico e status forçado | 2026-08-20 | Concluída | 12 tasks |
+| [0011](0011/README.md) | Apagar publicador, com o nome preservado no histórico | 2026-08-20 | Concluída | 8 tasks |
 
 ---
 

@@ -13,7 +13,7 @@ never confirms that the id names a real person somewhere else.
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 
 from app.core.deps import current_congregation
 from app.models.congregation import Congregation
@@ -72,3 +72,25 @@ def patch_user(
 ) -> UserOut:
     """Turn a publisher's access on or off. Their work history is untouched."""
     return UserOut.model_validate(users.set_active(congregation.id, user_id, payload.is_active))
+
+
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_user(
+    user_id: UUID,
+    congregation: AdminCongregation,
+    users: Users,
+) -> Response:
+    """Take a publisher off the congregation for good.
+
+    Not the same button as `PATCH {"is_active": false}`, and both exist on purpose:
+    deactivating revokes the app access of somebody who stays on the list, while this
+    removes the person and leaves only their trace in the history -- the work logs and
+    the closed assignments keep naming them, because each of those rows carries the
+    name copied in when it was written.
+
+    A publisher who still holds a territory is refused with 409: the request is well
+    formed and it is the present state that forbids it, and closing the stint for them
+    would stamp a completion date on the S-13 card that nobody stated.
+    """
+    users.delete(congregation.id, user_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

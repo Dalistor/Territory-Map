@@ -10,7 +10,7 @@
 // ever printed anywhere else.
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Publisher } from '../../shared/models'
 import type { IpcApi } from '../../shared/ipc-contract'
 import { PublishersScreen } from './PublishersScreen'
@@ -57,12 +57,19 @@ class FakePublishersApi implements PublishersApi {
   created: string[] = []
   regenerated: string[] = []
   activeCalls: Array<[string, boolean]> = []
+  deleted: string[] = []
   /** What `create`/`regenerateCode` hand back when they succeed. */
   minted: Publisher | null = null
   /** When set, `list` throws it instead of answering. May be a non-`Error` value, to exercise the generic fallback message. */
   listFailure: unknown = null
   /** When set, every write throws it. */
   writeFailure: Error | null = null
+  /**
+   * When set, `delete` alone throws it. Kept apart from `writeFailure` because
+   * the server's refusal to delete is a serialized `{message, code,
+   * statusCode}`, not a plain `Error` -- and only this write can meet it.
+   */
+  deleteFailure: unknown = null
   /** When true, `list` never resolves -- the loading state, held still. */
   hangs = false
 
@@ -92,6 +99,12 @@ class FakePublishersApi implements PublishersApi {
     if (this.writeFailure) throw this.writeFailure
     return this.minted ?? { id: publisherId, name: '?', isActive }
   }
+
+  async delete(publisherId: string): Promise<void> {
+    this.deleted.push(publisherId)
+    if (this.deleteFailure) throw this.deleteFailure
+    if (this.writeFailure) throw this.writeFailure
+  }
 }
 
 function installFakeApi(): FakePublishersApi {
@@ -118,8 +131,20 @@ async function registerFlow(user: ReturnType<typeof userEvent.setup>, name: stri
   await user.click(screen.getByRole('button', { name: 'Gerar código' }))
 }
 
+/**
+ * `window.confirm` is not implemented in jsdom, and every deletion below goes
+ * through it. Stubbed answering "yes" by default, so only the tests that care
+ * about backing out have to say so.
+ */
+let confirmSpy: ReturnType<typeof vi.spyOn>
+
 describe('PublishersScreen', () => {
+  beforeEach(() => {
+    confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  })
+
   afterEach(() => {
+    confirmSpy.mockRestore()
     vi.unstubAllGlobals()
   })
 
@@ -503,5 +528,110 @@ describe('PublishersScreen', () => {
     expect(fake.activeCalls).toEqual([['p2', false]])
     expect(fake.listCalls).toBe(1)
     expect(statusOf('Bruno')).toBe('Código válido, aguardando ser usado.')
+  })
+  it('every publisher row offers deleting that person', async () => {
+    const fake = installFakeApi()
+    fake.publishers = [revoked, awaitingCode, expiredCode, onDevice]
+    const user = userEvent.setup()
+    render(<PublishersScreen now={now} />)
+    await screen.findByTestId('publisher-row-Ana')
+
+    for (const name of ['Ana', 'Bruno', 'Carla', 'Daniel']) {
+      await openMenu(user, name)
+      expect(screen.getByRole('button', { name: `Apagar ${name}` })).toBeInTheDocument()
+      await openMenu(user, name)
+    }
+  })
+  it('confirming the deletion removes that person and asks the list again', async () => {
+    const fake = installFakeApi()
+    fake.publishers = [awaitingCode, onDevice]
+    const user = userEvent.setup()
+    render(<PublishersScreen now={now} />)
+    await screen.findByTestId('publisher-row-Bruno')
+
+    await openMenu(user, 'Daniel')
+    await user.click(screen.getByRole('button', { name: 'Apagar Daniel' }))
+
+    await waitFor(() => expect(fake.deleted).toEqual([onDevice.id]))
+    await waitFor(() => expect(fake.listCalls).toBe(2))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+  it('backing out of the confirmation deletes nobody', async () => {
+    const fake = installFakeApi()
+    fake.publishers = [onDevice]
+    confirmSpy.mockReturnValue(false)
+    const user = userEvent.setup()
+    render(<PublishersScreen now={now} />)
+    await screen.findByTestId('publisher-row-Daniel')
+
+    await openMenu(user, 'Daniel')
+    await user.click(screen.getByRole('button', { name: 'Apagar Daniel' }))
+
+    expect(confirmSpy).toHaveBeenCalledTimes(1)
+    expect(fake.deleted).toEqual([])
+    expect(fake.listCalls).toBe(1)
+    expect(screen.getByTestId('publisher-row-Daniel')).toBeInTheDocument()
+  })
+
+  it('the confirmation says the history survives, which is what separates it from "Desativar"', async () => {
+    const fake = installFakeApi()
+    fake.publishers = [onDevice]
+    const user = userEvent.setup()
+    render(<PublishersScreen now={now} />)
+    await screen.findByTestId('publisher-row-Daniel')
+
+    await openMenu(user, 'Daniel')
+    await user.click(screen.getByRole('button', { name: 'Apagar Daniel' }))
+
+    const message = String(confirmSpy.mock.calls[0][0])
+    expect(message).toMatch(/Daniel/)
+    // What goes: the person and her access.
+    expect(message).toMatch(/perde o acesso/i)
+    // What stays, named explicitly -- and with her name still on it.
+    expect(message).toMatch(/histórico/i)
+    expect(message).toMatch(/designações/i)
+    expect(message).toMatch(/nome preservado/i)
+  })
+  it('a deletion refused for an open assignment is reported in the server’s own words', async () => {
+    const fake = installFakeApi()
+    fake.publishers = [onDevice]
+    // What `PublisherHasOpenAssignmentError` turns into by the time it
+    // crosses the IPC bridge: the 409 already explains what to do, so the
+    // screen must pass it through instead of narrating a failure of its own.
+    fake.deleteFailure = {
+      name: 'ApiErrorException',
+      message:
+        'Daniel ainda tem território designado. Conclua a designação antes de apagar o publicador.',
+      code: 'publisher_has_open_assignment',
+      statusCode: 409
+    }
+    const user = userEvent.setup()
+    render(<PublishersScreen now={now} />)
+    await screen.findByTestId('publisher-row-Daniel')
+
+    await openMenu(user, 'Daniel')
+    await user.click(screen.getByRole('button', { name: 'Apagar Daniel' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Daniel ainda tem território designado. Conclua a designação antes de apagar o publicador.'
+    )
+    // Nothing changed on the server, so there is nothing to re-read.
+    expect(fake.listCalls).toBe(1)
+    expect(screen.getByTestId('publisher-row-Daniel')).toBeInTheDocument()
+  })
+
+  it('a deletion that fails for any other reason is shown instead of passing silently', async () => {
+    const fake = installFakeApi()
+    fake.publishers = [onDevice]
+    fake.deleteFailure = new Error('O servidor não respondeu.')
+    const user = userEvent.setup()
+    render(<PublishersScreen now={now} />)
+    await screen.findByTestId('publisher-row-Daniel')
+
+    await openMenu(user, 'Daniel')
+    await user.click(screen.getByRole('button', { name: 'Apagar Daniel' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('O servidor não respondeu.')
+    expect(fake.listCalls).toBe(1)
   })
 })

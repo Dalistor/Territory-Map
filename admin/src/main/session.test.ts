@@ -19,6 +19,7 @@ function fakeApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     createPublisher: vi.fn(),
     regenerateAccessCode: vi.fn(),
     setPublisherActive: vi.fn(),
+    deletePublisher: vi.fn(),
     listTerritories: vi.fn(),
     getTerritory: vi.fn(),
     createTerritory: vi.fn(),

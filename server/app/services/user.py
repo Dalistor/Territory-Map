@@ -14,8 +14,10 @@ from app.core.exceptions import (
     InactiveUserError,
     InvalidAccessCodeError,
     NotFoundError,
+    PublisherHasOpenAssignmentError,
 )
 from app.models.user import User
+from app.repositories.territory_assignment import TerritoryAssignmentRepository
 from app.repositories.user import UserRepository
 
 #: How many times a colliding code draw is retried before the call gives up.
@@ -65,11 +67,13 @@ class UserService:
     def __init__(
         self,
         users: UserRepository,
+        assignments: TerritoryAssignmentRepository,
         now_provider: Callable[[], datetime],
         generate_access_code: Callable[[], str] = security.generate_access_code,
         create_app_token: Callable[[UUID, UUID, int], str] = security.create_app_token,
     ) -> None:
         self._users = users
+        self._assignments = assignments
         self._now_provider = now_provider
         self._generate_access_code = generate_access_code
         self._create_app_token = create_app_token
@@ -107,6 +111,28 @@ class UserService:
         """Grant or revoke a publisher's access, leaving their work history alone."""
         user = self._get_of_congregation(congregation_id, user_id)
         return self._users.set_active(user, is_active)
+
+    def delete(self, congregation_id: UUID, user_id: UUID) -> None:
+        """Remove a publisher from the congregation for good.
+
+        Having a past is *not* a reason to refuse. Work logs and completed
+        assignments carry the publisher's name copied into the row, so they keep
+        naming the person after the row that described them is gone -- which is
+        the whole reason the name was denormalised in the first place. This is the
+        opposite of the previous model, where a foreign key with `ON DELETE
+        RESTRICT` made anyone who had ever worked a block undeletable.
+
+        Deleting is not deactivating, and both exist: `set_active(False)` revokes
+        the app access of someone who stays on the list, while this takes the
+        person off it and leaves only their trace in the history.
+        """
+        user = self._get_of_congregation(congregation_id, user_id)
+        if self._assignments.has_open_for_user(user.id):
+            # The one refusal, and it is about the present rather than the past: an
+            # open assignment says this territory is being worked right now, and
+            # closing it on the admin's behalf would date the S-13 card for them.
+            raise PublisherHasOpenAssignmentError
+        self._users.delete(user)
 
     def expire_codes(self, now: datetime | None = None) -> int:
         """Wipe every code already past its validity; return how many were cleared.

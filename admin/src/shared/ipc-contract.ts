@@ -20,6 +20,7 @@ import type {
   Assignment,
   AssignmentWithTerritory,
   Block,
+  BlockStatusOverride,
   Congregation,
   Publisher,
   Territory,
@@ -65,6 +66,13 @@ export interface BlockCreateInput {
 export interface BlockUpdateInput {
   readonly number?: number
   readonly polygon?: LatLng[]
+  /**
+   * Left out entirely leaves the forced status as it is; `null` gives the
+   * block back to the automatic colour, derived from the work records. The
+   * two are deliberately different requests, same contract `rotationDays`
+   * follows on the territory.
+   */
+  readonly statusOverride?: BlockStatusOverride | null
 }
 
 /**
@@ -104,6 +112,7 @@ export const IPC_CHANNELS = {
   publishersCreate: 'publishers:create',
   publishersRegenerateCode: 'publishers:regenerateCode',
   publishersSetActive: 'publishers:setActive',
+  publishersDelete: 'publishers:delete',
   assignmentsListFor: 'assignments:listFor',
   assignmentsListAll: 'assignments:listAll',
   assignmentsDesignate: 'assignments:designate',
@@ -160,6 +169,13 @@ export interface IpcApi {
     regenerateCode(publisherId: string): Promise<Publisher>
     /** Sends the desired state; the caller decides, the API never flips it. */
     setActive(publisherId: string, isActive: boolean): Promise<Publisher>
+    /**
+     * Removes the publisher for good. The work logs and the assignments they
+     * produced stay, each keeping the name it recorded -- so the history is
+     * still readable afterwards. Refused with a 409 while the publisher still
+     * holds an open assignment.
+     */
+    delete(publisherId: string): Promise<void>
   }
   readonly assignments: {
     /** The territory's whole history, open assignment included. */

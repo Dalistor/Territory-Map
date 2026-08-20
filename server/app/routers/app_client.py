@@ -29,6 +29,7 @@ from app.repositories.block_work_log import BlockWorkLogRepository
 from app.repositories.territory import TerritoryRepository
 from app.repositories.user import UserRepository
 from app.routers.auth import utc_now
+from app.routers.history_dto import with_user
 from app.schemas.block import BlockOut
 from app.schemas.geo import LatLngOut
 from app.schemas.territory import TerritoryOut
@@ -72,12 +73,19 @@ def _block_out(block: Block, blocks: BlockService) -> BlockOut:
     The geometry is read through the service rather than off the column, so the WKT
     and the `(lng, lat)` order stop one layer below and this module only ever handles
     named `lat`/`lng` pairs.
+
+    `status_override` travels for the same reason `last_worked_at` and the
+    territory's `rotation_days` do: the phone works out the colour of every block on
+    its own, from the cache, with no server to ask. Leaving the pin out would make
+    the block the admin marked overdue look untouched on the only screen that is
+    actually taken into the field.
     """
     return BlockOut(
         id=block.id,
         number=block.number,
         polygon=[LatLngOut.model_validate(point) for point in blocks.polygon_points(block)],
         last_worked_at=block.last_worked_at,
+        status_override=block.status_override,
     )
 
 
@@ -149,7 +157,7 @@ def mark_block_worked(
     log, created = work_logs.mark_worked(payload.log_id, block_id, user, payload.worked_at)
     if not created:
         response.status_code = status.HTTP_200_OK
-    return WorkLogOut.model_validate(log)
+    return WorkLogOut.model_validate(with_user(log))
 
 
 @router.get("/worked-territories")

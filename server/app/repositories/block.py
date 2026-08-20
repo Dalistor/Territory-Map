@@ -104,6 +104,19 @@ class BlockRepository:
         block.last_worked_at = worked_at
         self.session.flush()
 
+    def set_status_override(self, block: Block, status: str | None) -> Block:
+        """Write the status the admin forced on this block, or clear it.
+
+        Separate from `update` for the same reason `set_last_worked_at` is: the
+        column is nullable, and `None` inside `update` already means "leave as it
+        is". A method that only ever runs when the caller decided to touch the
+        column keeps `None` free to mean the real value here -- back to the colour
+        derived from the work logs.
+        """
+        block.status_override = status
+        self.session.flush()
+        return block
+
     def next_free_number(self, territory_id: UUID) -> int:
         """The smallest integer >= 1 not yet used in this territory.
 

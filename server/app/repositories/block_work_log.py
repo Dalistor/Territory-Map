@@ -36,17 +36,23 @@ class BlockWorkLogRepository:
         log_id: UUID,
         block_id: UUID,
         user_id: UUID,
+        user_name: str,
         worked_at: datetime,
     ) -> BlockWorkLog:
         """Insert a log with the id the client generated, and flush.
 
         `log_id` comes from outside on purpose -- it is what makes an offline resend
         recognisable. There is no server-side default to fall back on.
+
+        `user_name` is stored alongside `user_id` rather than looked up on read: the
+        row has to keep naming its author after the publisher is deleted, and the
+        caller already holds the person, so the name is copied in here at write time.
         """
         log = BlockWorkLog(
             id=log_id,
             block_id=block_id,
             user_id=user_id,
+            user_name=user_name,
             worked_at=worked_at,
         )
         self.session.add(log)
