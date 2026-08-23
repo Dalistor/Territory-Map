@@ -106,6 +106,32 @@ describe('MapScreen search', () => {
 
     expect(screen.getByText('Nenhum território com esse nome.')).toBeTruthy();
   });
+
+  it('clears search text when pressing the clear button (✕)', async () => {
+    await renderScreen();
+    await screen.findByText('Santa Helena - N 7');
+
+    await fireEvent.changeText(screen.getByLabelText('Buscar território pelo nome'), 'guarani');
+    expect(screen.getByText('Vila Guarani - N14')).toBeTruthy();
+
+    await fireEvent.press(screen.getByLabelText('Limpar busca'));
+
+    expect(screen.getByText('Santa Helena - N 7')).toBeTruthy();
+    expect(screen.getByText('Vila Guarani - N14')).toBeTruthy();
+  });
+
+  it('shows the floating bottom card when a specific territory is selected and allows resetting to all', async () => {
+    await renderScreen();
+    await screen.findByText('Santa Helena - N 7');
+
+    await fireEvent.press(screen.getByText('Santa Helena - N 7'));
+
+    expect(screen.getByText('Ver todos')).toBeTruthy();
+
+    await fireEvent.press(screen.getByText('Ver todos'));
+
+    expect(screen.queryByText('Ver todos')).toBeNull();
+  });
 });
 
 describe('MapScreen marking a block as worked', () => {

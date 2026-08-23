@@ -146,6 +146,155 @@ describe('export:assignments', () => {
   })
 })
 
+describe('export:s13t', () => {
+  it('returns null and writes nothing when the admin cancels the save dialog', async () => {
+    const chosenPath = join(workDir, 'S-13_T-2026.xlsx')
+    const dialog: SaveDialog = {
+      showSaveDialog: vi.fn(async () => ({ canceled: true, filePath: chosenPath }))
+    }
+    registerIpcHandlers({ session: fakeSession(), api: fakeApi(), geocoder: fakeGeocoder, dialog })
+
+    await expect(
+      invoke(IPC_CHANNELS.exportS13T, { serviceYear: 2026, format: 'xlsx' })
+    ).resolves.toBeNull()
+    expect(existsSync(chosenPath)).toBe(false)
+  })
+
+  it('writes the S-13-T workbook and returns the chosen path when the admin confirms', async () => {
+    const chosenPath = join(workDir, 'S-13_T-2026.xlsx')
+    const dialog: SaveDialog = {
+      showSaveDialog: vi.fn(async () => ({ canceled: false, filePath: chosenPath }))
+    }
+    registerIpcHandlers({ session: fakeSession(), api: fakeApi(), geocoder: fakeGeocoder, dialog })
+
+    await expect(
+      invoke(IPC_CHANNELS.exportS13T, { serviceYear: 2026, format: 'xlsx' })
+    ).resolves.toBe(chosenPath)
+    expect(existsSync(chosenPath)).toBe(true)
+  })
+
+  it('suggests S-13_T-<year>.xlsx as default file name when format is xlsx', async () => {
+    const showSaveDialog: SaveDialog['showSaveDialog'] = vi.fn(async () => ({
+      canceled: true,
+      filePath: undefined
+    }))
+    registerIpcHandlers({
+      session: fakeSession(),
+      api: fakeApi(),
+      geocoder: fakeGeocoder,
+      dialog: { showSaveDialog }
+    })
+
+    await invoke(IPC_CHANNELS.exportS13T, { serviceYear: 2026, format: 'xlsx' })
+
+    expect(showSaveDialog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        defaultPath: 'S-13_T-2026.xlsx',
+        filters: [{ name: 'Planilha do Excel', extensions: ['xlsx'] }]
+      })
+    )
+  })
+})
+
+describe('export:s13tDocx', () => {
+  it('writes the S-13-T docx document and returns the chosen path when the admin confirms', async () => {
+    const chosenPath = join(workDir, 'S-13_T-2026.docx')
+    const dialog: SaveDialog = {
+      showSaveDialog: vi.fn(async () => ({ canceled: false, filePath: chosenPath }))
+    }
+    registerIpcHandlers({ session: fakeSession(), api: fakeApi(), geocoder: fakeGeocoder, dialog })
+
+    await expect(invoke(IPC_CHANNELS.exportS13TDocx, { serviceYear: 2026 })).resolves.toBe(
+      chosenPath
+    )
+    expect(existsSync(chosenPath)).toBe(true)
+  })
+
+  it('suggests S-13_T-<year>.docx as default file name', async () => {
+    const showSaveDialog: SaveDialog['showSaveDialog'] = vi.fn(async () => ({
+      canceled: true,
+      filePath: undefined
+    }))
+    registerIpcHandlers({
+      session: fakeSession(),
+      api: fakeApi(),
+      geocoder: fakeGeocoder,
+      dialog: { showSaveDialog }
+    })
+
+    await invoke(IPC_CHANNELS.exportS13T, { serviceYear: 2026, format: 'docx' })
+
+    expect(showSaveDialog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        defaultPath: 'S-13_T-2026.docx',
+        filters: [{ name: 'Documento Word', extensions: ['docx'] }]
+      })
+    )
+  })
+})
+
+describe('import:s13t', () => {
+  it('returns null when file selection is canceled', async () => {
+    const dialog: SaveDialog = {
+      showSaveDialog: vi.fn(),
+      showOpenDialog: vi.fn(async () => ({ canceled: true, filePaths: [] }))
+    }
+    registerIpcHandlers({ session: fakeSession(), api: fakeApi(), geocoder: fakeGeocoder, dialog })
+
+    await expect(invoke(IPC_CHANNELS.importS13TSelectAndPreview)).resolves.toBeNull()
+  })
+
+  it('executes import creating publishers and assignments', async () => {
+    const designate = vi.fn().mockResolvedValue(ASSIGNMENT)
+    const complete = vi.fn().mockResolvedValue(ASSIGNMENT)
+    const createPublisher = vi.fn().mockResolvedValue({ id: 'pub-2', name: 'Maria' })
+    const listPublishers = vi.fn().mockResolvedValue([{ id: 'pub-1', name: 'João' }])
+
+    const api = fakeApi({
+      designate,
+      completeAssignment: complete,
+      createPublisher,
+      listPublishers
+    })
+
+    registerIpcHandlers({
+      session: fakeSession(),
+      api,
+      geocoder: fakeGeocoder,
+      dialog: { showSaveDialog: vi.fn() }
+    })
+
+    const preview = {
+      fileName: 'S-13_T-2026.docx',
+      serviceYear: 2026,
+      totalTerritoriesFound: 1,
+      matchedTerritoriesCount: 1,
+      totalAssignmentsCount: 2,
+      territories: [
+        {
+          territoryNumberOrName: 'Centro - N6',
+          matchedTerritoryId: 'terr-1',
+          assignments: [
+            { publisherName: 'João', startedAt: '10/01/2026', completedAt: '15/02/2026' },
+            { publisherName: 'Maria', startedAt: '01/03/2026', completedAt: null }
+          ]
+        }
+      ]
+    }
+
+    const result = await invoke(IPC_CHANNELS.importS13TExecute, preview)
+    expect(result).toEqual({
+      importedAssignmentsCount: 2,
+      importedPublishersCount: 1,
+      errors: []
+    })
+
+    expect(createPublisher).toHaveBeenCalledWith('Maria')
+    expect(designate).toHaveBeenCalledTimes(2)
+    expect(complete).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('assignments:listAll', () => {
   it('returns the whole congregation history through the session', async () => {
     const api = fakeApi()

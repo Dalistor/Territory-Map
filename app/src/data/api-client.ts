@@ -21,6 +21,7 @@ import type {
   Congregation,
   LatLng,
   PublisherBrief,
+  PublisherWorkHistoryItem,
   Session,
   Territory,
   WorkedTerritory,
@@ -87,6 +88,8 @@ export interface ApiClient {
   listTerritories(token: string): Promise<Territory[]>;
   /** `GET /app/worked-territories` -- territories this publisher has worked, most recent first. */
   listWorkedTerritories(token: string): Promise<WorkedTerritory[]>;
+  /** `GET /app/work-history` -- detailed log of blocks this publisher has worked, most recent first. */
+  listWorkHistory(token: string): Promise<PublisherWorkHistoryItem[]>;
   /** `POST /app/blocks/{id}/worked` -- records a visit. Resolves on both 201 (new) and 200 (resend). */
   markBlockWorked(
     token: string,
@@ -184,6 +187,18 @@ function parseWorkedTerritory(json: Record<string, unknown>): WorkedTerritory {
   };
 }
 
+function parsePublisherWorkHistoryItem(json: Record<string, unknown>): PublisherWorkHistoryItem {
+  return {
+    id: json.id as string,
+    blockId: json.block_id as string,
+    blockNumber: json.block_number as number,
+    territoryId: json.territory_id as string,
+    territoryName: json.territory_name as string,
+    workedAt: new Date(json.worked_at as string),
+    createdAt: parseOptionalDate(json.created_at),
+  };
+}
+
 function parseSession(json: Record<string, unknown>): Session {
   return {
     token: json.token as string,
@@ -257,6 +272,15 @@ export function createApiClient(options: CreateApiClientOptions = {}): ApiClient
         token,
       )) as Record<string, unknown>[];
       return json.map(parseWorkedTerritory);
+    },
+
+    async listWorkHistory(token) {
+      const json = (await request(
+        'GET',
+        '/app/work-history',
+        token,
+      )) as Record<string, unknown>[];
+      return json.map(parsePublisherWorkHistoryItem);
     },
 
     async markBlockWorked(token, blockId, logId, workedAt) {

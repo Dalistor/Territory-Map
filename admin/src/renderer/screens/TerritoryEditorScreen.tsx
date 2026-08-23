@@ -100,7 +100,8 @@ export function TerritoryEditorScreen({
   // here (client) only: the server keeps accepting any name, and this is the
   // one place names are typed.
   const nameHasNumber = /\d/.test(trimmedName)
-  const canSave = editor.state.problem === null && trimmedName.length > 0 && nameHasNumber && !saving
+  const canSave =
+    editor.state.problem === null && trimmedName.length > 0 && nameHasNumber && !saving
 
   const context = useMemo(
     () =>

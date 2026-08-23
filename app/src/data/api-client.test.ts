@@ -249,6 +249,39 @@ describe('createApiClient', () => {
     });
   });
 
+  describe('listWorkHistory', () => {
+    const WORK_HISTORY_JSON = {
+      id: 'log-1',
+      block_id: 'block-1',
+      block_number: 4,
+      territory_id: 'terr-1',
+      territory_name: 'Setor 1',
+      worked_at: '2026-08-15T14:30:00Z',
+      created_at: '2026-08-15T14:31:00Z',
+    };
+    const PARSED_WORK_HISTORY = {
+      id: 'log-1',
+      blockId: 'block-1',
+      blockNumber: 4,
+      territoryId: 'terr-1',
+      territoryName: 'Setor 1',
+      workedAt: new Date('2026-08-15T14:30:00Z'),
+      createdAt: new Date('2026-08-15T14:31:00Z'),
+    };
+
+    it('GETs /app/work-history with Authorization: Bearer <token> and returns the parsed list', async () => {
+      const { client, fetchImpl } = makeClient(jsonResponse(200, [WORK_HISTORY_JSON]));
+
+      const history = await client.listWorkHistory('app-token');
+
+      const [url, init] = fetchImpl.mock.calls[0];
+      expect(url).toBe(`${BASE_URL}/app/work-history`);
+      expect(init.method).toBe('GET');
+      expect(init.headers.Authorization).toBe('Bearer app-token');
+      expect(history).toEqual([PARSED_WORK_HISTORY]);
+    });
+  });
+
   describe('markBlockWorked', () => {
     const WORK_LOG_JSON = {
       id: 'log-1',

@@ -6,7 +6,15 @@
 // load, because the filter needs the *whole* congregation list ("Todos" and
 // the per-territory picker), not just the ones assigned to this publisher.
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { v4 as uuidv4 } from 'uuid';
 import { ApiErrorException, NetworkException, type ApiClient } from '../../data/api-client';
@@ -20,7 +28,7 @@ import {
   visibleTerritories,
   type MapFilter,
 } from '../map/territoryFilter';
-import { colors, spacing } from '../theme';
+import { colors, radius, shadows, spacing } from '../theme';
 
 export interface MapScreenProps {
   readonly session: Session;
@@ -68,7 +76,7 @@ export function MapScreen({
   const [saving, setSaving] = useState(false);
   const [readOnlyTarget, setReadOnlyTarget] = useState<BlockTarget | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
-  /** What the publisher typed in the search box -- narrows the chip list, never the map itself. */
+  /** What the publisher typed in the search box -- narrows the chip list and suggestions. */
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -102,6 +110,14 @@ export function MapScreen({
   const visible = useMemo(
     () => visibleTerritories(territoriesWithOverrides, filter, session.user.id),
     [territoriesWithOverrides, filter, session.user.id],
+  );
+
+  const selectedTerritory = useMemo(
+    () =>
+      filter.mode === 'specific'
+        ? territories.find((t) => t.id === filter.territoryId) ?? null
+        : null,
+    [territories, filter],
   );
 
   function handleBlockTap(territory: Territory, block: Block): void {
@@ -157,6 +173,7 @@ export function MapScreen({
     <SafeAreaView edges={['bottom']} style={styles.container}>
       {banner !== null && (
         <View style={styles.banner}>
+          <Text style={styles.bannerIcon}>⚠️</Text>
           <Text style={styles.bannerText}>{banner}</Text>
         </View>
       )}
@@ -165,31 +182,73 @@ export function MapScreen({
         territories={territories}
         search={search}
         onSearchChange={setSearch}
-        onChange={setFilter}
+        onChange={(newFilter) => {
+          setFilter(newFilter);
+        }}
       />
-      <TerritoryMapView
-        territories={visible}
-        myUserId={session.user.id}
-        // The overview shows names over the demarcations; the blocks and
-        // their numbers appear once a single territory is picked.
-        showBlocks={filter.mode === 'specific'}
-        now={effectiveNow}
-        onBlockTap={handleBlockTap}
-        onTerritoryTap={(territory) => setFilter({ mode: 'specific', territoryId: territory.id })}
-      />
+      <View style={styles.mapWrapper}>
+        <TerritoryMapView
+          territories={visible}
+          myUserId={session.user.id}
+          // The overview shows names over the demarcations; the blocks and
+          // their numbers appear once a single territory is picked.
+          showBlocks={filter.mode === 'specific'}
+          now={effectiveNow}
+          onBlockTap={handleBlockTap}
+          onTerritoryTap={(territory) =>
+            setFilter({ mode: 'specific', territoryId: territory.id })
+          }
+        />
+        {/* Floating selected territory bottom card */}
+        {selectedTerritory !== null && (
+          <View style={styles.bottomCard}>
+            <View style={styles.bottomCardHeader}>
+              <View style={styles.bottomCardInfo}>
+                <Text style={styles.bottomCardTitle}>{selectedTerritory.name}</Text>
+                <View style={styles.bottomCardBadges}>
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>
+                      {selectedTerritory.blocks.length}{' '}
+                      {selectedTerritory.blocks.length === 1 ? 'quadra' : 'quadras'}
+                    </Text>
+                  </View>
+                  {isTerritoryAssignedToMe(selectedTerritory, session.user.id) ? (
+                    <View style={[styles.badge, styles.badgeMine]}>
+                      <Text style={styles.badgeMineText}>Designado a você</Text>
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setFilter({ mode: 'all' })}
+                style={({ pressed }) => [
+                  styles.clearSelectionButton,
+                  pressed && styles.clearSelectionButtonPressed,
+                ]}
+              >
+                <Text style={styles.clearSelectionText}>Ver todos</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+      </View>
       {confirmTarget !== null && (
         <Modal transparent animationType="fade" onRequestClose={() => setConfirmTarget(null)}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalCard}>
-              <Text style={styles.modalTitle}>
-                Marcar quadra {confirmTarget.block.number} como trabalhada?
-              </Text>
-              {/* The publisher decides with this line: a quadra worked
-                  yesterday is usually a mis-tap, one from four months ago is
-                  the reason they came. */}
-              <Text style={styles.modalDetail}>
-                {describeLastWorked(confirmTarget.block, effectiveNow)}
-              </Text>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>
+                  Marcar quadra {confirmTarget.block.number} como trabalhada?
+                </Text>
+                <Text style={styles.modalSubtitle}>{confirmTarget.territory.name}</Text>
+              </View>
+              <View style={styles.modalInfoBox}>
+                <Text style={styles.modalInfoLabel}>Status recente:</Text>
+                <Text style={styles.modalDetail}>
+                  {describeLastWorked(confirmTarget.block, effectiveNow)}
+                </Text>
+              </View>
               <View style={styles.modalActions}>
                 <Pressable
                   accessibilityRole="button"
@@ -221,12 +280,17 @@ export function MapScreen({
         <Modal transparent animationType="fade" onRequestClose={() => setReadOnlyTarget(null)}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalCard}>
-              <Text style={styles.modalTitle}>
-                Quadra {readOnlyTarget.block.number} — {readOnlyTarget.territory.name}
-              </Text>
-              <Text style={styles.modalDetail}>
-                {describeLastWorked(readOnlyTarget.block, effectiveNow)}
-              </Text>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>
+                  Quadra {readOnlyTarget.block.number} — {readOnlyTarget.territory.name}
+                </Text>
+              </View>
+              <View style={styles.modalInfoBox}>
+                <Text style={styles.modalInfoLabel}>Status:</Text>
+                <Text style={styles.modalDetail}>
+                  {describeLastWorked(readOnlyTarget.block, effectiveNow)}
+                </Text>
+              </View>
               <Text style={styles.readOnlyHint}>
                 Este território não está designado a você — fale com quem cuida dos territórios na
                 congregação para poder marcar quadras aqui.
@@ -274,7 +338,11 @@ function FilterChip({
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
       onPress={onPress}
-      style={[styles.filterChip, active && styles.filterChipActive]}
+      style={({ pressed }) => [
+        styles.filterChip,
+        active && styles.filterChipActive,
+        pressed && !active && styles.filterChipPressed,
+      ]}
     >
       <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{label}</Text>
     </Pressable>
@@ -285,11 +353,8 @@ function FilterChip({
  * The search box plus the chip row: "Meu(s) território(s)" / "Todos" / one
  * chip per individual territory.
  *
- * The search narrows the *chips*, not the map. A congregation has dozens of
- * territories, so the row scrolls well past the screen and the chip the
- * publisher wants is usually off it; typing brings it into reach. Filtering
- * the map by a half-typed name instead would leave the publisher looking at
- * a map that changes under every keystroke.
+ * The search narrows the chips and displays instant suggestions.
+ * An explicit Clear button (✕) ensures reliable clearing on Android.
  */
 function FilterControl({
   filter,
@@ -302,24 +367,38 @@ function FilterControl({
   // ones stay reachable below it.
   const matches = searchTerritories(territories, search);
   const searching = search.trim().length > 0;
+
   return (
     <View style={styles.filterContainer}>
-      <TextInput
-        style={styles.searchInput}
-        value={search}
-        onChangeText={onSearchChange}
-        placeholder="Buscar território pelo nome"
-        placeholderTextColor={colors.textSecondary}
-        accessibilityLabel="Buscar território pelo nome"
-        autoCorrect={false}
-        returnKeyType="search"
-        clearButtonMode="while-editing"
-      />
+      <View style={styles.searchBarRow}>
+        <View style={styles.searchInputContainer}>
+          <Text style={styles.searchIcon}>🔍</Text>
+          <TextInput
+            style={styles.searchInput}
+            value={search}
+            onChangeText={onSearchChange}
+            placeholder="Buscar território pelo nome"
+            placeholderTextColor={colors.textSecondary}
+            accessibilityLabel="Buscar território pelo nome"
+            autoCorrect={false}
+            returnKeyType="search"
+          />
+          {searching && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Limpar busca"
+              onPress={() => onSearchChange('')}
+              style={styles.clearSearchButton}
+              hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+            >
+              <Text style={styles.clearSearchIcon}>✕</Text>
+            </Pressable>
+          )}
+        </View>
+      </View>
+
       <ScrollView horizontal style={styles.filterBar} showsHorizontalScrollIndicator={false}>
-        {/* The two mode chips stay put while searching. They were hidden
-            here at first, and that made typing a single letter look like the
-            whole row had emptied out -- the way back to the full map has to
-            remain on screen. */}
+        {/* The two mode chips stay put while searching. */}
         <FilterChip
           label="Meu(s) território(s)"
           active={filter.mode === 'assigned'}
@@ -347,69 +426,276 @@ function FilterControl({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  banner: { backgroundColor: colors.warningSurface, padding: spacing.sm },
-  bannerText: { color: colors.warningText },
-  filterContainer: { paddingTop: spacing.sm },
-  searchInput: {
-    marginHorizontal: spacing.sm,
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  mapWrapper: {
+    flex: 1,
+    position: 'relative',
+    overflow: 'hidden',
+    zIndex: 1,
+  },
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.warningSurface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.warningBorder,
     paddingHorizontal: spacing.md,
-    paddingVertical: 8,
-    borderRadius: 10,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+    zIndex: 110,
+  },
+  bannerIcon: { fontSize: 16 },
+  bannerText: {
+    flex: 1,
+    color: colors.warningText,
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  // Opaque, elevated container that sits strictly above map markers
+  filterContainer: {
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingTop: spacing.sm,
+    zIndex: 100,
+    ...shadows.md,
+    elevation: 8,
+  },
+  searchBarRow: {
+    paddingHorizontal: spacing.sm,
+  },
+  searchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+  },
+  searchIcon: {
+    fontSize: 14,
+    marginRight: spacing.xs,
+    color: colors.textSecondary,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.xs,
     color: colors.textPrimary,
     fontSize: 15,
   },
-  filterBar: { flexGrow: 0, paddingHorizontal: spacing.sm, paddingVertical: spacing.sm },
-  noMatches: { color: colors.textSecondary, paddingVertical: 7 },
+  clearSearchButton: {
+    padding: spacing.xs,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  clearSearchIcon: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  filterBar: {
+    flexGrow: 0,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  noMatches: {
+    color: colors.textSecondary,
+    paddingVertical: 7,
+    paddingHorizontal: spacing.xs,
+    fontSize: 14,
+  },
   filterChip: {
     paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 18,
+    paddingVertical: 8,
+    borderRadius: radius.full,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     marginRight: spacing.sm,
   },
-  filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  filterChipText: { color: colors.textPrimary, fontSize: 14 },
-  filterChipTextActive: { color: colors.onPrimary, fontWeight: '600' },
+  filterChipPressed: {
+    backgroundColor: colors.surfaceSubtle,
+  },
+  filterChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+    ...shadows.sm,
+  },
+  filterChipText: {
+    color: colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  filterChipTextActive: {
+    color: colors.onPrimary,
+    fontWeight: '600',
+  },
+  // Floating bottom card
+  bottomCard: {
+    position: 'absolute',
+    bottom: spacing.md,
+    left: spacing.md,
+    right: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.lg,
+    zIndex: 50,
+  },
+  bottomCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  bottomCardInfo: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  bottomCardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  bottomCardBadges: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    flexWrap: 'wrap',
+  },
+  badge: {
+    backgroundColor: colors.surfaceSubtle,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  badgeText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  badgeMine: {
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
+  },
+  badgeMineText: {
+    fontSize: 12,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  clearSelectionButton: {
+    backgroundColor: colors.surfaceSubtle,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  clearSelectionButtonPressed: {
+    backgroundColor: colors.border,
+  },
+  clearSelectionText: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
     justifyContent: 'center',
     padding: spacing.lg,
   },
   modalCard: {
     backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: spacing.md,
-    gap: spacing.sm,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    gap: spacing.md,
+    ...shadows.lg,
   },
-  modalTitle: { fontSize: 17, fontWeight: '600', color: colors.textPrimary, marginBottom: 4 },
-  modalDetail: { color: colors.textPrimary, fontSize: 15 },
+  modalHeader: {
+    gap: spacing.xs,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  modalInfoBox: {
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modalInfoLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+  },
+  modalDetail: {
+    color: colors.textPrimary,
+    fontSize: 15,
+    fontWeight: '500',
+  },
   modalActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     alignItems: 'center',
     gap: spacing.sm,
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
   },
-  readOnlyHint: { color: colors.textSecondary, lineHeight: 20 },
-  textButton: { paddingHorizontal: spacing.md, paddingVertical: 10, borderRadius: 8 },
-  textButtonPressed: { backgroundColor: colors.background },
-  textButtonLabel: { color: colors.textSecondary, fontSize: 15, fontWeight: '600' },
+  readOnlyHint: {
+    color: colors.textSecondary,
+    lineHeight: 20,
+    fontSize: 14,
+  },
+  textButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    borderRadius: radius.md,
+  },
+  textButtonPressed: {
+    backgroundColor: colors.surfaceSubtle,
+  },
+  textButtonLabel: {
+    color: colors.textSecondary,
+    fontSize: 15,
+    fontWeight: '600',
+  },
   filledButton: {
     backgroundColor: colors.primary,
-    borderRadius: 8,
+    borderRadius: radius.md,
     paddingHorizontal: spacing.lg,
-    paddingVertical: 10,
+    paddingVertical: 12,
+    ...shadows.sm,
   },
-  filledButtonPressed: { backgroundColor: colors.primaryPressed },
-  filledButtonDisabled: { opacity: 0.6 },
-  filledButtonLabel: { color: colors.onPrimary, fontSize: 15, fontWeight: '600' },
+  filledButtonPressed: {
+    backgroundColor: colors.primaryPressed,
+  },
+  filledButtonDisabled: {
+    opacity: 0.6,
+  },
+  filledButtonLabel: {
+    color: colors.onPrimary,
+    fontSize: 15,
+    fontWeight: '600',
+  },
 });
 
 export default MapScreen;

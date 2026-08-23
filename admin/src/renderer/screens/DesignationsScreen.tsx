@@ -11,8 +11,9 @@
 // not just overwrite the present.
 import { useCallback, useEffect, useState } from 'react'
 import type { LatLngTuple } from 'leaflet'
+import type { S13TImportPreview } from '../../shared/ipc-contract'
 import type { Assignment, Publisher, Territory } from '../../shared/models'
-import { assignmentIsOpen } from '../../shared/models'
+import { assignmentIsOpen, getServiceYear } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
 import { AssignmentsMap } from '../map/AssignmentsMap'
 
@@ -244,41 +245,130 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
     [panelTarget, reloadAfterAction, runConfirmed]
   )
 
+  const [showExportModal, setShowExportModal] = useState(false)
+  const [selectedServiceYear, setSelectedServiceYear] = useState<number>(() => getServiceYear())
+  const [exportFormat, setExportFormat] = useState<'docx' | 'xlsx'>('docx')
+  const [importPreview, setImportPreview] = useState<S13TImportPreview | null>(null)
+  const [importStatus, setImportStatus] = useState<string | null>(null)
+
   /** The spreadsheet is written by the main process; `null` means the admin
    * dismissed the save dialog, which is not an error and says nothing. */
   const exportToExcel = useCallback(
     () =>
       runAction(async () => {
         setExportPath(null)
+        setImportStatus(null)
         const path = await window.api.exports.assignments()
         if (path !== null) setExportPath(path)
       }),
     [runAction]
   )
 
+  const exportS13T = useCallback(
+    () =>
+      runAction(async () => {
+        setExportPath(null)
+        setImportStatus(null)
+        setShowExportModal(false)
+        const path = await window.api.exports.s13t({
+          serviceYear: selectedServiceYear,
+          format: exportFormat
+        })
+        if (path !== null) setExportPath(path)
+      }),
+    [exportFormat, runAction, selectedServiceYear]
+  )
+
+  const importS13T = useCallback(
+    () =>
+      runAction(async () => {
+        setExportPath(null)
+        setImportStatus(null)
+        const preview = await window.api.imports.s13tSelectAndPreview()
+        if (preview !== null) {
+          setImportPreview(preview)
+        }
+      }),
+    [runAction]
+  )
+
+  const executeImport = useCallback(
+    (preview: S13TImportPreview) =>
+      runAction(async () => {
+        setImportPreview(null)
+        const result = await window.api.imports.s13tExecute(preview)
+        setImportStatus(
+          `Importação concluída: ${result.importedAssignmentsCount} designações processadas (${result.importedPublishersCount} novos publicadores criados).`
+        )
+        await load()
+      }),
+    [load, runAction]
+  )
+
   const assignedCount = territories.filter(
     (territory) => territory.assignedUser !== undefined
   ).length
+  const unassignedCount = territories.length - assignedCount
+  const coveragePercent =
+    territories.length > 0 ? Math.round((assignedCount / territories.length) * 100) : 0
+
+  const currentYear = getServiceYear()
+  const availableYears = [currentYear - 2, currentYear - 1, currentYear, currentYear + 1]
 
   return (
-    <div>
+    <div className="designations-screen">
       <header>
-        <h1>Designações</h1>
-        {!isLoading && loadError === null && (
-          <p>
-            {assignedCount} de {territories.length} territórios designados
-          </p>
-        )}
-        <button onClick={() => void exportToExcel()}>Exportar para Excel</button>
-        <button onClick={() => void load()}>Recarregar</button>
+        <div className="header-title-block">
+          <h1>Designações</h1>
+          {!isLoading && loadError === null && (
+            <p>
+              {assignedCount} de {territories.length} territórios designados
+            </p>
+          )}
+        </div>
+        <div className="header-actions">
+          <button type="button" className="button-primary" onClick={() => setShowExportModal(true)}>
+            📋 Exportar S-13-T
+          </button>
+          <button type="button" onClick={() => void importS13T()}>
+            📥 Importar S-13-T
+          </button>
+          <button type="button" onClick={() => void exportToExcel()}>
+            Exportar para Excel
+          </button>
+          <button type="button" onClick={() => void load()}>
+            Recarregar
+          </button>
+        </div>
       </header>
       <main>
         {actionError !== null && <p role="alert">{actionError}</p>}
-        {exportPath !== null && <p role="status">Planilha salva em {exportPath}</p>}
+        {exportPath !== null && <p role="status">Arquivo salvo em {exportPath}</p>}
+        {importStatus !== null && <p role="status">{importStatus}</p>}
         {isLoading && <p>Carregando…</p>}
         {!isLoading && loadError !== null && <p role="alert">{loadError}</p>}
         {!isLoading && loadError === null && (
           <>
+            {/* KPI Summary Cards */}
+            <div className="kpi-grid">
+              <div className="kpi-card">
+                <span className="kpi-label">Total de Territórios</span>
+                <strong className="kpi-value">{territories.length}</strong>
+              </div>
+              <div className="kpi-card kpi-card-active">
+                <span className="kpi-label">Designados</span>
+                <strong className="kpi-value">{assignedCount}</strong>
+              </div>
+              <div className="kpi-card">
+                <span className="kpi-label">Livres</span>
+                <strong className="kpi-value">{unassignedCount}</strong>
+              </div>
+              <div className="kpi-card">
+                <span className="kpi-label">Taxa de Cobertura</span>
+                <strong className="kpi-value">{coveragePercent}%</strong>
+              </div>
+            </div>
+
             <p role="note">
               Clique em um território no mapa para ver o histórico de designações e designar,
               concluir ou apagar um registro. Contorno azul contínuo: com dirigente; tracejado
@@ -291,6 +381,128 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
             />
           </>
         )}
+
+        {/* S-13-T Export Modal */}
+        {showExportModal && (
+          <div className="export-modal" role="dialog" aria-label="Exportar Formulário S-13-T">
+            <h2>Exportar Registro de Designação (S-13-T)</h2>
+            <p className="dialog-subtitle">
+              Gera o documento oficial de Registro de Designação de Território preenchido e
+              formatado.
+            </p>
+
+            <div className="field">
+              <label htmlFor="export-format-select">
+                Formato do Documento
+                <select
+                  id="export-format-select"
+                  value={exportFormat}
+                  onChange={(e) => setExportFormat(e.target.value as 'docx' | 'xlsx')}
+                >
+                  <option value="docx">Word (.docx) — Modelo Oficial S-13-T</option>
+                  <option value="xlsx">Planilha Excel (.xlsx)</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="field">
+              <label htmlFor="service-year-select">
+                Ano de Serviço
+                <select
+                  id="service-year-select"
+                  value={selectedServiceYear}
+                  onChange={(e) => setSelectedServiceYear(Number(e.target.value))}
+                >
+                  {availableYears.map((year) => (
+                    <option key={year} value={year}>
+                      Ano de Serviço {year} (01/09/{year - 1} a 31/08/{year})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="dialog-actions">
+              <button type="button" onClick={() => setShowExportModal(false)}>
+                Cancelar
+              </button>
+              <button type="button" className="button-primary" onClick={() => void exportS13T()}>
+                Gerar S-13-T ({exportFormat.toUpperCase()})
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* S-13-T Import Preview Modal */}
+        {importPreview !== null && (
+          <div className="import-modal" role="dialog" aria-label="Prévia da Importação S-13-T">
+            <h2>Importar Registros S-13-T</h2>
+            <p className="dialog-subtitle">
+              Arquivo: <strong>{importPreview.fileName}</strong>
+              {importPreview.serviceYear ? ` • Ano de Serviço ${importPreview.serviceYear}` : ''}
+            </p>
+
+            <div className="kpi-grid">
+              <div className="kpi-card">
+                <span className="kpi-label">Territórios no Arquivo</span>
+                <strong className="kpi-value">{importPreview.totalTerritoriesFound}</strong>
+              </div>
+              <div className="kpi-card kpi-card-active">
+                <span className="kpi-label">Correspondidos</span>
+                <strong className="kpi-value">
+                  {importPreview.matchedTerritoriesCount} de {importPreview.totalTerritoriesFound}
+                </strong>
+              </div>
+              <div className="kpi-card">
+                <span className="kpi-label">Designações a Importar</span>
+                <strong className="kpi-value">{importPreview.totalAssignmentsCount}</strong>
+              </div>
+            </div>
+
+            <div className="import-preview-list">
+              <h3>Territórios identificados</h3>
+              <ul>
+                {importPreview.territories.map((terr, idx) => (
+                  <li key={idx} className={terr.matchedTerritoryId ? 'is-matched' : 'is-unmatched'}>
+                    <div className="import-preview-terr-header">
+                      <strong>Território {terr.territoryNumberOrName}</strong>
+                      <span className="status-badge">
+                        {terr.matchedTerritoryId ? '✓ Reconhecido' : '⚠ Não cadastrado'}
+                      </span>
+                    </div>
+                    {terr.assignments.length > 0 ? (
+                      <span className="import-preview-assignments">
+                        {terr.assignments.map((a, aIdx) => (
+                          <span key={aIdx} className="import-asg-tag">
+                            {a.publisherName} ({a.startedAt || '?'}
+                            {a.completedAt ? ` a ${a.completedAt}` : ' - em aberto'})
+                          </span>
+                        ))}
+                      </span>
+                    ) : (
+                      <span className="import-empty-hint">Sem designações registradas</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="dialog-actions">
+              <button type="button" onClick={() => setImportPreview(null)}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="button-primary"
+                disabled={importPreview.totalAssignmentsCount === 0}
+                onClick={() => void executeImport(importPreview)}
+              >
+                Confirmar e Importar
+              </button>
+            </div>
+          </div>
+        )}
+
         {panelTarget !== null && (
           <div
             className="assignment-panel"

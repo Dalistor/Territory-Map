@@ -65,7 +65,18 @@ function makeApi(overrides: Partial<IpcApi> = {}): IpcApi {
     },
     exports: {
       assignments: vi.fn().mockResolvedValue(null),
+      s13t: vi.fn().mockResolvedValue(null),
+      s13tDocx: vi.fn().mockResolvedValue(null),
       ...overrides.exports
+    },
+    imports: {
+      s13tSelectAndPreview: vi.fn().mockResolvedValue(null),
+      s13tExecute: vi.fn().mockResolvedValue({
+        importedAssignmentsCount: 0,
+        importedPublishersCount: 0,
+        errors: []
+      }),
+      ...overrides.imports
     },
     workLogs: {
       listFor: vi.fn(),

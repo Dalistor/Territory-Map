@@ -1,7 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import { ValueType } from 'exceljs'
-import { buildAssignmentsWorkbook, type TerritoryAssignments } from './excel-export'
+import {
+  buildAssignmentsWorkbook,
+  buildS13TWorkbook,
+  type TerritoryAssignments
+} from './excel-export'
 import type { Assignment, Territory } from '../shared/models'
 
 function territory(name: string): Territory {
@@ -219,5 +223,89 @@ describe('buildAssignmentsWorkbook formatting', () => {
     expect(sheet.getCell('C2').fill?.type).toBe('pattern')
     expect(sheet.actualRowCount).toBe(2)
     expect(sheet.getRow(3).getCell(1).type).toBe(ValueType.Null)
+  })
+})
+
+describe('buildS13TWorkbook', () => {
+  const t1 = territory('Setor 1')
+  const t2 = territory('Setor 2')
+
+  const lastYearCompleted = new Date('2025-05-10T12:00:00Z')
+  const sept2025 = new Date('2025-09-15T10:00:00Z')
+  const nov2025 = new Date('2025-11-20T10:00:00Z')
+  const dec2025 = new Date('2025-12-05T10:00:00Z')
+
+  it('builds a single S-13-T sheet with 10 columns and 2 rows per territory', () => {
+    const input = {
+      congregation: { name: 'Vila Mariana', city: 'São Paulo' },
+      serviceYear: 2026,
+      territories: [
+        {
+          territory: t1,
+          assignments: [
+            assignment('Carlos', lastYearCompleted, new Date('2025-06-01T12:00:00Z')),
+            assignment('João', sept2025, nov2025),
+            assignment('Maria', dec2025)
+          ]
+        },
+        {
+          territory: t2,
+          assignments: []
+        }
+      ]
+    }
+
+    const workbook = buildS13TWorkbook(input)
+    expect(workbook.worksheets.length).toBe(1)
+    const sheet = workbook.worksheets[0]
+
+    expect(sheet.name).toBe('S-13-T (2026)')
+    // Row 1: Title
+    expect(sheet.getCell('A1').value).toBe('REGISTRO DE DESIGNAÇÃO DE TERRITÓRIO')
+    // Row 2: Subtitle
+    expect(sheet.getCell('A2').value).toContain('Ano de Serviço: 2026')
+    expect(sheet.getCell('A2').value).toContain('Vila Mariana')
+
+    // Headers on row 3 and 4
+    expect(sheet.getCell('A3').value).toBe('Terr. n.º')
+    expect(sheet.getCell('B3').value).toBe('Última data concluída*')
+    expect(sheet.getCell('C3').value).toBe('Designado para')
+    expect(sheet.getCell('C4').value).toBe('Data da designação')
+    expect(sheet.getCell('D4').value).toBe('Data da conclusão')
+
+    // Territory 1 is on rows 5 and 6
+    // Row 5: Territory name, last completed date, publisher 1 and publisher 2
+    expect(sheet.getCell('A5').value).toBe('Setor 1')
+    expect(sheet.getCell('B5').value).toEqual(new Date('2025-06-01T12:00:00Z'))
+    expect(sheet.getCell('C5').value).toBe('João')
+    expect(sheet.getCell('E5').value).toBe('Maria')
+
+    // Row 6: Dates for João and Maria
+    expect(sheet.getCell('C6').value).toEqual(sept2025)
+    expect(sheet.getCell('D6').value).toEqual(nov2025)
+    expect(sheet.getCell('E6').value).toEqual(dec2025)
+    expect(sheet.getCell('F6').value).toBeNull()
+
+    // Territory 2 is on rows 7 and 8
+    expect(sheet.getCell('A7').value).toBe('Setor 2')
+    expect(sheet.getCell('B7').value).toBeNull()
+    expect(sheet.getCell('C7').value).toBe('')
+
+    // Footer note exists at the end
+    const noteCell = sheet.getRow(sheet.rowCount).getCell(1)
+    expect(noteCell.value).toContain('Ao iniciar uma nova folha')
+  })
+
+  it('configures landscape orientation and print setup for S-13-T', () => {
+    const workbook = buildS13TWorkbook({
+      serviceYear: 2026,
+      territories: [{ territory: t1, assignments: [] }]
+    })
+    const sheet = workbook.worksheets[0]
+
+    expect(sheet.pageSetup.orientation).toBe('landscape')
+    expect(sheet.pageSetup.fitToPage).toBe(true)
+    expect(sheet.pageSetup.fitToWidth).toBe(1)
+    expect(sheet.pageSetup.printTitlesRow).toBe('3:4')
   })
 })

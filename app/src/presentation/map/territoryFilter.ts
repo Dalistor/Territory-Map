@@ -112,22 +112,38 @@ function matchScore(name: string, query: string): number {
 }
 
 /**
+ * Checks if the query asks for a specific block number (e.g., "4", "quadra 4", "q4", "bloco 4").
+ */
+function blockMatchScore(territory: Territory, query: string): number {
+  const normalized = normalizeForSearch(query);
+  const match = normalized.match(/^(?:quadra|q|bloco)?\s*(\d+)$/);
+  if (!match) return 0;
+  const targetNumber = parseInt(match[1], 10);
+  if (isNaN(targetNumber)) return 0;
+  const hasExactBlock = territory.blocks.some((b) => b.number === targetNumber);
+  if (hasExactBlock) return 2.5;
+  return 0;
+}
+
+/**
  * The territories matching `query`, closest first. A blank query matches
  * everything -- an empty search box is not a filter.
  *
  * Ranked rather than filtered flat: the publisher is typing a name from
- * memory, on a phone, in the field. Showing the looser matches below the
- * literal one costs a line of screen and saves retyping; showing nothing
- * because the spacing was off is the failure mode this replaces.
+ * memory or a block number, on a phone, in the field.
  */
 export function searchTerritories(all: Territory[], query: string): Territory[] {
-  if (compact(query).length === 0) return all
+  if (compact(query).length === 0) return all;
   return all
-    .map((territory, index) => ({ territory, index, score: matchScore(territory.name, query) }))
+    .map((territory, index) => {
+      const nameScore = matchScore(territory.name, query);
+      const blockScore = blockMatchScore(territory, query);
+      return { territory, index, score: Math.max(nameScore, blockScore) };
+    })
     .filter((scored) => scored.score > 0)
     // Ties keep the caller's order (`sort` alone is stable in modern engines,
     // but the explicit index makes that a property of this function rather
     // than of whichever engine runs it).
     .sort((a, b) => b.score - a.score || a.index - b.index)
-    .map((scored) => scored.territory)
+    .map((scored) => scored.territory);
 }

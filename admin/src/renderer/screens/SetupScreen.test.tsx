@@ -52,7 +52,8 @@ function fakeApi(overrides: Partial<IpcApi['session']> = {}): IpcApi {
       complete: vi.fn(),
       delete: vi.fn()
     },
-    exports: { assignments: vi.fn() },
+    exports: { assignments: vi.fn(), s13t: vi.fn(), s13tDocx: vi.fn() },
+    imports: { s13tSelectAndPreview: vi.fn(), s13tExecute: vi.fn() },
     workLogs: {
       listFor: vi.fn(),
       delete: vi.fn(),

@@ -59,7 +59,13 @@ const api: IpcApi = {
       ipcRenderer.invoke(IPC_CHANNELS.assignmentsDelete, territoryId, assignmentId)
   },
   exports: {
-    assignments: () => ipcRenderer.invoke(IPC_CHANNELS.exportAssignments)
+    assignments: () => ipcRenderer.invoke(IPC_CHANNELS.exportAssignments),
+    s13t: (options) => ipcRenderer.invoke(IPC_CHANNELS.exportS13T, options),
+    s13tDocx: (options) => ipcRenderer.invoke(IPC_CHANNELS.exportS13TDocx, options)
+  },
+  imports: {
+    s13tSelectAndPreview: () => ipcRenderer.invoke(IPC_CHANNELS.importS13TSelectAndPreview),
+    s13tExecute: (preview) => ipcRenderer.invoke(IPC_CHANNELS.importS13TExecute, preview)
   },
   workLogs: {
     listFor: (blockId: string) => ipcRenderer.invoke(IPC_CHANNELS.workLogsListFor, blockId),

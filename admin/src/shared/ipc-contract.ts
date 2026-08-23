@@ -119,6 +119,10 @@ export const IPC_CHANNELS = {
   assignmentsComplete: 'assignments:complete',
   assignmentsDelete: 'assignments:delete',
   exportAssignments: 'export:assignments',
+  exportS13T: 'export:s13t',
+  exportS13TDocx: 'export:s13tDocx',
+  importS13TSelectAndPreview: 'import:s13tSelectAndPreview',
+  importS13TExecute: 'import:s13tExecute',
   workLogsListFor: 'workLogs:listFor',
   workLogsDelete: 'workLogs:delete',
   workLogsMarkWorked: 'workLogs:markWorked',
@@ -126,6 +130,42 @@ export const IPC_CHANNELS = {
 } as const
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]
+
+export interface S13TOptions {
+  /** Target service year (e.g. 2026). If omitted, defaults to the current service year. */
+  readonly serviceYear?: number
+  /** Format to export: 'docx' (default Word template) or 'xlsx' */
+  readonly format?: 'docx' | 'xlsx'
+}
+
+export interface S13TParsedAssignment {
+  readonly publisherName: string
+  readonly startedAt?: string | null
+  readonly completedAt?: string | null
+}
+
+export interface S13TParsedTerritoryItem {
+  readonly territoryNumberOrName: string
+  readonly matchedTerritoryId?: string | null
+  readonly lastCompletedDate?: string | null
+  readonly assignments: readonly S13TParsedAssignment[]
+}
+
+export interface S13TImportPreview {
+  readonly fileName: string
+  readonly serviceYear?: number | null
+  readonly congregationName?: string | null
+  readonly territories: readonly S13TParsedTerritoryItem[]
+  readonly totalTerritoriesFound: number
+  readonly matchedTerritoriesCount: number
+  readonly totalAssignmentsCount: number
+}
+
+export interface S13TImportResult {
+  readonly importedAssignmentsCount: number
+  readonly importedPublishersCount: number
+  readonly errors: readonly string[]
+}
 
 /**
  * The full shape of `window.api`. `main/ipc-handlers.ts` must register a
@@ -195,6 +235,16 @@ export interface IpcApi {
      * saved to, or `null` when the admin dismissed the save dialog.
      */
     assignments(): Promise<string | null>
+    /**
+     * Writes the official S-13-T congregation assignment record sheet and
+     * resolves with the path it was saved to, or `null` when dismissed.
+     */
+    s13t(options?: S13TOptions): Promise<string | null>
+    s13tDocx(options?: S13TOptions): Promise<string | null>
+  }
+  readonly imports: {
+    s13tSelectAndPreview(): Promise<S13TImportPreview | null>
+    s13tExecute(preview: S13TImportPreview): Promise<S13TImportResult>
   }
   readonly workLogs: {
     listFor(blockId: string): Promise<WorkLog[]>

@@ -97,3 +97,16 @@ export interface Session {
   readonly user: PublisherBrief
   readonly congregation: Congregation
 }
+
+/**
+ * One block work log record for the publisher's work history timeline (`PublisherWorkHistoryItemOut`).
+ */
+export interface PublisherWorkHistoryItem {
+  readonly id: string
+  readonly blockId: string
+  readonly blockNumber: number
+  readonly territoryId: string
+  readonly territoryName: string
+  readonly workedAt: Date
+  readonly createdAt?: Date
+}

@@ -150,11 +150,28 @@ describe('searchTerritories', () => {
   })
 
   it('keeps the original order between equally good matches', () => {
-    const santaHelena8 = makeTerritory({ id: 'territory-4', name: 'Santa Helena - N 8' })
+    const santaHelena8 = makeTerritory({ id: 'territory-4', name: 'Santa Helena - N 8' });
 
     expect(searchTerritories([santaHelena7, santaHelena8], 'santa helena')).toEqual([
       santaHelena7,
-      santaHelena8
-    ])
-  })
-})
+      santaHelena8,
+    ]);
+  });
+
+  it('finds territories containing a queried block number', () => {
+    const withBlock4 = makeTerritory({
+      id: 'territory-block4',
+      name: 'Vila Nova',
+      blocks: [{ id: 'b-4', number: 4, polygon: [] }],
+    });
+    const withBlock10 = makeTerritory({
+      id: 'territory-block10',
+      name: 'Jardim Primavera',
+      blocks: [{ id: 'b-10', number: 10, polygon: [] }],
+    });
+
+    expect(searchTerritories([withBlock4, withBlock10], '4')).toEqual([withBlock4]);
+    expect(searchTerritories([withBlock4, withBlock10], 'quadra 4')).toEqual([withBlock4]);
+    expect(searchTerritories([withBlock4, withBlock10], 'q10')).toEqual([withBlock10]);
+  });
+});

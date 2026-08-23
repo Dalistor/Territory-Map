@@ -129,6 +129,16 @@ export function assignmentIsOpen(assignment: Assignment): boolean {
 }
 
 /**
+ * Returns the Service Year (Ano de Serviço) for a given date.
+ * The Service Year begins on September 1st (month 8, 0-indexed) of the previous calendar year
+ * and ends on August 31st (month 7, 0-indexed) of the service year.
+ * E.g., September 1, 2025 belongs to Service Year 2026; August 31, 2026 belongs to Service Year 2026.
+ */
+export function getServiceYear(date: Date = new Date()): number {
+  return date.getMonth() >= 8 ? date.getFullYear() + 1 : date.getFullYear()
+}
+
+/**
  * Whether the admin still has a code to hand over. `now` equal to
  * `accessCodeExpiresAt` counts as expired, not live — the same strict
  * `isAfter` semantics `Publisher.hasLiveCode` uses on the Dart side.

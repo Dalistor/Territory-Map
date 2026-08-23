@@ -12,20 +12,52 @@
  */
 
 :root {
-  --color-primary: #1565c0;
-  --color-primary-dark: #0d47a1;
-  --color-danger: #c62828;
-  --color-text: #1a1a1a;
-  --color-text-muted: #5f6368;
-  --color-border: #d7dbe0;
+  --color-primary: #1e40af;
+  --color-primary-dark: #1e3a8a;
+  --color-primary-light: #eff6ff;
+  --color-accent: #2563eb;
+  --color-danger: #dc2626;
+  --color-success: #16a34a;
+  --color-success-light: #f0fdf4;
+  --color-warning: #d97706;
+  --color-warning-light: #fffbeb;
+  --color-text: #0f172a;
+  --color-text-muted: #64748b;
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
   --color-surface: #ffffff;
-  --color-background: #f4f6f8;
+  --color-surface-subtle: #f8fafc;
+  --color-background: #f1f5f9;
   --radius: 8px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
   color-scheme: light;
 }
 
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
 }
 
 html,
@@ -95,6 +127,7 @@ a {
 header {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 12px 20px;
   background: var(--color-surface);
@@ -105,6 +138,7 @@ header {
 header h1,
 header h2 {
   flex: 1;
+  min-width: 200px;
   margin: 0;
   font-size: 1.1rem;
 }
@@ -140,6 +174,7 @@ main > div:has(> .leaflet-container) {
   width: 100%;
   border-radius: var(--radius);
   border: 1px solid var(--color-border);
+  overflow: hidden;
 }
 
 /* HomeScreen: territory panel on the left, map filling everything else.
@@ -212,6 +247,9 @@ li {
 li > span:first-child {
   font-weight: 600;
   margin-right: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* HomeScreen's territory row -- who it is designated to, when it is. A soft
@@ -227,7 +265,8 @@ li > span:first-child {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 160px;
+  max-width: 140px;
+  flex-shrink: 0;
 }
 
 form {
@@ -248,19 +287,27 @@ input,
 select,
 textarea {
   font: inherit;
-  padding: 8px 10px;
+  padding: 8px 12px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-surface);
   color: var(--color-text);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 input:focus,
 select:focus,
-textarea:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
 button:focus-visible {
   outline: 2px solid var(--color-primary);
-  outline-offset: 1px;
+  outline-offset: 2px;
 }
 
 input[aria-invalid='true'] {
@@ -275,10 +322,21 @@ button {
   background: var(--color-surface);
   color: var(--color-text);
   cursor: pointer;
+  font-weight: 500;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.05s ease;
 }
 
 button:hover:not(:disabled) {
   background: var(--color-background);
+  border-color: var(--color-border-strong);
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 button:disabled {
@@ -297,12 +355,16 @@ button[type='submit'],
   background: var(--color-primary);
   border-color: var(--color-primary-dark);
   color: #fff;
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
 }
 
 form button[type='submit']:hover:not(:disabled),
 button[type='submit']:hover:not(:disabled),
 .button-primary:hover:not(:disabled) {
   background: var(--color-primary-dark);
+  border-color: var(--color-primary-dark);
+  box-shadow: var(--shadow-md);
 }
 
 [role='alert'] {
@@ -311,6 +373,7 @@ button[type='submit']:hover:not(:disabled),
   background: #fdecea;
   border: 1px solid var(--color-danger);
   color: #7f1d1d;
+  font-size: 0.9rem;
 }
 
 [role='note'] {
@@ -319,6 +382,18 @@ button[type='submit']:hover:not(:disabled),
   background: #e8f0fe;
   border: 1px solid #90b4f5;
   color: #1a3a6b;
+  font-size: 0.9rem;
+}
+
+/* Success status confirmation notice (e.g., BlockEditor saved, export saved) */
+main > p[role='status'] {
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  background: var(--color-success-light);
+  border: 1px solid #bbf7d0;
+  color: #15803d;
+  font-weight: 500;
+  font-size: 0.9rem;
 }
 
 /* A true modal: centred in the viewport and dimmed behind, with no extra
@@ -334,17 +409,18 @@ button[type='submit']:hover:not(:disabled),
   margin: auto;
   width: fit-content;
   height: fit-content;
-  max-width: 420px;
+  max-width: min(440px, calc(100vw - 32px));
   max-height: calc(100vh - 48px);
-  overflow: auto;
-  padding: 20px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 22px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   box-shadow:
     0 0 0 9999px rgba(15, 23, 32, 0.45),
     0 24px 48px rgba(0, 0, 0, 0.25);
-  z-index: 1000;
+  z-index: 2000;
 }
 
 [role='menu'] {
@@ -353,6 +429,28 @@ button[type='submit']:hover:not(:disabled),
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* When a menu is expanded inside a list item row, span full width cleanly */
+li > [role='menu'] {
+  width: 100%;
+  margin-top: 6px;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+/* Reset the generic `li` card styling inside nested menus */
+[role='menu'] li {
+  display: block;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 [role='menu'] button {
@@ -360,11 +458,29 @@ button[type='submit']:hover:not(:disabled),
   width: 100%;
   text-align: left;
   border: none;
+  border-radius: 6px;
+  padding: 8px 12px;
   background: transparent;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--color-text);
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
 [role='menu'] button:hover:not(:disabled) {
   background: var(--color-background);
+  color: var(--color-primary);
+}
+
+[role='menu'] button.block-action-danger {
+  color: var(--color-danger);
+}
+
+[role='menu'] button.block-action-danger:hover:not(:disabled) {
+  background: #fef2f2;
+  color: var(--color-danger);
 }
 
 /* HomeScreen's block-tap action list -- the same centred-modal treatment as
@@ -376,16 +492,19 @@ button[type='submit']:hover:not(:disabled),
   margin: auto;
   width: fit-content;
   height: fit-content;
-  max-width: 360px;
+  max-width: min(380px, calc(100vw - 32px));
   min-width: 280px;
-  padding: 8px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 10px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   box-shadow:
     0 0 0 9999px rgba(15, 23, 32, 0.45),
     0 24px 48px rgba(0, 0, 0, 0.25);
-  z-index: 1000;
+  z-index: 2000;
 }
 
 .block-actions-modal-header {
@@ -404,13 +523,22 @@ button[type='submit']:hover:not(:disabled),
 }
 
 .icon-button {
-  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   border: none;
   background: transparent;
   font-size: 1.2rem;
   line-height: 1;
   color: var(--color-text-muted);
   border-radius: 50%;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
 .icon-button:hover:not(:disabled) {
@@ -419,9 +547,9 @@ button[type='submit']:hover:not(:disabled),
 }
 
 .block-action {
-  padding: 10px;
+  padding: 10px 12px;
   border-radius: 8px;
-  font-size: 0.95rem;
+  font-size: 0.92rem;
 }
 
 .block-action-danger {
@@ -619,7 +747,8 @@ button[type='submit']:hover:not(:disabled),
    then the actions. Wider than the default dialog because each history line
    carries a name, two dates and a button on one row. */
 .assignment-panel {
-  max-width: 480px;
+  width: 100%;
+  max-width: min(500px, calc(100vw - 32px));
 }
 
 /* The three section labels inside the panel ("Designação atual",
@@ -732,12 +861,13 @@ button[type='submit']:hover:not(:disabled),
   font-size: 0.9rem;
 }
 
-/* The name filter above the list (spec 0006, Task 07). */
 .publishers-search {
   display: block;
   width: 100%;
   max-width: 360px;
-  margin: 12px 0 4px;
+  margin: 12px 0 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
 }
 
 .avatar {
@@ -832,47 +962,57 @@ button[type='submit']:hover:not(:disabled),
 }
 
 .app-sidebar {
-  width: 220px;
+  width: 230px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   background: var(--color-surface);
   border-right: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
 }
 
 .sidebar-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 16px;
+  gap: 12px;
+  padding: 18px 16px;
   border-bottom: 1px solid var(--color-border);
 }
 
 /* The pin logo. Its source has the logo's #f5f5f5 background baked in, so
    the rounded corners make it read as a small app tile. */
 .sidebar-header img {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   flex-shrink: 0;
-  border-radius: 8px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
 }
 
 .sidebar-header-text {
-  min-width: 0; /* let long congregation names shrink inside the 220px sidebar */
+  min-width: 0; /* let long congregation names shrink inside the 230px sidebar */
 }
 
 /* App.tsx renders the congregation as <strong> name + <span> city. */
 .sidebar-header strong {
   display: block;
-  font-size: 1rem;
+  font-size: 0.95rem;
+  font-weight: 700;
   line-height: 1.3;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebar-header span {
   display: block;
   margin-top: 2px;
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebar-nav {
@@ -881,32 +1021,38 @@ button[type='submit']:hover:not(:disabled),
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 10px 8px;
+  gap: 4px;
+  padding: 12px 10px;
 }
 
 .sidebar-nav button {
   width: 100%;
   text-align: left;
-  padding: 9px 12px;
+  padding: 10px 14px;
   border: none;
   border-radius: var(--radius);
   background: transparent;
   color: var(--color-text);
+  font-size: 0.92rem;
+  font-weight: 500;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
 .sidebar-nav button:hover:not(:disabled) {
-  background: var(--color-background);
+  background: var(--color-surface-subtle);
+  color: var(--color-primary);
 }
 
 .sidebar-nav button.is-active {
-  background: #e8f0fe;
-  color: var(--color-primary-dark);
-  font-weight: 600;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-weight: 700;
 }
 
 .sidebar-footer {
-  padding: 10px 8px;
+  padding: 12px 10px;
   border-top: 1px solid var(--color-border);
 }
 
@@ -918,11 +1064,94 @@ button[type='submit']:hover:not(:disabled),
   border-radius: var(--radius);
   background: transparent;
   color: var(--color-text-muted);
+  font-size: 0.88rem;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
 }
 
 .sidebar-footer button:hover:not(:disabled) {
-  background: var(--color-background);
+  background: #fef2f2;
   color: var(--color-danger);
+}
+
+/* Header action buttons row */
+.header-title-block {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* KPI Summary Cards Grid */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.kpi-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.kpi-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.kpi-card-active {
+  border-left: 3px solid var(--color-primary);
+}
+
+.kpi-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.kpi-value {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kpi-card-active .kpi-value {
+  color: var(--color-primary);
+}
+
+/* S-13-T Export Modal */
+.export-modal {
+  width: 100%;
+  min-width: 0;
+  max-width: min(460px, calc(100vw - 32px));
+}
+
+.export-modal select {
+  width: 100%;
+  margin-top: 4px;
 }
 
 /* Where the routed screens render, to the right of the sidebar. */
@@ -1007,6 +1236,8 @@ button[type='submit']:hover:not(:disabled),
   width: 100%;
   max-width: 360px;
   margin: 4px 0 12px;
+  padding: 8px 14px;
+  border-radius: 999px;
 }
 
 /* TerritorySettingsScreen (spec 0009, Task 09): one readable column of
@@ -1089,14 +1320,19 @@ button[type='submit']:hover:not(:disabled),
   color: var(--color-text-muted);
   font-size: 0.8rem;
   font-weight: 600;
-  padding: 6px 8px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-subtle);
 }
 
 .settings-blocks td {
-  padding: 6px 8px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--color-border);
   vertical-align: top;
+}
+
+.settings-blocks tbody tr:hover td {
+  background: var(--color-surface-subtle);
 }
 
 /* The number itself is the control that opens the row: a button that looks
@@ -1164,3 +1400,102 @@ button[type='submit']:hover:not(:disabled),
   padding: 6px 0;
   border-bottom: 1px solid var(--color-border);
 }
+
+/* S-13-T Import Preview Modal */
+.import-modal {
+  width: 100%;
+  min-width: 0;
+  max-width: min(680px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+}
+
+.import-preview-list {
+  flex: 1;
+  min-height: 0;
+  max-height: 340px;
+  overflow-y: auto;
+  margin: 14px 0;
+  padding: 10px;
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.import-preview-list h3 {
+  margin: 0 0 8px;
+  font-size: 0.88rem;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.import-preview-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.import-preview-list li {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.import-preview-list li.is-unmatched {
+  border-left: 3px solid var(--color-warning);
+  background: var(--color-warning-light);
+}
+
+.import-preview-list li.is-matched {
+  border-left: 3px solid var(--color-success);
+}
+
+.import-preview-terr-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.import-preview-assignments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.import-asg-tag {
+  background: var(--color-primary-light);
+  color: var(--color-primary-dark);
+  font-size: 0.8rem;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.import-empty-hint {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+/* Responsive adjustments */
+@media (max-width: 860px) {
+  .home-split,
+  .editor-split {
+    flex-direction: column;
+  }
+
+  .home-panel,
+  .editor-panel {
+    width: 100%;
+    max-height: 320px;
+  }
+}
+

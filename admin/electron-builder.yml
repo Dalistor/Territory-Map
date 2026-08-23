@@ -25,6 +25,8 @@ asarUnpack:
 extraResources:
   - from: .env
     to: .env
+  - from: resources/S-13_T_template.docx
+    to: resources/S-13_T_template.docx
 win:
   executableName: admin
   target:

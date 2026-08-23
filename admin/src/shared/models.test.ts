@@ -4,6 +4,7 @@ import {
   blockTimeSinceWorked,
   blockWasNeverWorked,
   compareTerritoriesByNumber,
+  getServiceYear,
   publisherHasLiveCode,
   publisherIsPending,
   territoryNumber,
@@ -149,6 +150,20 @@ describe('assignmentIsOpen', () => {
     const assignment = makeAssignment({ completedAt: new Date('2026-08-15T00:00:00.000Z') })
 
     expect(assignmentIsOpen(assignment)).toBe(false)
+  })
+})
+
+describe('getServiceYear', () => {
+  it('calculates service year correctly for August (end of service year)', () => {
+    expect(getServiceYear(new Date('2026-08-31T12:00:00Z'))).toBe(2026)
+  })
+
+  it('calculates service year correctly for September (start of next service year)', () => {
+    expect(getServiceYear(new Date('2025-09-01T12:00:00Z'))).toBe(2026)
+  })
+
+  it('calculates service year correctly for January (mid-service year)', () => {
+    expect(getServiceYear(new Date('2026-01-15T12:00:00Z'))).toBe(2026)
   })
 })
 

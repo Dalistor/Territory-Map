@@ -5,20 +5,15 @@
 // (`saveSession`, `data/session-store.ts`, Task 19). Navigation itself is not
 // wired here -- `onActivated` is a prop so this component renders and tests
 // without a real `NavigationContainer`; Task 26 supplies the real callback.
-//
-// This screen has `headerShown: false` (App.tsx), so it is the one screen
-// that must handle the status-bar inset itself -- hence the
-// `react-native-safe-area-context` SafeAreaView (the native-stack header
-// covers that job on every other screen).
 import { useState } from 'react';
-import { Image, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import logo from '../assets/logo.png';
 import { createApiClient } from '../../data/api-client';
 import { saveSession } from '../../data/session-store';
 import type { Session } from '../../domain/models';
 import { PrimaryButton } from '../components/PrimaryButton';
-import { colors, spacing } from '../theme';
+import { colors, radius, shadows, spacing } from '../theme';
 
 /**
  * The server already answers an invalid, expired and already-redeemed code
@@ -40,6 +35,7 @@ export default function ActivationScreen({ onActivated }: ActivationScreenProps)
   const [accessCode, setAccessCode] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
 
   const trimmedCode = accessCode.trim();
 
@@ -59,86 +55,135 @@ export default function ActivationScreen({ onActivated }: ActivationScreenProps)
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.content}>
-        <Image
-          source={logo}
-          style={styles.logo}
-          resizeMode="contain"
-          accessibilityLabel="Territory Map"
-        />
-        <Text style={styles.subtitle}>
-          Digite o código de acesso que você recebeu de quem cuida dos territórios na congregação.
-        </Text>
-        <Text style={styles.label}>Código de acesso</Text>
-        <TextInput
-          style={styles.input}
-          accessibilityLabel="Código de acesso"
-          autoCapitalize="characters"
-          autoCorrect={false}
-          placeholder="ABCDEFGH"
-          placeholderTextColor={colors.textSecondary}
-          editable={!busy}
-          value={accessCode}
-          onChangeText={setAccessCode}
-        />
-        {errorMessage !== null ? <Text style={styles.error}>{errorMessage}</Text> : null}
-        <View style={styles.buttonHolder}>
-          <PrimaryButton
-            title="Confirmar"
-            onPress={handleConfirm}
-            disabled={trimmedCode === ''}
-            busy={busy}
-          />
-        </View>
-      </View>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.keyboardView}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.card}>
+            <Image
+              source={logo}
+              style={styles.logo}
+              resizeMode="contain"
+              accessibilityLabel="Territory Map"
+            />
+            <Text style={styles.title}>Territory Map</Text>
+            <Text style={styles.subtitle}>
+              Digite o código de acesso que você recebeu de quem cuida dos territórios na congregação.
+            </Text>
+            <Text style={styles.label}>Código de acesso</Text>
+            <TextInput
+              style={[styles.input, isFocused && styles.inputFocused]}
+              accessibilityLabel="Código de acesso"
+              autoCapitalize="characters"
+              autoCorrect={false}
+              placeholder="ABCDEFGH"
+              placeholderTextColor={colors.textMuted}
+              editable={!busy}
+              value={accessCode}
+              onChangeText={setAccessCode}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
+            />
+            {errorMessage !== null ? <Text style={styles.error}>{errorMessage}</Text> : null}
+            <View style={styles.buttonHolder}>
+              <PrimaryButton
+                title="Confirmar"
+                onPress={handleConfirm}
+                disabled={trimmedCode === ''}
+                busy={busy}
+              />
+            </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.background },
-  content: { flex: 1, justifyContent: 'center', padding: spacing.lg },
-  logo: {
-    // The source PNG is 640x749 (pin + wordmark); the image's own light-gray
-    // background (#f5f5f5) sits close enough to colors.background (#f5f7fa)
-    // to blend without any treatment.
-    width: 180,
-    height: 210,
-    alignSelf: 'center',
-    marginBottom: spacing.sm,
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.background,
   },
-  subtitle: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: spacing.xl,
+  keyboardView: {
+    flex: 1,
   },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    padding: spacing.lg,
   },
-  input: {
+  card: {
     backgroundColor: colors.surface,
+    borderRadius: radius.xl,
+    padding: spacing.xl,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
+    ...shadows.md,
+  },
+  logo: {
+    width: 140,
+    height: 160,
+    alignSelf: 'center',
+    marginBottom: spacing.xs,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: spacing.xs,
+    letterSpacing: -0.5,
+  },
+  subtitle: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+  },
+  label: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  input: {
+    backgroundColor: colors.surfaceSubtle,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: radius.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: 12,
-    fontSize: 20,
+    paddingVertical: 14,
+    fontSize: 22,
     letterSpacing: 4,
     color: colors.textPrimary,
     textAlign: 'center',
+    fontWeight: '700',
+  },
+  inputFocused: {
+    borderColor: colors.primary,
+    backgroundColor: colors.surface,
   },
   error: {
     marginTop: spacing.md,
     color: colors.danger,
     backgroundColor: colors.dangerSurface,
-    borderRadius: 8,
+    borderRadius: radius.md,
     padding: spacing.md,
     lineHeight: 20,
+    borderWidth: 1,
+    borderColor: colors.dangerBorder,
+    fontSize: 13,
   },
-  buttonHolder: { marginTop: spacing.lg },
+  buttonHolder: {
+    marginTop: spacing.lg,
+  },
 });

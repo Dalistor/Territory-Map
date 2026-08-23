@@ -80,3 +80,16 @@ class WorkedTerritoryOut(OutSchema):
     id: UUID
     name: str
     last_worked_at: datetime
+
+
+class PublisherWorkHistoryItemOut(OutSchema):
+    """One block work log record for the publisher's history timeline."""
+
+    id: UUID
+    block_id: UUID
+    block_number: int
+    territory_id: UUID
+    territory_name: str
+    worked_at: datetime
+    created_at: datetime
+

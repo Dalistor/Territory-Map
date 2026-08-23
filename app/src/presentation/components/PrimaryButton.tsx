@@ -1,9 +1,9 @@
-// The one filled-button look the app uses, so "a button" is styled in a
-// single place. Keeps `accessibilityRole="button"` and the `disabled` state
-// exactly as the bare `Pressable`s it replaces exposed them -- the screen
-// tests query by that role and by the title text.
-import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
-import { colors, spacing } from '../theme';
+// The primary button component with modern look, rounded corners and subtle shadow.
+// Keeps accessibilityRole="button" and disabled state compatible with existing tests.
+import { ActivityIndicator, Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from 'react-native';
+import { colors, radius, shadows, spacing } from '../theme';
+
+export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'surface';
 
 export interface PrimaryButtonProps {
   readonly title: string;
@@ -11,6 +11,9 @@ export interface PrimaryButtonProps {
   readonly disabled?: boolean;
   /** Shows a spinner next to the title and blocks presses while a request is in flight. */
   readonly busy?: boolean;
+  readonly variant?: ButtonVariant;
+  readonly icon?: string;
+  readonly style?: StyleProp<ViewStyle>;
 }
 
 export function PrimaryButton({
@@ -18,8 +21,17 @@ export function PrimaryButton({
   onPress,
   disabled,
   busy,
+  variant = 'primary',
+  style,
 }: PrimaryButtonProps): React.JSX.Element {
   const blocked = disabled === true || busy === true;
+
+  const isOutline = variant === 'outline';
+  const isSecondary = variant === 'secondary';
+  const isSurface = variant === 'surface';
+
+  const spinnerColor = isOutline || isSurface ? colors.primary : colors.onPrimary;
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -28,12 +40,31 @@ export function PrimaryButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
+        isSecondary && styles.buttonSecondary,
+        isOutline && styles.buttonOutline,
+        isSurface && styles.buttonSurface,
         blocked && styles.buttonDisabled,
-        pressed && !blocked && styles.buttonPressed,
+        pressed && !blocked && (
+          isOutline
+            ? styles.buttonOutlinePressed
+            : isSurface
+            ? styles.buttonSurfacePressed
+            : styles.buttonPressed
+        ),
+        style,
       ]}
     >
-      {busy === true && <ActivityIndicator color={colors.onPrimary} size="small" />}
-      <Text style={styles.title}>{title}</Text>
+      {busy === true && <ActivityIndicator color={spinnerColor} size="small" />}
+      <Text
+        style={[
+          styles.title,
+          (isOutline || isSurface) && styles.titleOutline,
+          isSecondary && styles.titleSecondary,
+          blocked && styles.titleDisabled,
+        ]}
+      >
+        {title}
+      </Text>
     </Pressable>
   );
 }
@@ -45,13 +76,56 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.sm,
     backgroundColor: colors.primary,
-    borderRadius: 8,
+    borderRadius: radius.md,
     paddingVertical: 14,
     paddingHorizontal: spacing.lg,
+    ...shadows.sm,
   },
-  buttonPressed: { backgroundColor: colors.primaryPressed },
-  buttonDisabled: { backgroundColor: colors.disabledSurface },
-  title: { color: colors.onPrimary, fontSize: 16, fontWeight: '600' },
+  buttonSecondary: {
+    backgroundColor: colors.primaryLight,
+  },
+  buttonOutline: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    elevation: 0,
+    shadowOpacity: 0,
+  },
+  buttonSurface: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  buttonPressed: {
+    backgroundColor: colors.primaryPressed,
+  },
+  buttonOutlinePressed: {
+    backgroundColor: colors.primaryLight,
+  },
+  buttonSurfacePressed: {
+    backgroundColor: colors.surfaceSubtle,
+  },
+  buttonDisabled: {
+    backgroundColor: colors.disabledSurface,
+    borderColor: colors.disabledSurface,
+    elevation: 0,
+    shadowOpacity: 0,
+  },
+  title: {
+    color: colors.onPrimary,
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  titleOutline: {
+    color: colors.primary,
+  },
+  titleSecondary: {
+    color: colors.primary,
+  },
+  titleDisabled: {
+    color: colors.disabledText,
+  },
 });
 
 export default PrimaryButton;

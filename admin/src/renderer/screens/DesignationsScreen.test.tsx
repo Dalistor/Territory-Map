@@ -110,7 +110,18 @@ function makeApi(overrides: Partial<IpcApi> = {}): IpcApi {
     },
     exports: {
       assignments: vi.fn().mockResolvedValue(null),
+      s13t: vi.fn().mockResolvedValue(null),
+      s13tDocx: vi.fn().mockResolvedValue(null),
       ...overrides.exports
+    },
+    imports: {
+      s13tSelectAndPreview: vi.fn().mockResolvedValue(null),
+      s13tExecute: vi.fn().mockResolvedValue({
+        importedAssignmentsCount: 0,
+        importedPublishersCount: 0,
+        errors: []
+      }),
+      ...overrides.imports
     },
     workLogs: {
       listFor: vi.fn(),
@@ -485,7 +496,11 @@ describe('DesignationsScreen exporting to Excel', () => {
         update: vi.fn(),
         delete: vi.fn()
       },
-      exports: { assignments: assignmentsExport }
+      exports: {
+        assignments: assignmentsExport,
+        s13t: vi.fn().mockResolvedValue(null),
+        s13tDocx: vi.fn().mockResolvedValue(null)
+      }
     })
   }
 
@@ -526,5 +541,73 @@ describe('DesignationsScreen exporting to Excel', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível salvar.')
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('opens S-13-T modal and exports with selected format and service year', async () => {
+    const s13tMock = vi.fn().mockResolvedValue('/Users/ana/S-13_T-2026.docx')
+    vi.stubGlobal(
+      'api',
+      makeApi({ exports: { assignments: vi.fn(), s13t: s13tMock, s13tDocx: vi.fn() } })
+    )
+    const user = userEvent.setup()
+
+    render(<DesignationsScreen />)
+    await user.click(await screen.findByRole('button', { name: /exportar s-13-t/i }))
+
+    expect(screen.getByRole('dialog', { name: /exportar formulário s-13-t/i })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /gerar s-13-t \(docx\)/i }))
+
+    expect(s13tMock).toHaveBeenCalledWith(expect.objectContaining({ format: 'docx' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('/Users/ana/S-13_T-2026.docx')
+  })
+
+  it('handles S-13-T import preview and confirmation', async () => {
+    const preview = {
+      fileName: 'S-13_T-2026.docx',
+      serviceYear: 2026,
+      totalTerritoriesFound: 1,
+      matchedTerritoriesCount: 1,
+      totalAssignmentsCount: 1,
+      territories: [
+        {
+          territoryNumberOrName: 'Centro',
+          matchedTerritoryId: 'territory-1',
+          assignments: [{ publisherName: 'Ana', startedAt: '10/01/2026', completedAt: null }]
+        }
+      ]
+    }
+    const selectMock = vi.fn().mockResolvedValue(preview)
+    const executeMock = vi.fn().mockResolvedValue({
+      importedAssignmentsCount: 1,
+      importedPublishersCount: 0,
+      errors: []
+    })
+
+    vi.stubGlobal(
+      'api',
+      makeApi({
+        imports: {
+          s13tSelectAndPreview: selectMock,
+          s13tExecute: executeMock
+        }
+      })
+    )
+    const user = userEvent.setup()
+
+    render(<DesignationsScreen />)
+    await user.click(await screen.findByRole('button', { name: /importar s-13-t/i }))
+
+    expect(selectMock).toHaveBeenCalledTimes(1)
+    expect(
+      await screen.findByRole('dialog', { name: /prévia da importação s-13-t/i })
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /confirmar e importar/i }))
+
+    expect(executeMock).toHaveBeenCalledWith(preview)
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      /importação concluída: 1 designações processadas/i
+    )
   })
 })

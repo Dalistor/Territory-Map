@@ -147,6 +147,10 @@ class WorkLogService:
         """Every territory this publisher has worked in -- the app dashboard's list."""
         return self._work_logs.list_worked_territories(user.id)
 
+    def list_user_history(self, user: User) -> list[tuple[BlockWorkLog, int, UUID, str]]:
+        """Every block this publisher has worked in -- the app dashboard's detailed history list."""
+        return self._work_logs.list_by_user_with_details(user.id)
+
     def delete(self, congregation_id: UUID, log_id: UUID) -> None:
         """Remove one recorded visit, on the admin's word.
 

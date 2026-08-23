@@ -34,7 +34,12 @@ from app.schemas.block import BlockOut
 from app.schemas.geo import LatLngOut
 from app.schemas.territory import TerritoryOut
 from app.schemas.user import UserBriefOut
-from app.schemas.work_log import WorkedIn, WorkedTerritoryOut, WorkLogOut
+from app.schemas.work_log import (
+    PublisherWorkHistoryItemOut,
+    WorkedIn,
+    WorkedTerritoryOut,
+    WorkLogOut,
+)
 from app.services.block import BlockService
 from app.services.territory import TerritoryService
 from app.services.work_log import WorkLogService
@@ -171,4 +176,24 @@ def list_worked_territories(user: AppUser, work_logs: WorkLogs) -> list[WorkedTe
     return [
         WorkedTerritoryOut(id=territory_id, name=name, last_worked_at=last_worked_at)
         for territory_id, name, last_worked_at in work_logs.list_worked_territories(user)
+    ]
+
+
+@router.get("/work-history")
+def list_work_history(
+    user: AppUser,
+    work_logs: WorkLogs,
+) -> list[PublisherWorkHistoryItemOut]:
+    """The publisher's detailed log of worked blocks, most recent first."""
+    return [
+        PublisherWorkHistoryItemOut(
+            id=log.id,
+            block_id=log.block_id,
+            block_number=block_number,
+            territory_id=territory_id,
+            territory_name=territory_name,
+            worked_at=log.worked_at,
+            created_at=log.created_at,
+        )
+        for log, block_number, territory_id, territory_name in work_logs.list_user_history(user)
     ]

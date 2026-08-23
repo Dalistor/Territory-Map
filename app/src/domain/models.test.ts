@@ -58,3 +58,21 @@ describe('Block status override', () => {
     ).toEqual(['overdue', 'never']);
   });
 });
+
+describe('PublisherWorkHistoryItem', () => {
+  it('carries work history fields correctly', () => {
+    const workedAt = new Date('2026-08-20T10:00:00Z');
+    const item = {
+      id: 'log-1',
+      blockId: 'b-1',
+      blockNumber: 4,
+      territoryId: 't-1',
+      territoryName: 'Território 01',
+      workedAt,
+    };
+
+    expect(item.blockNumber).toBe(4);
+    expect(item.territoryName).toBe('Território 01');
+    expect(item.workedAt).toBe(workedAt);
+  });
+});

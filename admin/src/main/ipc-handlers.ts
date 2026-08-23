@@ -5,25 +5,31 @@
 // fan-out and delegation, is error serialization (see `serializeError`
 // below), because that is an IPC-boundary concern, not a domain one.
 
+import { readFile, writeFile } from 'node:fs/promises'
+import { basename } from 'node:path'
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import {
   IPC_CHANNELS,
   type BlockCreateInput,
   type BlockUpdateInput,
+  type S13TImportPreview,
+  type S13TImportResult,
+  type S13TOptions,
   type SessionCredentials,
   type TerritoryCreateInput,
   type TerritoryUpdateInput,
   type SerializedIpcError
 } from '../shared/ipc-contract'
-import type { Territory } from '../shared/models'
+import { getServiceYear, territoryNumber, type Territory } from '../shared/models'
 import { ApiErrorException } from '../shared/api-errors'
 import type { ApiClient } from './api-client'
 import type { Session } from './session'
 import type { Geocoder } from './geocode'
-import { buildAssignmentsWorkbook } from './excel-export'
+import { buildAssignmentsWorkbook, buildS13TWorkbook } from './excel-export'
+import { buildS13TDocx, parseS13TDocx } from './docx-handler'
 
 /**
- * The slice of Electron's `dialog` this file uses. Narrowing it to one method
+ * The slice of Electron's `dialog` this file uses. Narrowing it to these methods
  * is what lets the tests hand in a stub and never open a real window --
  * `session`, `api` and `geocoder` are injected for the same reason.
  */
@@ -33,6 +39,11 @@ export interface SaveDialog {
     defaultPath?: string
     filters?: { name: string; extensions: string[] }[]
   }): Promise<{ canceled: boolean; filePath?: string }>
+  showOpenDialog?(options: {
+    title?: string
+    filters?: { name: string; extensions: string[] }[]
+    properties?: ('openFile' | 'multiSelections')[]
+  }): Promise<{ canceled: boolean; filePaths: string[] }>
 }
 
 export interface RegisterIpcHandlersOptions {
@@ -209,6 +220,191 @@ export function registerIpcHandlers({
     await workbook.xlsx.writeFile(filePath)
     return filePath
   })
+
+  handle(IPC_CHANNELS.exportS13T, async (options?: S13TOptions): Promise<string | null> => {
+    if (options?.format === 'docx') {
+      return exportS13TDocxHandler(options)
+    }
+
+    const targetServiceYear = options?.serviceYear ?? getServiceYear()
+
+    const rows = await session.run(async () => {
+      const territories = await listTerritoriesWithBlocks()
+      return Promise.all(
+        territories.map(async (territory) => ({
+          territory,
+          assignments: await api.listAssignments(territory.id)
+        }))
+      )
+    })
+
+    const workbook = buildS13TWorkbook({
+      congregation: session.congregation,
+      serviceYear: targetServiceYear,
+      territories: rows
+    })
+
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: 'Exportar Formulário S-13-T (Excel)',
+      defaultPath: `S-13_T-${targetServiceYear}.xlsx`,
+      filters: [{ name: 'Planilha do Excel', extensions: ['xlsx'] }]
+    })
+    if (canceled || filePath === undefined || filePath === '') return null
+
+    await workbook.xlsx.writeFile(filePath)
+    return filePath
+  })
+
+  async function exportS13TDocxHandler(options?: S13TOptions): Promise<string | null> {
+    const targetServiceYear = options?.serviceYear ?? getServiceYear()
+
+    const rows = await session.run(async () => {
+      const territories = await listTerritoriesWithBlocks()
+      return Promise.all(
+        territories.map(async (territory) => ({
+          territory,
+          assignments: await api.listAssignments(territory.id)
+        }))
+      )
+    })
+
+    const docxBuffer = await buildS13TDocx({
+      congregation: session.congregation,
+      serviceYear: targetServiceYear,
+      territories: rows
+    })
+
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: 'Exportar Formulário S-13-T (Word)',
+      defaultPath: `S-13_T-${targetServiceYear}.docx`,
+      filters: [{ name: 'Documento Word', extensions: ['docx'] }]
+    })
+    if (canceled || filePath === undefined || filePath === '') return null
+
+    await writeFile(filePath, docxBuffer)
+    return filePath
+  }
+
+  handle(IPC_CHANNELS.exportS13TDocx, exportS13TDocxHandler)
+
+  handle(IPC_CHANNELS.importS13TSelectAndPreview, async (): Promise<S13TImportPreview | null> => {
+    if (!dialog.showOpenDialog) {
+      throw new Error('showOpenDialog is not available')
+    }
+
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: 'Selecionar arquivo S-13-T',
+      filters: [{ name: 'Documentos Word', extensions: ['docx'] }],
+      properties: ['openFile']
+    })
+
+    if (canceled || filePaths.length === 0 || !filePaths[0]) {
+      return null
+    }
+
+    const filePath = filePaths[0]
+    const fileBuffer = await readFile(filePath)
+    const parsed = await parseS13TDocx(fileBuffer)
+
+    const territories = await session.run(async () => listTerritoriesWithBlocks())
+
+    let matchedCount = 0
+    let totalAssignments = 0
+
+    const previewTerritories = parsed.territories.map((parsedTerr) => {
+      const parsedNum = territoryNumber(parsedTerr.territoryNumberOrName)
+      const matched = territories.find((t) => {
+        if (parsedNum !== null && territoryNumber(t.name) === parsedNum) {
+          return true
+        }
+        return t.name.trim().toLowerCase() === parsedTerr.territoryNumberOrName.trim().toLowerCase()
+      })
+
+      if (matched) {
+        matchedCount++
+      }
+      totalAssignments += parsedTerr.assignments.length
+
+      return {
+        territoryNumberOrName: parsedTerr.territoryNumberOrName,
+        matchedTerritoryId: matched ? matched.id : null,
+        lastCompletedDate: parsedTerr.lastCompletedDate,
+        assignments: parsedTerr.assignments
+      }
+    })
+
+    return {
+      fileName: basename(filePath),
+      serviceYear: parsed.serviceYear,
+      congregationName: parsed.congregationName,
+      territories: previewTerritories,
+      totalTerritoriesFound: parsed.territories.length,
+      matchedTerritoriesCount: matchedCount,
+      totalAssignmentsCount: totalAssignments
+    }
+  })
+
+  handle(
+    IPC_CHANNELS.importS13TExecute,
+    async (preview: S13TImportPreview): Promise<S13TImportResult> => {
+      return session.run(async () => {
+        const existingPublishers = await api.listPublishers()
+        const publisherMap = new Map<string, string>()
+
+        for (const pub of existingPublishers) {
+          publisherMap.set(pub.name.trim().toLowerCase(), pub.id)
+        }
+
+        let importedAssignments = 0
+        let importedPublishers = 0
+        const errors: string[] = []
+
+        for (const terr of preview.territories) {
+          if (!terr.matchedTerritoryId) {
+            continue
+          }
+
+          for (const asg of terr.assignments) {
+            const pubName = asg.publisherName.trim()
+            if (!pubName) continue
+
+            const lower = pubName.toLowerCase()
+            let publisherId = publisherMap.get(lower)
+
+            if (!publisherId) {
+              try {
+                const created = await api.createPublisher(pubName)
+                publisherId = created.id
+                publisherMap.set(lower, created.id)
+                importedPublishers++
+              } catch (err) {
+                errors.push(`Erro ao criar publicador ${pubName}: ${String(err)}`)
+                continue
+              }
+            }
+
+            try {
+              await api.designate(terr.matchedTerritoryId, publisherId)
+              if (asg.completedAt) {
+                await api.completeAssignment(terr.matchedTerritoryId)
+              }
+              importedAssignments++
+            } catch (err) {
+              errors.push(
+                `Erro ao designar território ${terr.territoryNumberOrName} para ${pubName}: ${String(err)}`
+              )
+            }
+          }
+        }
+
+        return {
+          importedAssignmentsCount: importedAssignments,
+          importedPublishersCount: importedPublishers,
+          errors
+        }
+      })
+    }
+  )
 
   // Not a call to this app's own server -- no `session.run()`, same as
   // `sessionIsConfigured`/`sessionGetCongregation` above.

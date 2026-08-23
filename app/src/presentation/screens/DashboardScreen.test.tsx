@@ -163,4 +163,65 @@ describe('DashboardScreen', () => {
       { timeout: 3000 }
     )
   })
+
+  it('displays publisher greeting and stats in the hero card', async () => {
+    const session = makeSession({ user: { id: 'user-1', name: 'Ana' } })
+    const assigned = makeTerritory({ assignedUser: { id: 'user-1', name: 'Ana' } })
+    const apiClient = makeApiClient({
+      listTerritories: jest.fn().mockResolvedValue([assigned]),
+      listWorkedTerritories: jest.fn().mockResolvedValue([makeWorkedTerritory()]),
+    })
+
+    render(
+      <DashboardScreen session={session} apiClient={apiClient} onOpenMap={jest.fn()} onOpenFullMap={jest.fn()} />
+    )
+
+    await waitFor(
+      () => {
+        expect(screen.getByText('Olá, Ana')).toBeTruthy()
+      },
+      { timeout: 3000 }
+    )
+  })
+
+  it('switches to Histórico de Trabalho tab and displays detailed work history logs', async () => {
+    const session = makeSession({ user: { id: 'user-1', name: 'Ana' } })
+    const workedAt = new Date('2026-08-15T14:30:00Z')
+    const workHistory = [
+      {
+        id: 'log-1',
+        blockId: 'b-1',
+        blockNumber: 5,
+        territoryId: 't-1',
+        territoryName: 'Setor 5',
+        workedAt,
+      },
+    ]
+    const apiClient = {
+      ...makeApiClient(),
+      listWorkHistory: jest.fn().mockResolvedValue(workHistory),
+    }
+
+    render(
+      <DashboardScreen session={session} apiClient={apiClient} onOpenMap={jest.fn()} onOpenFullMap={jest.fn()} />
+    )
+
+    await waitFor(
+      () => {
+        expect(screen.getByText('Meus Territórios')).toBeTruthy()
+      },
+      { timeout: 3000 }
+    )
+
+    fireEvent.press(screen.getByText('Histórico de Trabalho'))
+
+    await waitFor(
+      () => {
+        expect(screen.getByText('Q5')).toBeTruthy()
+        expect(screen.getByText('Setor 5')).toBeTruthy()
+        expect(screen.getByText('✓ Feito')).toBeTruthy()
+      },
+      { timeout: 3000 }
+    )
+  })
 })

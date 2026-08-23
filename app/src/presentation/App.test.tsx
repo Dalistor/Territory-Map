@@ -120,6 +120,7 @@ function fakeApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     activate: jest.fn(),
     listTerritories: jest.fn().mockResolvedValue([]),
     listWorkedTerritories: jest.fn().mockResolvedValue([]),
+    listWorkHistory: jest.fn().mockResolvedValue([]),
     markBlockWorked: jest.fn(),
     ...overrides,
   }
