@@ -108,7 +108,11 @@ class BlockWorkLogRepository:
         return [(row[0], row[1], row[2]) for row in self.session.execute(statement)]
 
     def list_by_user_with_details(self, user_id: UUID) -> list[tuple[BlockWorkLog, int, UUID, str]]:
-        """Every block worked by this publisher, most recent visit first, with block number and territory details."""
+        """Every block this publisher worked, most recent visit first.
+
+        Carries the block number and the territory it belongs to, so the caller
+        does not have to go back for them.
+        """
         statement = (
             select(BlockWorkLog, Block.number, Territory.id, Territory.name)
             .join(Block, Block.id == BlockWorkLog.block_id)
@@ -116,7 +120,4 @@ class BlockWorkLogRepository:
             .where(BlockWorkLog.user_id == user_id)
             .order_by(BlockWorkLog.worked_at.desc())
         )
-        return [
-            (row[0], row[1], row[2], row[3])
-            for row in self.session.execute(statement)
-        ]
+        return [(row[0], row[1], row[2], row[3]) for row in self.session.execute(statement)]

@@ -70,6 +70,7 @@ function makeApi(overrides: Partial<IpcApi['territories']> = {}): IpcApi {
       list: vi.fn().mockResolvedValue([]),
       create: vi.fn(),
       regenerateCode: vi.fn(),
+      rename: vi.fn(),
       setActive: vi.fn(),
       delete: vi.fn()
     }

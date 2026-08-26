@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, StringConstraints, field_validator
+from pydantic import BaseModel, StringConstraints, field_validator, model_validator
 
 from app.core.security import ACCESS_CODE_LENGTH
 from app.schemas.auth import CongregationOut
@@ -66,13 +66,26 @@ class UserBriefOut(OutSchema):
 
 
 class UserPatchIn(BaseModel):
-    """The only thing the admin may change on a publisher: whether access is on.
+    """What the admin may change on a publisher: the name, and whether access is on.
 
-    Required, not optional: this endpoint exists to flip the flag, and a body without
-    it is a request that means nothing.
+    Both are optional so either can be sent alone, but a body with neither is a
+    request that means nothing -- and silently succeeding on it would hide a client
+    bug behind a 200. `model_validator` is what turns that into a 422.
+
+    Renaming does **not** rewrite history: `block_work_logs.user_name` and
+    `territory_assignments.user_name` are copies taken when those rows were written
+    (see "O nome na linha, em vez da FK" in CLAUDE.md), so past work keeps the name
+    the person had at the time.
     """
 
-    is_active: bool
+    name: ShortText | None = None
+    is_active: bool | None = None
+
+    @model_validator(mode="after")
+    def require_something_to_change(self) -> "UserPatchIn":
+        if self.name is None and self.is_active is None:
+            raise ValueError("Informe ao menos um campo para alterar.")
+        return self
 
 
 class AccessCodeOut(OutSchema):

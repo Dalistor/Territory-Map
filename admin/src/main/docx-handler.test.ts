@@ -117,7 +117,13 @@ describe('buildS13TDocx and parseS13TDocx round-trip', () => {
     // Generate a docx with 25 territories so it spans multiple prototype rows
     const manyTerritories: TerritoryAssignments[] = Array.from({ length: 25 }, (_, i) => ({
       territory: territory(`Território ${i + 1}`),
-      assignments: [assignment(`Publicador ${i + 1}`, new Date('2025-10-01T12:00:00Z'), new Date('2025-11-01T12:00:00Z'))]
+      assignments: [
+        assignment(
+          `Publicador ${i + 1}`,
+          new Date('2025-10-01T12:00:00Z'),
+          new Date('2025-11-01T12:00:00Z')
+        )
+      ]
     }))
 
     const buffer = await buildS13TDocx({

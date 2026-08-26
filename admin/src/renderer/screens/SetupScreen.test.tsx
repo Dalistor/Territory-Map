@@ -42,6 +42,7 @@ function fakeApi(overrides: Partial<IpcApi['session']> = {}): IpcApi {
       list: vi.fn(),
       create: vi.fn(),
       regenerateCode: vi.fn(),
+      rename: vi.fn(),
       setActive: vi.fn(),
       delete: vi.fn()
     },

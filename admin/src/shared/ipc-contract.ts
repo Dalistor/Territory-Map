@@ -111,6 +111,7 @@ export const IPC_CHANNELS = {
   publishersList: 'publishers:list',
   publishersCreate: 'publishers:create',
   publishersRegenerateCode: 'publishers:regenerateCode',
+  publishersRename: 'publishers:rename',
   publishersSetActive: 'publishers:setActive',
   publishersDelete: 'publishers:delete',
   assignmentsListFor: 'assignments:listFor',
@@ -207,6 +208,14 @@ export interface IpcApi {
     create(name: string): Promise<Publisher>
     /** Mints a new code, invalidating whatever the publisher had before. */
     regenerateCode(publisherId: string): Promise<Publisher>
+    /**
+     * Corrects the publisher's name from here on.
+     *
+     * Only this record changes. The work logs and assignments already written
+     * keep the name copied into them at the time, which is what makes the
+     * history readable after someone is renamed or removed.
+     */
+    rename(publisherId: string, name: string): Promise<Publisher>
     /** Sends the desired state; the caller decides, the API never flips it. */
     setActive(publisherId: string, isActive: boolean): Promise<Publisher>
     /**

@@ -64,6 +64,7 @@ export interface ApiClient {
   /** Mints a new code, which invalidates whatever the publisher had before. */
   regenerateAccessCode(publisherId: string): Promise<Publisher>
   /** Revokes or restores access. The work log is kept either way. */
+  renamePublisher(publisherId: string, name: string): Promise<Publisher>
   setPublisherActive(publisherId: string, isActive: boolean): Promise<Publisher>
   deletePublisher(publisherId: string): Promise<void>
 
@@ -346,6 +347,11 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
 
     async deletePublisher(publisherId) {
       await request('DELETE', `/admin/users/${publisherId}`)
+    },
+
+    async renamePublisher(publisherId, name) {
+      const json = await request('PATCH', `/admin/users/${publisherId}`, { name })
+      return parsePublisher(json as Record<string, unknown>)
     },
 
     async setPublisherActive(publisherId, isActive) {

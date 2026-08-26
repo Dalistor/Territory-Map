@@ -117,6 +117,67 @@ async def test_deactivating_a_publisher_reports_the_new_state(client, make_admin
     assert response.json()["is_active"] is False
 
 
+async def test_renaming_a_publisher_reports_the_new_name(client, make_admin):
+    _, token = make_admin()
+    created = (await register(client, token)).json()
+
+    response = await client.patch(
+        f"/admin/users/{created['id']}",
+        json={"name": "Ana Paula"},
+        headers=bearer(token),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "Ana Paula"
+
+
+async def test_renaming_does_not_disturb_access(client, make_admin):
+    """A rename says nothing about whether the person may still log in."""
+    _, token = make_admin()
+    created = (await register(client, token)).json()
+    await client.patch(
+        f"/admin/users/{created['id']}",
+        json={"is_active": False},
+        headers=bearer(token),
+    )
+
+    response = await client.patch(
+        f"/admin/users/{created['id']}",
+        json={"name": "Ana Paula"},
+        headers=bearer(token),
+    )
+
+    assert response.json()["is_active"] is False
+    assert response.json()["name"] == "Ana Paula"
+
+
+async def test_a_patch_with_nothing_to_change_is_refused(client, make_admin):
+    """Answering 200 to an empty body would hide a client bug behind a success."""
+    _, token = make_admin()
+    created = (await register(client, token)).json()
+
+    response = await client.patch(
+        f"/admin/users/{created['id']}",
+        json={},
+        headers=bearer(token),
+    )
+
+    assert response.status_code == 422
+
+
+async def test_a_blank_name_is_refused(client, make_admin):
+    _, token = make_admin()
+    created = (await register(client, token)).json()
+
+    response = await client.patch(
+        f"/admin/users/{created['id']}",
+        json={"name": "   "},
+        headers=bearer(token),
+    )
+
+    assert response.status_code == 422
+
+
 async def test_deleting_a_publisher_answers_204_and_takes_them_off_the_list(client, make_admin):
     _, token = make_admin()
     created = (await register(client, token)).json()

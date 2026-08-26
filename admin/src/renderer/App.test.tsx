@@ -127,6 +127,7 @@ function fakeApi(overrides: Partial<IpcApi> = {}): IpcApi {
       list: vi.fn(),
       create: vi.fn(),
       regenerateCode: vi.fn(),
+      rename: vi.fn(),
       setActive: vi.fn(),
       delete: vi.fn(),
       ...overrides.publishers
@@ -823,6 +824,7 @@ describe('AuthenticatedApp navigation', () => {
           list: vi.fn().mockResolvedValue([]),
           create: vi.fn(),
           regenerateCode: vi.fn(),
+          rename: vi.fn(),
           setActive: vi.fn(),
           delete: vi.fn()
         }

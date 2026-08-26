@@ -350,10 +350,7 @@ export async function parseS13TDocx(buffer: Buffer): Promise<S13TParsedDocument>
 
     // Verify this table is an S-13-T table by checking row 0 text
     const r0Text = getCellText(rows[0])
-    if (
-      !r0Text.toLowerCase().includes('terr') &&
-      !r0Text.toLowerCase().includes('designado')
-    ) {
+    if (!r0Text.toLowerCase().includes('terr') && !r0Text.toLowerCase().includes('designado')) {
       continue
     }
 
@@ -378,10 +375,12 @@ export async function parseS13TDocx(buffer: Buffer): Promise<S13TParsedDocument>
         const pubName = cellsA[2 + slot] ? cellsA[2 + slot].replace(/[\r\n]+/g, ' ').trim() : ''
         if (!pubName) continue
 
-        const startedAt =
-          cellsB[2 + slot * 2] ? cellsB[2 + slot * 2].replace(/[\r\n]+/g, ' ').trim() : null
-        const completedAt =
-          cellsB[3 + slot * 2] ? cellsB[3 + slot * 2].replace(/[\r\n]+/g, ' ').trim() : null
+        const startedAt = cellsB[2 + slot * 2]
+          ? cellsB[2 + slot * 2].replace(/[\r\n]+/g, ' ').trim()
+          : null
+        const completedAt = cellsB[3 + slot * 2]
+          ? cellsB[3 + slot * 2].replace(/[\r\n]+/g, ' ').trim()
+          : null
 
         assignments.push({
           publisherName: pubName,

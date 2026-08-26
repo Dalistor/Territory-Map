@@ -92,4 +92,3 @@ class PublisherWorkHistoryItemOut(OutSchema):
     territory_name: str
     worked_at: datetime
     created_at: datetime
-

@@ -70,8 +70,20 @@ def patch_user(
     congregation: AdminCongregation,
     users: Users,
 ) -> UserOut:
-    """Turn a publisher's access on or off. Their work history is untouched."""
-    return UserOut.model_validate(users.set_active(congregation.id, user_id, payload.is_active))
+    """Rename a publisher, turn their access on or off, or both.
+
+    A field the body leaves out is not touched. The work history is untouched
+    either way -- including by a rename, since those rows carry the name copied
+    when they were written.
+    """
+    return UserOut.model_validate(
+        users.update(
+            congregation.id,
+            user_id,
+            name=payload.name,
+            is_active=payload.is_active,
+        )
+    )
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -64,6 +64,13 @@ class FakeBlockWorkLogRepository:
     def delete(self, log: BlockWorkLog) -> None:
         self.logs.pop(log.id, None)
 
+    def list_by_user_with_details(self, user_id: UUID) -> list[tuple[BlockWorkLog, int, UUID, str]]:
+        found = [log for log in self.logs.values() if log.user_id == user_id]
+        found.sort(key=lambda log: log.worked_at, reverse=True)
+        # The block number and territory come from the join in the real query;
+        # the fake stands in with placeholders, since the service only forwards.
+        return [(log, 1, log.block_id, "Território") for log in found]
+
     def latest_worked_at(self, block_id: UUID) -> datetime | None:
         return max(
             (log.worked_at for log in self.logs.values() if log.block_id == block_id),
@@ -966,3 +973,37 @@ def test_resending_a_known_log_id_neither_duplicates_the_row_nor_rewrites_its_na
     assert again is first
     assert again.user_name == "Ana"
     assert len(work_logs.logs) == 1
+
+
+def test_list_user_history_forwards_the_publisher_own_visits(
+    service: WorkLogService,
+    user: User,
+    block: Block,
+) -> None:
+    """The app dashboard's detailed list: this publisher's visits, newest first."""
+    service.mark_worked(
+        log_id=uuid4(),
+        block_id=block.id,
+        user=user,
+        worked_at=NOW - timedelta(days=2),
+    )
+    service.mark_worked(
+        log_id=uuid4(),
+        block_id=block.id,
+        user=user,
+        worked_at=NOW - timedelta(days=1),
+    )
+
+    history = service.list_user_history(user)
+
+    assert [entry[0].worked_at for entry in history] == [
+        NOW - timedelta(days=1),
+        NOW - timedelta(days=2),
+    ]
+
+
+def test_list_user_history_is_empty_for_a_publisher_who_never_worked(
+    service: WorkLogService,
+    user: User,
+) -> None:
+    assert service.list_user_history(user) == []

@@ -175,6 +175,9 @@ export function registerIpcHandlers({
   handle(IPC_CHANNELS.publishersDelete, (publisherId: string) =>
     session.run(() => api.deletePublisher(publisherId))
   )
+  handle(IPC_CHANNELS.publishersRename, (publisherId: string, name: string) =>
+    session.run(() => api.renamePublisher(publisherId, name))
+  )
   handle(IPC_CHANNELS.publishersSetActive, (publisherId: string, isActive: boolean) =>
     session.run(() => api.setPublisherActive(publisherId, isActive))
   )

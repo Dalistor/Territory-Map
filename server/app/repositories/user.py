@@ -116,6 +116,17 @@ class UserRepository:
         self._session.flush()
         return user
 
+    def rename(self, user: User, name: str) -> User:
+        """Change the publisher's name from here on.
+
+        Only this row. The names already copied into `block_work_logs` and
+        `territory_assignments` are left alone by design -- they record who the
+        person was when the work happened.
+        """
+        user.name = name
+        self._session.flush()
+        return user
+
     def delete(self, user: User) -> None:
         """Remove the publisher's row, and flush.
 

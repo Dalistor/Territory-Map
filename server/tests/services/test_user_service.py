@@ -92,6 +92,10 @@ class FakeUserRepository:
         user.is_active = is_active
         return user
 
+    def rename(self, user: User, name: str) -> User:
+        user.name = name
+        return user
+
     def expire_codes(self, now: datetime) -> int:
         stale = [
             user
@@ -848,3 +852,81 @@ def test_deleting_a_publisher_leaves_their_former_territory_standing(
     still_there = territories.get(congregation.id, territory.id)
     assert still_there is not None
     assert still_there.assigned_user_id is None
+
+
+def test_update_renames_the_publisher():
+    congregation_id = uuid4()
+    service = make_service()
+    created = service.create(congregation_id=congregation_id, name="Ana", now=NOW)
+
+    user = service.update(congregation_id, created.id, name="Ana Paula")
+
+    assert user.name == "Ana Paula"
+
+
+def test_update_leaves_access_alone_when_only_the_name_is_sent():
+    """Renaming someone is not a statement about whether they may still log in."""
+    congregation_id = uuid4()
+    service = make_service()
+    created = service.create(congregation_id=congregation_id, name="Ana", now=NOW)
+    service.set_active(congregation_id, created.id, is_active=False)
+
+    user = service.update(congregation_id, created.id, name="Ana Paula")
+
+    assert user.name == "Ana Paula"
+    assert user.is_active is False
+
+
+def test_update_leaves_the_name_alone_when_only_access_is_sent():
+    congregation_id = uuid4()
+    service = make_service()
+    created = service.create(congregation_id=congregation_id, name="Ana", now=NOW)
+
+    user = service.update(congregation_id, created.id, is_active=False)
+
+    assert user.name == "Ana"
+    assert user.is_active is False
+
+
+def test_update_changes_both_at_once():
+    congregation_id = uuid4()
+    service = make_service()
+    created = service.create(congregation_id=congregation_id, name="Ana", now=NOW)
+
+    user = service.update(congregation_id, created.id, name="Ana Paula", is_active=False)
+
+    assert user.name == "Ana Paula"
+    assert user.is_active is False
+
+
+def test_update_with_nothing_to_change_is_a_no_op():
+    """The schema refuses an empty body; the service simply has nothing to do."""
+    congregation_id = uuid4()
+    service = make_service()
+    created = service.create(congregation_id=congregation_id, name="Ana", now=NOW)
+
+    user = service.update(congregation_id, created.id)
+
+    assert user.name == "Ana"
+    assert user.is_active is True
+
+
+def test_update_refuses_a_publisher_of_another_congregation():
+    mine, theirs = uuid4(), uuid4()
+    service = make_service()
+    ours = service.create(congregation_id=mine, name="Ana", now=NOW)
+
+    with pytest.raises(NotFoundError):
+        service.update(theirs, ours.id, name="Invadida")
+
+
+def test_renaming_does_not_touch_the_access_code():
+    """The code is minted against the person, not their name."""
+    congregation_id = uuid4()
+    service = make_service()
+    created = service.create(congregation_id=congregation_id, name="Ana", now=NOW)
+    code_before = created.access_code
+
+    user = service.update(congregation_id, created.id, name="Ana Paula")
+
+    assert user.access_code == code_before

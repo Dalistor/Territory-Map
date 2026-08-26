@@ -112,6 +112,30 @@ class UserService:
         user = self._get_of_congregation(congregation_id, user_id)
         return self._users.set_active(user, is_active)
 
+    def update(
+        self,
+        congregation_id: UUID,
+        user_id: UUID,
+        *,
+        name: str | None = None,
+        is_active: bool | None = None,
+    ) -> User:
+        """Change the publisher's name, their access, or both.
+
+        A field left as `None` is not touched, which is what lets the admin rename
+        someone without also deciding whether their access should change.
+
+        Renaming reaches only this row: the names in `block_work_logs` and
+        `territory_assignments` were copied when those rows were written, and are
+        deliberately left as the record of who the person was at the time.
+        """
+        user = self._get_of_congregation(congregation_id, user_id)
+        if name is not None:
+            user = self._users.rename(user, name)
+        if is_active is not None:
+            user = self._users.set_active(user, is_active)
+        return user
+
     def delete(self, congregation_id: UUID, user_id: UUID) -> None:
         """Remove a publisher from the congregation for good.
 

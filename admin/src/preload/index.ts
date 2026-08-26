@@ -43,6 +43,8 @@ const api: IpcApi = {
     create: (name: string) => ipcRenderer.invoke(IPC_CHANNELS.publishersCreate, name),
     regenerateCode: (publisherId: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.publishersRegenerateCode, publisherId),
+    rename: (publisherId: string, name: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.publishersRename, publisherId, name),
     setActive: (publisherId: string, isActive: boolean) =>
       ipcRenderer.invoke(IPC_CHANNELS.publishersSetActive, publisherId, isActive),
     delete: (publisherId: string) => ipcRenderer.invoke(IPC_CHANNELS.publishersDelete, publisherId)

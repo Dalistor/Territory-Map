@@ -123,6 +123,8 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [newName, setNewName] = useState('')
   const [codeDialog, setCodeDialog] = useState<CodeDialogState | null>(null)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
 
   /** Runs a write against `window.api.publishers`, surfacing any failure as a toast instead of letting it escape. */
   async function runWrite(action: () => Promise<void>): Promise<void> {
@@ -193,6 +195,38 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
       const updated = await window.api.publishers.regenerateCode(publisher.id)
       await load()
       setCodeDialog({ publisherName: updated.name, code: updated.accessCode ?? '—' })
+    })
+  }
+
+  function startRename(publisher: Publisher): void {
+    setOpenMenuId(null)
+    setRenamingId(publisher.id)
+    setRenameValue(publisher.name)
+  }
+
+  function cancelRename(): void {
+    setRenamingId(null)
+    setRenameValue('')
+  }
+
+  /**
+   * Corrects the name on the publisher's own record.
+   *
+   * The work logs and assignments already written keep the name copied into
+   * them at the time -- that is what lets the history stay readable after
+   * someone is renamed or removed -- so this changes the list and everything
+   * recorded from now on, not the past.
+   */
+  async function submitRename(publisher: Publisher): Promise<void> {
+    const name = renameValue.trim()
+    if (name === '' || name === publisher.name) {
+      cancelRename()
+      return
+    }
+    await runWrite(async () => {
+      await window.api.publishers.rename(publisher.id, name)
+      cancelRename()
+      await load()
     })
   }
 
@@ -286,7 +320,33 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
                 {publisher.name.charAt(0).toUpperCase()}
               </span>
               <span className="publisher-name-block">
-                <span>{publisher.name}</span>
+                {renamingId === publisher.id ? (
+                  <form
+                    onSubmit={(event) => {
+                      event.preventDefault()
+                      void submitRename(publisher)
+                    }}
+                  >
+                    <label htmlFor={`rename-${publisher.id}`} className="sr-only">
+                      Novo nome de {publisher.name}
+                    </label>
+                    <input
+                      id={`rename-${publisher.id}`}
+                      value={renameValue}
+                      autoFocus
+                      onChange={(event) => setRenameValue(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') cancelRename()
+                      }}
+                    />
+                    <button type="submit">Salvar</button>
+                    <button type="button" onClick={cancelRename}>
+                      Cancelar
+                    </button>
+                  </form>
+                ) : (
+                  <span>{publisher.name}</span>
+                )}
                 <span
                   className={`status-badge status-${statusCategory(publisher, today)}`}
                   data-testid="publisher-status"
@@ -312,6 +372,11 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
                       </button>
                     </li>
                   )}
+                  <li>
+                    <button type="button" onClick={() => startRename(publisher)}>
+                      Renomear
+                    </button>
+                  </li>
                   <li>
                     <button type="button" onClick={() => regenerate(publisher)}>
                       Gerar novo código

@@ -57,6 +57,7 @@ class FakePublishersApi implements PublishersApi {
   created: string[] = []
   regenerated: string[] = []
   activeCalls: Array<[string, boolean]> = []
+  renames: Array<[string, string]> = []
   deleted: string[] = []
   /** What `create`/`regenerateCode` hand back when they succeed. */
   minted: Publisher | null = null
@@ -92,6 +93,17 @@ class FakePublishersApi implements PublishersApi {
     if (this.writeFailure) throw this.writeFailure
     if (!this.minted) throw new Error('test fixture missing `minted`')
     return this.minted
+  }
+
+  async rename(publisherId: string, name: string): Promise<Publisher> {
+    this.renames.push([publisherId, name])
+    if (this.writeFailure) throw this.writeFailure
+    const found = this.publishers.find((publisher) => publisher.id === publisherId)
+    const renamed = { ...(found ?? { id: publisherId, isActive: true }), name } as Publisher
+    this.publishers = this.publishers.map((publisher) =>
+      publisher.id === publisherId ? renamed : publisher
+    )
+    return renamed
   }
 
   async setActive(publisherId: string, isActive: boolean): Promise<Publisher> {
@@ -146,6 +158,101 @@ describe('PublishersScreen', () => {
   afterEach(() => {
     confirmSpy.mockRestore()
     vi.unstubAllGlobals()
+  })
+
+  it('a name can be corrected without touching anything else about the person', async () => {
+    const user = userEvent.setup()
+    const fake = installFakeApi()
+    fake.publishers = [onDevice]
+    render(<PublishersScreen now={now} />)
+    await screen.findByText('Daniel')
+
+    await openMenu(user, 'Daniel')
+    await user.click(screen.getByRole('button', { name: 'Renomear' }))
+    const field = screen.getByLabelText('Novo nome de Daniel')
+    await user.clear(field)
+    await user.type(field, 'Daniel Souza')
+    await user.click(screen.getByRole('button', { name: 'Salvar' }))
+
+    expect(fake.renames).toEqual([['p4', 'Daniel Souza']])
+    expect(fake.activeCalls).toEqual([])
+    expect(await screen.findByText('Daniel Souza')).toBeInTheDocument()
+  })
+
+  it('the field opens holding the current name, so a small fix is a small edit', async () => {
+    const user = userEvent.setup()
+    const fake = installFakeApi()
+    fake.publishers = [onDevice]
+    render(<PublishersScreen now={now} />)
+    await screen.findByText('Daniel')
+
+    await openMenu(user, 'Daniel')
+    await user.click(screen.getByRole('button', { name: 'Renomear' }))
+
+    expect(screen.getByLabelText('Novo nome de Daniel')).toHaveValue('Daniel')
+  })
+
+  it('backing out leaves the name alone', async () => {
+    const user = userEvent.setup()
+    const fake = installFakeApi()
+    fake.publishers = [onDevice]
+    render(<PublishersScreen now={now} />)
+    await screen.findByText('Daniel')
+
+    await openMenu(user, 'Daniel')
+    await user.click(screen.getByRole('button', { name: 'Renomear' }))
+    await user.type(screen.getByLabelText('Novo nome de Daniel'), ' Souza')
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }))
+
+    expect(fake.renames).toEqual([])
+    expect(screen.getByText('Daniel')).toBeInTheDocument()
+  })
+
+  it('a blank name is not sent, and simply closes the field', async () => {
+    const user = userEvent.setup()
+    const fake = installFakeApi()
+    fake.publishers = [onDevice]
+    render(<PublishersScreen now={now} />)
+    await screen.findByText('Daniel')
+
+    await openMenu(user, 'Daniel')
+    await user.click(screen.getByRole('button', { name: 'Renomear' }))
+    await user.clear(screen.getByLabelText('Novo nome de Daniel'))
+    await user.click(screen.getByRole('button', { name: 'Salvar' }))
+
+    expect(fake.renames).toEqual([])
+    expect(await screen.findByText('Daniel')).toBeInTheDocument()
+  })
+
+  it('saving the same name spares the round trip', async () => {
+    const user = userEvent.setup()
+    const fake = installFakeApi()
+    fake.publishers = [onDevice]
+    render(<PublishersScreen now={now} />)
+    await screen.findByText('Daniel')
+
+    await openMenu(user, 'Daniel')
+    await user.click(screen.getByRole('button', { name: 'Renomear' }))
+    await user.click(screen.getByRole('button', { name: 'Salvar' }))
+
+    expect(fake.renames).toEqual([])
+  })
+
+  it('a refused rename is reported in the server’s own words', async () => {
+    const user = userEvent.setup()
+    const fake = installFakeApi()
+    fake.publishers = [onDevice]
+    fake.writeFailure = new Error('Já existe alguém com esse nome.')
+    render(<PublishersScreen now={now} />)
+    await screen.findByText('Daniel')
+
+    await openMenu(user, 'Daniel')
+    await user.click(screen.getByRole('button', { name: 'Renomear' }))
+    await user.clear(screen.getByLabelText('Novo nome de Daniel'))
+    await user.type(screen.getByLabelText('Novo nome de Daniel'), 'Outro')
+    await user.click(screen.getByRole('button', { name: 'Salvar' }))
+
+    expect(await screen.findByText('Já existe alguém com esse nome.')).toBeInTheDocument()
   })
 
   it('a congregation with nobody registered says exactly that', async () => {

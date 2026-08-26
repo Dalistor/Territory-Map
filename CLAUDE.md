@@ -7,30 +7,46 @@ Aplicativo para gerenciar **territórios de pregação das Testemunhas de Jeová
 O sistema mapeia territórios (áreas geográficas atribuídas a uma congregação) e as quadras
 numeradas dentro deles, exibindo tudo sobre um mapa real.
 
-São três partes:
+São quatro partes:
 
 | Parte | Público | O que faz |
 |-------|---------|-----------|
 | **Servidor** | — | API REST, dono das regras de negócio e da validação geométrica |
 | **App Android** (React Native) | Publicadores em campo | Abre e já mostra a posição do usuário no mapa, com os territórios e quadras da congregação desenhados por cima. Permite **marcar uma quadra como trabalhada**, sempre dentro de um território designado a quem está usando. |
 | **Admin** (Electron desktop) | Responsável pelos territórios na congregação | Desenha as demarcações dos territórios, marca, numera e **apaga** as quadras, cadastra os publicadores e acompanha o que já foi trabalhado. Fala direto com o servidor. Roda em Windows, Linux e macOS. |
+| **App Admin** (React Native, Android — specs 0012 e 0013) | O mesmo responsável pelos territórios, agora **em campo** | O subconjunto do admin que faz sentido no celular: ver quem está com cada território (mapa com as demarcações **e as quadras**, numeradas e coloridas pelo status, + lista), abrir o cartão S-13 de um território, **designar**, **marcar como concluído**, **apagar um registro** da designação, **lançar que uma quadra foi trabalhada** (escolhendo o publicador e a data) e **apagar um registro de trabalho** errado. Fala direto com o servidor, com a mesma credencial do desktop. |
+
+**O que o app admin não faz, e continua só no desktop.** É recorte de propósito, não pendência:
+desenhar ou editar demarcação de território e de quadra (e apagar qualquer uma das duas); cadastrar,
+desativar ou apagar publicador e gerar código de acesso — ele **lê** a lista para poder escolher um
+dirigente ou o autor de uma marcação, mas não a gerencia; forçar o `status_override` de uma quadra;
+a página de Histórico da congregação inteira; e todo o import/export S-13/T em DOCX e XLSX.
+
+**Apagar registro de trabalho deixou de estar nessa lista** (spec 0013). Era o caso mais próximo da
+fronteira e caiu para o lado do celular pelo motivo mais simples: é a correção que acompanha o
+marcar, e quem lança trabalho errado em campo precisa desfazer em campo, não na volta para casa. As
+outras continuam onde estão — desenho pede tela grande, e gerir publicador ou forçar status é
+decisão de mesa.
 
 Duas ações do admin merecem destaque porque destroem dado:
 
 - **Apagar uma quadra** leva o histórico de trabalho dela junto — `block_work_logs.block_id` é
   `ON DELETE CASCADE`, então isso é literal, não hipótese. A confirmação na tela diz isso com todas
   as letras antes de perguntar.
-- **Sair da congregação** apaga nome, cidade e senha **deste computador** e devolve o app à tela de
-  configuração inicial. É o caminho para trocar de congregação ou corrigir uma senha digitada
-  errado, sem precisar mexer no keystore do sistema operacional. Nada é tocado no servidor: os
-  territórios, as quadras e os publicadores continuam lá, e digitar as credenciais de novo devolve
-  o acesso.
+- **Sair da congregação** apaga nome, cidade e senha **deste computador** — ou **deste aparelho**, no
+  app admin — e devolve o app à tela de configuração inicial. É o caminho para trocar de congregação
+  ou corrigir uma senha digitada errado, sem precisar mexer no keystore do sistema operacional. Nada
+  é tocado no servidor: os territórios, as quadras e os publicadores continuam lá, e digitar as
+  credenciais de novo devolve o acesso.
 
 **Uso pessoal: o admin não tem tela de login no dia a dia.** É uma instalação de uma congregação
 só. Na primeira abertura o app pede nome, cidade e senha **uma única vez**, guarda os três
 criptografados em disco via `safeStorage` do Electron e autentica sozinho dali em diante; ao receber
 401 (o JWT dura 12h), ele refaz o login em silêncio e repete a requisição. Quem usa nunca mais vê a
-tela.
+tela. **O app admin faz exatamente o mesmo no celular**, trocando o `safeStorage` pelo keystore do
+Android (`react-native-keychain`, em `admin-app/src/data/credentials-store.ts`) e o
+`main/session.ts` pelo `data/session.ts` — mesmo login silencioso, mesma retentativa única no 401,
+mesmo `CredentialsRejectedError` devolvendo à configuração inicial quando a senha muda no servidor.
 
 **A congregação continua existindo no servidor, e isso é de propósito.** Ela é a única barreira de
 escopo da API: todo dado é filtrado por `congregation_id` derivado do token, e as rotas de escrita
@@ -38,9 +54,9 @@ exigem esse token. Removê-la deixaria as rotas de admin protegidas só pelo `X-
 dentro do binário e é extraível — num servidor publicado na internet. Como o mecanismo já está
 pronto e testado, mantê-lo custa zero e é o que impede que quem achar o endereço apague tudo.
 
-**Sem cadastro feito pelo publicador.** Quem cadastra é o admin: no app admin ele preenche o **nome
-da pessoa**, o sistema gera um **código de acesso individual**, e ele entrega esse código àquela
-pessoa. Na primeira abertura o publicador informa só o código — sem nome, sem senha, sem conta — e
+**Sem cadastro feito pelo publicador.** Quem cadastra é o admin, e só pelo **desktop**: ali ele
+preenche o **nome da pessoa**, o sistema gera um **código de acesso individual**, e ele entrega esse
+código àquela pessoa. Na primeira abertura o publicador informa só o código — sem nome, sem senha, sem conta — e
 o app guarda o vínculo no dispositivo. Como o código é individual, o admin sempre sabe quem é cada
 usuário e quem trabalhou cada quadra. Só o admin tem senha.
 
@@ -52,11 +68,12 @@ usuário e quem trabalhou cada quadra. Só o admin tem senha.
 | Banco | PostgreSQL 16 + **PostGIS** |
 | Geometria (Python) | Shapely / GeoAlchemy2 |
 | Auth | JWT (`python-jose`) + hash de senha com **bcrypt** (`passlib`) |
-| Mapas | **OpenStreetMap** — `@maplibre/maplibre-react-native` (MapLibre Native) no app; `react-leaflet`/Leaflet no admin. Sem chave de API, sem billing. |
+| Mapas | **OpenStreetMap** — `@maplibre/maplibre-react-native` (MapLibre Native) nos dois apps Android; `react-leaflet`/Leaflet no admin desktop. Sem chave de API, sem billing. |
 | App (Android) | **React Native (CLI puro, sem Expo) + TypeScript**, React Navigation para navegação, `react-native-keychain` (token) e `AsyncStorage` (cache de mapa) |
-| Admin (desktop) | **Electron + React + TypeScript**, Leaflet + **Leaflet-Geoman** para desenhar/editar polígono, `safeStorage` (Electron) para as credenciais, **`exceljs`** (no main process) para a exportação `.xlsx` das designações |
+| App Admin (Android) | **React Native (CLI puro, sem Expo) + TypeScript**, React Navigation, `react-native-keychain` (nome, cidade e senha da congregação), `@react-native-community/datetimepicker` (a data da marcação). Sem `AsyncStorage`: não há cache offline. |
+| Admin (desktop) | **Electron + React + TypeScript**, Leaflet + **Leaflet-Geoman** para desenhar/editar polígono, `safeStorage` (Electron) para as credenciais, **`exceljs`** (no main process) para as planilhas `.xlsx` e **`jszip`** para ler e escrever o `.docx` do S-13-T |
 | Infra | Docker + Docker Compose em um Ubuntu |
-| CI/CD | GitHub Actions → deploy do servidor por SSH. Admin e app não têm CI: os builds (`electron-builder`, `./gradlew assembleRelease`) são sempre locais |
+| CI/CD | GitHub Actions → deploy do servidor por SSH. Os três clientes não têm CI: os builds (`electron-builder`, `./gradlew assembleRelease` nos dois apps) são sempre locais |
 
 > O admin trocou de Flutter para Electron em 2026-08-08 porque esta máquina não compila
 > `flutter build macos` sem o Xcode completo, e o build local em Electron já era um caminho
@@ -74,6 +91,15 @@ usuário e quem trabalhou cada quadra. Só o admin tem senha.
 > admin (`admin/src/shared/` em vez de depender de `packages/core`), agora estendida ao segundo
 > cliente.
 
+> **`admin-app/` é projeto novo, não uma tela a mais dentro de `app/` (spec 0012, 2026-08-23).** O
+> app do publicador se autentica por código descartável e não tem senha nenhuma; pôr a senha da
+> congregação dentro do binário que o publicador instala inverteria a separação que o próprio
+> servidor faz entre `/app/*` e `/admin/*`. São dois APKs, dois `applicationId`
+> (`com.territorymapapp` e `com.territorymapadmin`) e dois públicos — e, como os ids diferem, os
+> dois convivem instalados no mesmo aparelho, que é o caso de quem cuida dos territórios e também
+> sai em campo. Também **sem pacote compartilhado** com `app/` ou `admin/`, pela terceira vez pela
+> mesma razão: `admin-app/` tem sua própria `src/domain/`.
+
 ## Estrutura do Projeto
 
 Monorepo. O servidor está completo. O `admin/` está implementado — configuração inicial e, a partir
@@ -90,15 +116,32 @@ aba dentro do limite de 31 caracteres do Excel) e sai **formatada** — larguras
 comportam nome e rótulo de data, título e cabeçalho em negrito (o cabeçalho ainda com fundo cinza),
 bordas finas em toda a tabela, cabeçalho congelado e configuração de impressão que ajusta à largura
 da página e repete o cabeçalho em cada uma — e é salva pelo `dialog.showSaveDialog` do Electron.
+A mesma página tem ainda o **import/export do formulário oficial S-13-T**, que é coisa diferente da
+planilha acima: exportar abre um modal onde se escolhe o **ano de serviço** (o padrão vem de
+`getServiceYear` em `admin/src/shared/models.ts` — de setembro em diante já conta o ano seguinte) e
+o **formato**, `DOCX` (o padrão) ou `XLSX`. O `.docx` é gerado em `admin/src/main/docx-handler.ts`,
+que abre o modelo oficial `admin/resources/S-13_T_template.docx` com **`jszip`** e reescreve o
+`word/document.xml` célula a célula, preservando o layout do formulário; o `.xlsx` é a segunda
+planilha de `excel-export.ts` (`buildS13TWorkbook`), em paisagem, com as dez colunas e os dois
+registros por território do S-13-T e o rodapé "S-13-T 01/22". Importar é o caminho de quem já tem o
+cartão preenchido em papel digitalizado: `imports.s13tSelectAndPreview` abre um seletor de `.docx`,
+`parseS13TDocx` extrai ano, territórios e designações, e o resultado é **casado com os territórios
+que já existem** — por número, e por nome quando não há número — e devolvido como *preview* com os
+contadores, antes de qualquer escrita. Só quando o admin confirma é que `imports.s13tExecute` grava:
+publicador que não existe é **criado pelo nome**, cada designação vira um `designate` e, se a linha
+tiver data de conclusão, um `completeAssignment` em seguida; território sem correspondente é pulado,
+e cada falha entra numa lista de erros devolvida ao final em vez de abortar o lote.
 **Histórico** (spec 0008) é a página de consulta do histórico inteiro da congregação, numa chamada
 só (`GET /admin/assignments`): os mesmos registros em **duas visões alternadas por um seletor** —
 "Por dirigente" (cada publicador com as designações dele) e "Por território" (cada território com
 quem passou por ele) —, mais um campo de **busca por nome** que filtra pelo nome de quem a visão
 atual agrupa, e um botão de **apagar** em cada linha (com confirmação antes). Designar e concluir
 continuam só em Designações, onde o mapa dá o contexto.
-Publicadores tem busca por nome, contadores por situação e, em cada linha, gerar novo código,
-desativar/reativar e **apagar** (spec 0011 — a confirmação avisa que o histórico da pessoa fica, e
-uma recusa por designação aberta aparece com a mensagem do próprio servidor). Cada território tem ainda uma
+Publicadores tem busca por nome, contadores por situação e, em cada linha, **renomear**, gerar novo
+código, desativar/reativar e **apagar** (spec 0011 — a confirmação avisa que o histórico da pessoa
+fica, e uma recusa por designação aberta aparece com a mensagem do próprio servidor). Renomear é um
+campo que abre na própria linha já preenchido com o nome atual; salvar sem mudar nada, ou com o
+campo vazio, apenas fecha sem chamar o servidor. Cada território tem ainda uma
 **página de configurações** (`TerritorySettingsScreen`, spec 0009), aberta pelo menu "⋮" da lista:
 nome, **tempo de rotação** em dias (vazio = o padrão de 120, dito na própria interface, porque campo
 vazio parece esquecimento), um resumo somente-leitura (quantas quadras, quantas vencidas pela
@@ -116,7 +159,14 @@ mostra o histórico de uma quadra a partir do mapa. As duas convivem: a `BlockHi
 caminho de quem já está com a quadra na frente, o `BlockWorkPanel` é o de quem está percorrendo o
 território inteiro. Os editores de território e de quadra são telas empurradas
 ("← Voltar") em **layout lado a lado** (painel compacto à esquerda, mapa grande à direita); o de
-quadra ainda sugere o próximo número da sequência após cada salvamento. As nove telas são cobertas
+quadra ainda sugere o próximo número da sequência após cada salvamento. Quando não há território
+desenhado ainda, o mapa não tem onde ancorar: `admin/src/main/geocode.ts` procura um ponto
+aproximado para a **cidade da congregação** na busca do **Nominatim** (OSM) e o mapa abre ali, em vez
+de no meio do Brasil. Vive no main process pelo mesmo motivo que o `api-client.ts`: a política do
+Nominatim pede um User-Agent identificando a aplicação, e um `fetch` de renderer não pode definir
+esse header. Falha de qualquer tipo — sem resultado, sem rede, resposta malformada — resolve para
+`null` em vez de estourar: é uma gentileza sobre onde o mapa abre, não algo que valha travar o app.
+As nove telas são cobertas
 por teste (Vitest + React Testing Library), assim como os dois componentes acima, mais o
 roteamento/sidebar em `App.test.tsx`. O `app/` (React Native) também está implementado — ativação por código, dashboard,
 mapa com MapLibre e localização em tempo real, marcação de quadra restrita ao território designado,
@@ -126,6 +176,51 @@ cobertas por teste (Jest + `@testing-library/react-native`); só o componente qu
 desenha o MapLibre nativo (`presentation/map/TerritoryMapView.tsx` e a tela que o compõe,
 `presentation/screens/MapScreen.tsx`) não tem teste automatizado — ver "Testes" mais abaixo para o
 porquê, e `app/README.md` para o passo de verificação manual em emulador/aparelho ainda pendente.
+O `admin-app/` (spec 0012) é o mais novo dos três clientes, e está completo: configuração inicial
+com nome, cidade e senha guardados no keystore, navegação e "Sair da congregação"
+(`presentation/App.tsx`), e a **`DesignationsScreen`** como home — resumo de quantos territórios têm
+dirigente, o mapa das designações, a lista com nome e dirigente de cada território (ou "Sem
+dirigente") e um "Recarregar". Tocar num território, no mapa ou na lista, abre o `AssignmentPanel` —
+o cartão S-13, com a designação em vigor, as anteriores, designar, concluir e apagar registro —, e
+de cada linha se chega à `BlocksScreen`, as quadras do território ordenadas por número, com status
+por extenso, última visita, o histórico de trabalho de cada uma e o formulário de marcar (publicador
++ data). As duas abrem **sobre** a lista, que continua montada por baixo: é o que faz uma designação
+nova já estar refletida na linha quando o admin fecha o painel, sem sair e voltar da tela.
+
+O mapa é `presentation/map/AssignmentsMapView.tsx`, e desde a spec 0013 ele **desenha as quadras**:
+cada uma sai como polígono pintado pelo status — as mesmas três cores dos outros dois clientes,
+`BLOCK_CATEGORY_COLOR` em `admin-app/src/domain/territoryMap.ts`, respeitando o `statusOverride` da
+quadra e o `rotationDays` do território **dono** dela — com o número por cima, num `Marker` com
+`<Text>` do React Native e não num `symbol` layer, pela mesma razão do app do publicador: o estilo é
+raster puro, sem `glyphs`, e um servidor de fontes é o que escolher OSM + MapLibre existe para
+evitar. O alvo do toque é o polígono inteiro, não só o número.
+
+**Com quadras à vista, os rótulos de território somem** — é `shouldShowTerritoryLabels`, e não é
+detalhe de estilo: o balão do nome do dirigente é ancorado no centroide do território, exatamente
+onde os números das quadras estão, e sem essa regra ele senta em cima deles. Foi o problema que o
+usuário relatou, e é a mesma solução que o app do publicador já aplicava. Um refactor que reintroduza
+o rótulo incondicional derruba isso sem perceber.
+
+Tocar numa quadra abre o **painel combinado** (`presentation/screens/BlockPanel.tsx`): um lugar só
+com os dois níveis de ação entre os quais aquela quadra está. Em cima, a quadra — status por
+extenso, o histórico de trabalho dela com um **apagar em cada registro**, e o formulário de marcar
+como trabalhada. Embaixo, numa seção visualmente separada e rotulada com o nome do território, o
+cartão S-13 dele: dirigente atual, designar, marcar como concluído e apagar registro da designação.
+**A separação não é decoração**, e nem a frase que a acompanha: designar troca o responsável pelo
+território **inteiro**, não pela quadra que o admin acabou de tocar — e ele chegou ali dizendo "vou
+marcar esta quadra". O painel diz de quem é o escopo antes de oferecer o botão. Nada é reescrito:
+a metade de cima é o `BlockWorkSection` que a `BlocksScreen` já usa, agora com a capacidade de
+apagar que lá ele não tem, e a de baixo é o próprio `AssignmentPanel`.
+
+Todo o resto é coberto por
+teste (Jest + `@testing-library/react-native`), com a mesma exceção de sempre para a view nativa do
+MapLibre — o cálculo que dava para separar dela (centroide, cor, texto do rótulo, quais quadras são
+desenháveis, se os rótulos aparecem) foi para
+`admin-app/src/domain/territoryMap.ts`, com teste. O app usa a **logo e o ícone do produto**, os
+mesmos do app do publicador — o ícone nas cinco densidades e a logo na tela de configuração inicial.
+Ver `admin-app/README.md`, inclusive para o
+pré-requisito de **JDK 17**, que esta máquina de desenvolvimento não tem: Jest, ESLint e `tsc` rodam
+sem ele, nenhum build Android roda.
 
 ```
 Territory map/
@@ -165,14 +260,28 @@ Territory map/
 │       │                        # territory-cache.ts (AsyncStorage)
 │       └── presentation/        # screens/ (ActivationScreen, DashboardScreen, MapScreen), map/
 │                                # (TerritoryMapView com MapLibre, territoryFilter.ts), App.tsx
+├── admin-app/                   # React Native (CLI puro) + TypeScript — Android, o admin em campo
+│   ├── README.md               # como rodar, empacotar, o JDK 17 e o que este app não faz
+│   ├── .env.example             # API_BASE_URL e APP_KEY, lidos em tempo de build via react-native-config
+│   ├── android/                 # projeto nativo Android (com.territorymapadmin; não há pasta ios/)
+│   └── src/
+│       ├── domain/              # entidades e funções puras: models.ts, assignment.ts, blockColor.ts,
+│       │                        # blockStatusLabel.ts, territoryMap.ts
+│       ├── data/                # api-client.ts, credentials-store.ts (react-native-keychain),
+│       │                        # session.ts (reautenticação silenciosa no 401)
+│       └── presentation/        # screens/ (SetupScreen, AssignmentPanel, BlocksScreen), map/
+│                                # (AssignmentsMapView com MapLibre), App.tsx
 └── admin/                      # Electron + React + TypeScript — desktop (sem domain/; veja Arquitetura de Camadas)
     ├── README.md               # como rodar, como configurar o .env e o aviso do SmartScreen/Gatekeeper
     ├── electron-builder.yml    # empacotamento local: dmg/zip (mac), nsis (Windows), AppImage/tar.gz (Linux)
     ├── .env.example             # API_BASE_URL e APP_KEY, lidos pelo main process via dotenv
+    ├── resources/              # ícone do app e S-13_T_template.docx, o modelo oficial da exportação
     └── src/
         ├── main/                # processo principal: fala com a API (api-client.ts), guarda as
         │                        # credenciais com safeStorage (credentials-store.ts), sessão com
-        │                        # reautenticação silenciosa (session.ts) e os handlers de IPC
+        │                        # reautenticação silenciosa (session.ts), as planilhas (excel-export.ts),
+        │                        # o S-13-T em Word (docx-handler.ts), a geocodificação da cidade
+        │                        # (geocode.ts) e os handlers de IPC
         ├── preload/             # ponte contextBridge — único lugar que expõe window.api ao renderer
         ├── renderer/            # React: telas (screens/), mapa editável (map/, com Leaflet-Geoman
         │                        # confinado a um único arquivo), providers
@@ -182,9 +291,10 @@ Territory map/
 Testes ficam co-localizados dentro de `src/` (`*.test.ts`/`*.test.tsx`), não numa pasta `test/` à
 parte — ver "Testes" mais abaixo para o porquê.
 
-`app/` e `admin/` são dois projetos TypeScript independentes, sem pacote compartilhado entre eles —
-cada um tem sua própria cópia da lógica que só ele usa (`app/src/domain/` e `admin/src/shared/`).
-Nenhum dos dois depende de `packages/core`, que não existe mais no monorepo.
+`app/`, `admin-app/` e `admin/` são três projetos TypeScript independentes, sem pacote compartilhado
+entre eles — cada um tem sua própria cópia da lógica que só ele usa (`app/src/domain/`,
+`admin-app/src/domain/` e `admin/src/shared/`). Nenhum dos três depende de `packages/core`, que não
+existe mais no monorepo.
 
 ## Modelo de Dados
 
@@ -424,6 +534,16 @@ correto não existia para ser copiado; aqui ele existe.
   versão; token com versão antiga é recusado. Consequência intencional: ativar no aparelho novo
   desconecta o antigo — que é justamente o que se quer quando o celular foi perdido ou trocado.
 - Acesso é **imediato** — quem resgatou o código já usa e já marca quadra. Sem fila de aprovação.
+- O admin pode **renomear** um usuário pelo mesmo `PATCH /admin/users/{id}`, que passou a aceitar
+  `name` além de `is_active`. Os dois campos são opcionais e **campo ausente não é tocado** — assim
+  renomear alguém não é também uma declaração sobre o acesso dele —, mas um corpo com nenhum dos
+  dois responde **422**: aceitar seria esconder bug de cliente atrás de um 200.
+- **Renomear não reescreve o histórico**, e isso é consequência direta de "O nome na linha, em vez
+  da FK": `block_work_logs.user_name` e `territory_assignments.user_name` são cópias feitas quando
+  aquelas linhas foram escritas. O trabalho passado continua com o nome que a pessoa tinha no dia,
+  que é justamente o que mantém o histórico legível depois de ela ser renomeada ou apagada. Se um
+  dia for preciso propagar a correção de um nome digitado errado, isso é uma decisão nova e um
+  backfill, não um efeito colateral deste `PATCH`.
 - O admin pode **desativar** um usuário (`is_active = false`). A partir daí o token é recusado, mas
   os `BlockWorkLog` daquela pessoa permanecem — histórico não se apaga com revogação.
 - O admin pode **apagar** um usuário (`DELETE /admin/users/{id}`, 204). A pessoa sai da lista e o
@@ -478,20 +598,30 @@ comum, e `Block.last_worked_at` é recalculado a partir dos logs como sempre.
 - **A rota do app não mudou.** O publicador continua só podendo marcar quadra de território
   designado a ele, e continua tomando 403 `territory_not_assigned` fora disso. A frouxidão acima é
   do admin, e só dele.
+- **Dois clientes chamam esta rota**: o admin desktop, pela tabela de quadras da página de
+  configurações do território, e o app admin (spec 0012), pela `BlocksScreen`. É a mesma rota e a
+  mesma regra — o que muda é só o aparelho na mão de quem lança.
 
 ### Cor da quadra no mapa
-Três cores, nos dois clientes: **nunca trabalhada**, **vencida** e **recente**. O que a spec 0009
+Três cores, nos três clientes: **nunca trabalhada**, **vencida** e **recente**. O que a spec 0009
 mudou foi o número que separa as duas últimas — era o literal 120 dias, e passou a ser o
 `rotation_days` do território dono da quadra, com 120 sobrando apenas como padrão de quem não
-configurou nada (`DEFAULT_ROTATION_DAYS`). A regra é função pura e vive em dois arquivos
-deliberadamente idênticos, `admin/src/renderer/map/blockColor.ts` e `app/src/domain/blockColor.ts`
-— mudar um sem o outro faz o mesmo território ter cores diferentes na mesa do admin e no celular do
+configurou nada (`DEFAULT_ROTATION_DAYS`). A regra é função pura e vive em **três** arquivos
+deliberadamente idênticos — `admin/src/renderer/map/blockColor.ts`, `app/src/domain/blockColor.ts` e
+`admin-app/src/domain/blockColor.ts` (a terceira cópia chegou com a spec 0012) — e mudar um sem os
+outros faz a mesma quadra ter cor diferente na mesa do admin, no celular dele e no celular do
 publicador. Exatamente no limiar a quadra ainda é recente; só estritamente acima vira vencida.
 
-Acima de tudo isso vem o `status_override` da quadra (spec 0010): os dois clientes o consultam
+Acima de tudo isso vem o `status_override` da quadra (spec 0010): os clientes o consultam
 **antes** do cálculo por data, então `never` pinta de vermelho e `overdue` de laranja por mais
 recente que seja a última visita, e ausente cai na regra de datas de sempre. Só há esses dois
 valores — forçar "recente" seria forçar a interface a dizer que houve trabalho onde não houve.
+No app admin a mesma categoria aparece **das duas formas**: como cor no mapa desde a spec 0013 (via
+`BLOCK_CATEGORY_COLOR`, que repete os mesmos três hexadecimais dos outros clientes de propósito — os
+valores são de domínio e por isso não moram em `presentation/theme.ts`), e como **texto** nas listas
+e no painel da quadra, por `blockStatusLabel.ts`: "Nunca
+trabalhada", "Vencida" e "Em dia", com o sufixo " (forçado)" quando o status veio de um override —
+o admin precisa distinguir o que ele mesmo marcou do que o sistema derivou.
 
 **Qualquer registro de trabalho novo limpa o override**, tanto pela rota do app quanto pela do
 admin, no mesmo ponto em que `last_worked_at` é recomputado: uma visita recém-registrada é a
@@ -528,6 +658,11 @@ E há uma quinta, fora desse prefixo:
 Um prefixo pertence ao `APIRouter`, não à rota, então essa quinta rota tem um segundo `APIRouter`
 (`flat_router`) no **mesmo arquivo** — manter o HTTP da designação num módulo só vale mais do que
 uma pasta com um roteador por endereço.
+
+As quatro primeiras têm **dois clientes** desde a spec 0012: a página Designações do admin desktop e
+o `AssignmentPanel` do app admin. Nenhuma rota nova foi criada para o celular — mesmas rotas, mesmas
+regras, mesma exigência de JWT de admin. A quinta (`GET /admin/assignments`) continua só no desktop,
+porque a página Histórico não foi portada.
 
 - **`PATCH /admin/territories/{id}/assignment` não existe mais** — foi removida junto com
   `TerritoryService.assign_to_user`. Designar e desdesignar deixaram de ser o mesmo `PATCH` com
@@ -585,22 +720,25 @@ uma pasta com um roteador por endereço.
   as duas intenções é o router, por `model_fields_set`, para um sentinela que o service entende.
 
 ### Chave de aplicação (`X-App-Key`)
-- Toda requisição precisa trazer o header `X-App-Key` com o valor de `APP_SECRET`. **Os dois
+- Toda requisição precisa trazer o header `X-App-Key` com o valor de `APP_SECRET`. **Os três
   clientes mandam em toda chamada** — cada cliente HTTP (`admin/src/main/api-client.ts`,
-  `app/src/data/api-client.ts`) injeta o header sozinho, e nenhuma tela ou caso de uso precisa saber
-  disso.
+  `app/src/data/api-client.ts`, `admin-app/src/data/api-client.ts`) injeta o header sozinho, e
+  nenhuma tela ou caso de uso precisa saber disso.
 - **`GET /health` é isento**, por rota e não por fallback: o healthcheck do deploy e o runtime do
   container chamam sem chave e precisam funcionar antes de qualquer cliente existir.
 - Header ausente e header errado recebem **a mesma** resposta 401. Comparação com
   `secrets.compare_digest`.
 - `APP_SECRET` vazio **desliga** o gate — é o que mantém os testes e o desenvolvimento local sem
   header — e o app emite WARNING no startup.
-- **Isto não é autenticação.** A chave é estática e viaja dentro do APK e do binário desktop; quem
-  tem qualquer um dos dois extrai o valor. Sobre HTTP puro ela trafega em texto claro, ao lado do
-  token que deveria proteger. Serve para o servidor parar de responder a varredura automática, e só.
-  Autorização continua sendo o JWT do admin e o token de app.
+- **Isto não é autenticação.** A chave é estática e viaja dentro dos dois APKs e do binário desktop;
+  quem tem qualquer um dos três extrai o valor — o TLS de produção protege o valor **em trânsito**,
+  não dentro do pacote instalado. Serve para o servidor parar de responder a varredura automática, e
+  só. Autorização continua sendo o JWT do admin e o token de app.
 
-### App Android
+### App Android (do publicador)
+Vale para `app/` e para as rotas `/app/*`. O **app admin** (`admin-app/`) é outro binário, usa as
+rotas `/admin/*` com o JWT da congregação, e nada desta seção se aplica a ele.
+
 - A **única** escrita permitida ao app é marcar quadra como trabalhada. Nada de território, quadra,
   usuário ou congregação é criado, editado ou apagado pelo app.
 - Vincula-se pelo `access_code` individual; sem código válido e ativo, não há dados.
@@ -627,13 +765,13 @@ uma pasta com um roteador por endereço.
   polígonos, marcadores e rótulos numerados — tudo que o caso de uso pede. Respeitar a
   [política de uso dos tiles](https://operations.osmfoundation.org/policies/tiles/) do OSM:
   definir um User-Agent identificando o app e não fazer *bulk download*.
-- **MapLibre Native (`@maplibre/maplibre-react-native`) no app, não `react-native-maps`.** Mesma
-  decisão de fundo do Leaflet no admin: `react-native-maps` é feito para o Google Maps SDK (chave de
-  API, billing, dependência de Google Play Services), o oposto do que o projeto escolheu. MapLibre
-  Native desenha tiles raster crus (a mesma URL de tile do OSM que o admin usa) sem depender de
-  nenhum provedor comercial.
-- **Monorepo.** Os três projetos compartilham o contrato da API; versionar junto evita que o app e
-  o admin fiquem fora de sincronia com o servidor.
+- **MapLibre Native (`@maplibre/maplibre-react-native`) nos dois apps, não `react-native-maps`.**
+  Mesma decisão de fundo do Leaflet no admin: `react-native-maps` é feito para o Google Maps SDK
+  (chave de API, billing, dependência de Google Play Services), o oposto do que o projeto escolheu.
+  MapLibre Native desenha tiles raster crus (a mesma URL de tile do OSM que o admin usa) sem depender
+  de nenhum provedor comercial.
+- **Monorepo.** Os quatro projetos compartilham o contrato da API; versionar junto evita que os três
+  clientes fiquem fora de sincronia com o servidor.
 - **Electron no admin, não mais Flutter.** Decisão revertida em 2026-08-08 (ver a nota no início da
   Stack Técnica): esta máquina de desenvolvimento não compila `flutter build macos` sem o Xcode
   completo, e o dono do projeto já tinha um caminho de build local em Electron validado em outro
@@ -708,6 +846,24 @@ documentada quando o app era Flutter; a troca de stack na spec 0005 não mudou e
 linguagem. Sem gerenciador de estado externo (Redux/Zustand): o volume de telas é pequeno e o estado
 é quase todo "o que o servidor respondeu", então hooks + Context bastam.
 
+### App Admin (React Native)
+
+As mesmas três camadas de `app/`, com um acréscimo em `data/`: aqui mora também a sessão que guarda
+a credencial e refaz o login sozinha — o papel que no desktop é do `main/`.
+
+| Camada | Pasta | Responsabilidade | Proibido |
+|--------|-------|------------------|----------|
+| Presentation | `admin-app/src/presentation/` | Telas, navegação (React Navigation), o mapa das designações (MapLibre) | Chamada HTTP direta, `react-native-keychain`, regra de negócio |
+| Domain | `admin-app/src/domain/` | Entidades e funções puras (cor e rótulo da quadra, designação aberta, centroide/rótulo do mapa) | Dependência de React Native, HTTP ou armazenamento |
+| Data | `admin-app/src/data/` | Cliente HTTP (`api-client.ts`), credenciais no keystore (`credentials-store.ts`), sessão com reautenticação silenciosa no 401 (`session.ts`) | JSX, lógica de apresentação |
+
+**Direção:** `presentation → domain ← data`, a mesma de `app/`. A `session` é a única coisa que a
+presentation chama para escrever, e nenhuma tela conhece token, senha ou `fetch` — mesma promessa
+que o renderer do Electron tem ao só falar com `window.api`. **Sem cache offline, de propósito:** o
+app do publicador cacheia leitura porque trabalha sem sinal em campo, mas o admin escreve o tempo
+todo (designar, concluir, marcar), e um cache de escrita seria a fila offline que o dono do projeto
+já rejeitou em 2026-08-18. Sem rede, o app avisa e não faz nada.
+
 ### Admin (Electron)
 
 Quatro camadas, ainda sem `domain/` — é a mesma decisão de antes, adaptada ao processo duplo do
@@ -739,19 +895,20 @@ provavelmente a senha mudou no servidor.
 
 ## Testes
 
-| Item | Servidor | App (React Native) | Admin (Electron) |
-|------|----------|---------------------|-------------------|
-| Framework | pytest | Jest + `@testing-library/react-native` | Vitest + React Testing Library |
-| Rodar tudo | `cd server && pytest` | `cd app && npm test` | `cd admin && npm test` |
-| Rodar um arquivo | `pytest tests/services/test_territory_service.py` | `npx jest src/presentation/screens/DashboardScreen.test.tsx` | `npx vitest run src/renderer/screens/HomeScreen.test.tsx` |
-| Cobertura | `pytest --cov=app --cov-report=term-missing` | `npx jest --coverage` | `npx vitest run --coverage` |
-| Local e nome | `server/tests/**/test_*.py` | `app/src/**/*.test.ts(x)`, co-localizado | `admin/src/**/*.test.ts(x)`, co-localizado |
-| Meta | **100% nos services** (regras de negócio), 80% geral | uma tela, um teste; `domain/` e `data/` cobertos por fake de rede/armazenamento (nunca `AsyncStorage`/keychain reais); a view nativa do MapLibre (`presentation/map/TerritoryMapView.tsx`, `presentation/screens/MapScreen.tsx`) é risco assumido sem teste automatizado — mesmo caso do Leaflet-Geoman do admin, verificada rodando `npm run android` num emulador/aparelho | uma tela, um teste de componente; `main/` coberto por fake das dependências do Electron (`safeStorage`, `fetch`, `ipcMain`) |
+| Item | Servidor | App (React Native) | App Admin (React Native) | Admin (Electron) |
+|------|----------|---------------------|---------------------------|-------------------|
+| Framework | pytest | Jest + `@testing-library/react-native` | Jest + `@testing-library/react-native` | Vitest + React Testing Library |
+| Rodar tudo | `cd server && pytest` | `cd app && npm test` | `cd admin-app && npm test` | `cd admin && npm test` |
+| Rodar um arquivo | `pytest tests/services/test_territory_service.py` | `npx jest src/presentation/screens/DashboardScreen.test.tsx` | `npx jest src/presentation/screens/BlocksScreen.test.tsx` | `npx vitest run src/renderer/screens/HomeScreen.test.tsx` |
+| Cobertura | `pytest --cov=app --cov-report=term-missing` | `npx jest --coverage` | `npx jest --coverage` | `npx vitest run --coverage` |
+| Local e nome | `server/tests/**/test_*.py` | `app/src/**/*.test.ts(x)`, co-localizado | `admin-app/src/**/*.test.ts(x)`, co-localizado | `admin/src/**/*.test.ts(x)`, co-localizado |
+| Meta | **100% nos services** (regras de negócio), 80% geral | uma tela, um teste; `domain/` e `data/` cobertos por fake de rede/armazenamento (nunca `AsyncStorage`/keychain reais); a view nativa do MapLibre (`presentation/map/TerritoryMapView.tsx`, `presentation/screens/MapScreen.tsx`) é risco assumido sem teste automatizado — mesmo caso do Leaflet-Geoman do admin, verificada rodando `npm run android` num emulador/aparelho | uma tela, um teste; `domain/` e `data/` cobertos por `fetch` injetado e keychain mockado; a view nativa do MapLibre (`presentation/map/AssignmentsMapView.tsx`) é a mesma exceção sem teste automatizado, e por isso todo cálculo dela mora em `domain/territoryMap.ts`, esse sim testado | uma tela, um teste de componente; `main/` coberto por fake das dependências do Electron (`safeStorage`, `fetch`, `ipcMain`) |
 
-**Por que o admin e o app fogem do `test/` espelhado que o servidor usa.** Arquivo `*.test.ts(x)` ao
+**Por que os clientes fogem do `test/` espelhado que o servidor usa.** Arquivo `*.test.ts(x)` ao
 lado do código, não numa pasta paralela, é a convenção do próprio ecossistema Vitest/Vite (admin) e
-Jest/React Native (app) — seguir o padrão da ferramenta em vez de forçar o espelhamento à moda do
-servidor economiza atrito com qualquer gerador ou plugin que espere esse layout.
+Jest/React Native (`app/` e `admin-app/`) — seguir o padrão da ferramenta em vez de forçar o
+espelhamento à moda do servidor economiza atrito com qualquer gerador ou plugin que espere esse
+layout.
 
 **TDD é obrigatório em toda regra de negócio do servidor** — validação geométrica, login,
 numeração de quadras. Espelhe a estrutura de `app/` dentro de `tests/`.
@@ -770,10 +927,11 @@ comprovadamente não deixa nada gravado.
 abortar a coleta. Espelhar `app/` no nome, e não só na pasta: `tests/core/test_geo.py` e
 `tests/schemas/test_geo_schemas.py`, `tests/services/test_user_service.py`.
 
-`app/src/domain/` é código puro (sem `react-native`), pelo mesmo motivo que já valia para
-`packages/core` quando o app era Flutter: lógica compartilhada (cor da quadra, "é meu território?",
-filtro do mapa) testável em milissegundos, sem emulador nem janela. É onde o TDD do lado cliente
-vale a pena — mesmo padrão de `admin/src/shared/geo.ts` no admin.
+`app/src/domain/` e `admin-app/src/domain/` são código puro (sem `react-native`), pelo mesmo motivo
+que já valia para `packages/core` quando o app era Flutter: lógica compartilhada (cor e rótulo da
+quadra, "é meu território?", filtro do mapa, designação aberta) testável em milissegundos, sem
+emulador nem janela. É onde o TDD do lado cliente vale a pena — mesmo padrão de
+`admin/src/shared/geo.ts` no admin.
 
 **Como mockar:**
 - **Banco**: as regras geométricas dependem do PostGIS de verdade — teste os services contra um
@@ -786,17 +944,19 @@ vale a pena — mesmo padrão de `admin/src/shared/geo.ts` no admin.
 - **Repositórios**: em teste de service que *não* seja geométrico, use fake in-memory implementando
   a mesma interface — não `MagicMock` solto.
 - **Relógio**: injete um provider de tempo; nunca chame `datetime.now()` direto no service.
-- **HTTP no app e no admin**: cliente da API por trás de interface, com implementação fake nos
-  testes — nunca um emulador Android ou uma janela Electron real. No `app/`, o cliente
-  (`data/api-client.ts`) é testado com um `fetch` fake injetado (`app/src/data/api-client.test.ts`).
-  No admin, o cliente (`main/api-client.ts`) é local ao projeto, e os testes de
+- **HTTP nos clientes**: cliente da API por trás de interface, com implementação fake nos
+  testes — nunca um emulador Android ou uma janela Electron real. No `app/` e no `admin-app/`, o
+  cliente (`data/api-client.ts`) é testado com um `fetch` fake injetado; no `admin-app/`, os testes
+  de `data/session.ts` recebem fakes do cliente e do store, pelo mesmo desenho.
+  No admin desktop, o cliente (`main/api-client.ts`) é local ao projeto, e os testes de
   `session.ts`/`ipc-handlers.ts` recebem um fake dele por injeção.
-- **Armazenamento no app**: `react-native-keychain` (token) e `AsyncStorage` (cache do
-  mapa) são mockados nos testes de `data/` — nunca o keychain ou o armazenamento reais do aparelho.
+- **Armazenamento nos apps**: `react-native-keychain` (o token, no `app/`; nome, cidade e senha, no
+  `admin-app/`) e `AsyncStorage` (cache do mapa, só no `app/`) são mockados nos testes de `data/` —
+  nunca o keystore ou o armazenamento reais do aparelho, e a senha nunca aparece num `console.*`.
 
 ## Como Rodar
 
-O servidor, o admin e o `app/` (React Native) já sobem.
+O servidor, o admin, o `app/` e o `admin-app/` (React Native) já sobem.
 
 **Banco (necessário para servidor e testes):**
 ```bash
@@ -837,6 +997,17 @@ tempo de **build** via `react-native-config` — editar o arquivo exige parar e 
 android` de novo, não há *hot reload* dele. Alvo Android apenas, sem pasta `ios/`. Detalhes em
 `app/README.md`.
 
+**App Admin (Android):**
+```bash
+cd admin-app && npm install
+cp .env.example .env    # preencha API_BASE_URL e APP_KEY
+npm run android
+```
+Mesmas condições do `app/`: emulador em execução ou aparelho com depuração USB, `.env` lido em tempo
+de **build** pelo `react-native-config`, alvo Android apenas. **Exige JDK 17**, que esta máquina de
+desenvolvimento não tem hoje — `npm test`, `npm run lint` e `npm run typecheck` rodam sem ele, mas
+nenhum comando de Gradle roda. Detalhes em `admin-app/README.md`.
+
 **Admin (desktop):**
 ```bash
 cd admin && npm install && npm run dev
@@ -856,7 +1027,10 @@ aplicação" mais abaixo para o que `APP_KEY` precisa valer.
 | `test` | `push` e `pull_request` que toquem `server/**` ou o workflow | PostGIS real como service container, `ruff check`, `ruff format --check`, `alembic upgrade head`, `pytest --cov`, e um portão que **falha se `app/services/` sair de 100%** |
 | `build-and-deploy` | `push` na `main` ou `workflow_dispatch`, depois do `test` | Buildx com cache de layers, publica no **GHCR** com as tags `latest` e o SHA; sincroniza o compose para a VPS; roda `docker compose pull && up -d && image prune -f`; verifica `127.0.0.1:$API_PORT/health` com 30 tentativas |
 
-**Ambiente em produção:** `76.13.160.146`, diretório `/opt/territory-map`, API em HTTP na 8000.
+**Ambiente em produção:** VPS `76.13.160.146`, diretório `/opt/territory-map`. A API é alcançada de
+fora em **`https://territorymap.dalistor.com.br`** — é esse o valor de `API_BASE_URL` dos clientes,
+e o `GET /health` responde `200 {"status":"ok"}` por lá. O container continua escutando **só em
+`127.0.0.1:8000`**; quem termina o TLS e encaminha para essa porta é o nginx do host.
 
 **O que viaja para a VPS:** só o `docker-compose.yml` e o `docker/postgres/init/`. A aplicação chega
 como imagem do GHCR — o código-fonte nunca é enviado. O `--delete` do rsync é escopado a `docker/`,
@@ -897,10 +1071,18 @@ máquina é passo separado, ainda não feito.
 **Firewall:** `ufw` ativo, só 22, 80 e 443. A porta 8000 do container escuta apenas em `127.0.0.1`,
 que é para onde o nginx do host aponta.
 
-⚠️ **A API está exposta em HTTP puro na porta 8000.** JWT do admin e token do app trafegam em texto
-claro. Antes de uso real, colocar proxy reverso com TLS na frente, fechar a 8000 no firewall e
-apontar `FORWARDED_ALLOW_IPS` para o IP do proxy — senão o rate limit por IP passa a ver sempre o
-mesmo endereço. Também não há backup do volume `postgis_data`.
+**O proxy reverso com TLS existe** — o aviso que este documento trazia sobre "API exposta em HTTP
+puro na porta 8000" ficou desatualizado e foi reescrito aqui (spec 0012, Task 14). O tráfego dos
+clientes vai criptografado até `territorymap.dalistor.com.br`, e a 8000 nunca esteve aberta no
+firewall. **O que continua valendo do aviso antigo:**
+
+⚠️ Atrás de proxy, servir o uvicorn com `--proxy-headers` e apontar `FORWARDED_ALLOW_IPS` para o IP
+do proxy. O rate limit é chaveado por `request.client.host`; sem isso, toda requisição parece vir do
+nginx e todos os chamadores dividem um balde só — o primeiro que errar a senha tranca a congregação
+inteira.
+
+⚠️ **Não há backup do volume `postgis_data` fora da máquina.** O `docker/backup.sh` faz `pg_dump`
+local (acima), que sobrevive a migration ruim e tabela derrubada, mas não à perda do host.
 
 **Admin** — sem CI. `.github/workflows/admin-release.yml` foi removido junto com o admin em Flutter
 que ele compilava, e não ganhou substituto: o build é sempre **local**, com
@@ -940,7 +1122,8 @@ testes (Vitest + React Testing Library), que existem e cobrem as nove telas (con
 dois editores, as configurações do território com a tabela de quadras e o histórico da quadra), os
 componentes `BlockWorkPanel` e `MarkWorkedForm`, mais o roteamento com a
 sidebar (`App.test.tsx`), o main
-process (incluindo a montagem e a formatação da planilha em `excel-export.test.ts`) e o que se abre com `npm run dev`
+process (incluindo a montagem e a formatação da planilha em `excel-export.test.ts`, o S-13-T em Word
+em `docx-handler.test.ts` e a geocodificação em `geocode.test.ts`) e o que se abre com `npm run dev`
 durante o desenvolvimento.
 
 **App Android** — sem CI, mesmo caminho do admin: build sempre **local**.
@@ -955,23 +1138,40 @@ enquanto. Sem assinatura de código configurada — mesmo aviso do admin: o Andr
 vêm de `app/.env` (via `react-native-config`), lido em tempo de **build**, não de execução — editar
 o `.env` exige gerar o `.apk` de novo. Detalhes em `app/README.md`.
 
+**App Admin Android** — sem CI também, e o comando é o mesmo, um diretório ao lado:
+
+```bash
+cd admin-app/android && ./gradlew assembleRelease
+```
+
+Gera o `.apk` em `admin-app/android/app/build/outputs/apk/release/`. Valem os mesmos avisos — sem
+assinatura, "fonte desconhecida" na instalação, `.env` lido em tempo de build — mais dois próprios:
+**exige JDK 17**, que esta máquina de desenvolvimento não tem hoje (Jest, ESLint e `tsc` rodam sem
+ele; nenhum comando de Gradle roda), e o `applicationId` é `com.territorymapadmin`, diferente do
+`com.territorymapapp` do publicador, então os dois `.apk` **convivem no mesmo aparelho** sem um
+substituir o outro. Este é o APK de quem tem a senha da congregação: instalar só no aparelho do
+responsável pelos territórios. Detalhes em `admin-app/README.md`.
+
 ## Regras e Convenções
 
 - **Idioma**: código, nomes de arquivo, commits e comentários em **inglês**. Documentação em
   `.claude/` e conversa em **português**.
-- **Naming**: Python `snake_case` (classes `PascalCase`); TypeScript (admin e app) `lowerCamelCase`
-  para variáveis/funções e `PascalCase` para classes/componentes React, arquivos `kebab-case.ts` em
-  `admin/src/main/`/`preload/`/`shared/` e `PascalCase.tsx` para componentes de tela em
-  `admin/src/renderer/` e `app/src/presentation/screens/`.
+- **Naming**: Python `snake_case` (classes `PascalCase`); TypeScript (os três clientes)
+  `lowerCamelCase` para variáveis/funções e `PascalCase` para classes/componentes React, arquivos
+  `kebab-case.ts` em `admin/src/main/`/`preload/`/`shared/` e em `admin-app/src/data/`, e
+  `PascalCase.tsx` para componentes de tela em `admin/src/renderer/`,
+  `app/src/presentation/screens/` e `admin-app/src/presentation/screens/`.
 - **Um arquivo por entidade** em cada camada — `models/territory.py`, `services/territory_service.py`.
 - **Nada de coordenada como float solto**: use o tipo `LatLng` — `admin/src/shared/geo.ts` no admin,
-  `app/src/domain/models.ts` no app (`{lat, lng}` nomeado, mesmo formato do admin) — para não trocar
-  latitude com longitude. Cada um é a única fonte da conversão para GeoJSON do seu lado.
-- **Lógica que serve a mais de um cliente TypeScript não existe hoje.** `admin/` e `app/` são dois
-  projetos independentes, cada um com sua própria pasta de lógica compartilhada interna
-  (`admin/src/shared/`, `app/src/domain/`) — nenhum pacote é compartilhado entre os dois.
-- **Lint**: ESLint com `typescript-eslint` recomendado no admin e no app. Sem warning ignorado em
-  nenhum dos três projetos.
+  `app/src/domain/models.ts` no app, `admin-app/src/domain/models.ts` no app admin (`{lat, lng}`
+  nomeado, o mesmo formato nos três) — para não trocar latitude com longitude. Cada um é a única
+  fonte da conversão para GeoJSON do seu lado.
+- **Lógica que serve a mais de um cliente TypeScript não existe hoje.** `admin/`, `app/` e
+  `admin-app/` são três projetos independentes, cada um com sua própria pasta de lógica
+  compartilhada interna (`admin/src/shared/`, `app/src/domain/`, `admin-app/src/domain/`) — nenhum
+  pacote é compartilhado entre eles.
+- **Lint**: ESLint com `typescript-eslint` recomendado nos três clientes. Sem warning ignorado em
+  nenhum dos quatro projetos.
 - **Migrações sempre via Alembic**, nunca DDL manual no banco.
 - **Erros de domínio** são exceções próprias (`TerritoryOverlapError`, `BlockOutsideTerritoryError`),
   traduzidas para HTTP só no router.
@@ -1000,12 +1200,25 @@ o `.env` exige gerar o `.apk` de novo. Detalhes em `app/README.md`.
 - **O log de trabalho identifica pessoas.** Guarda quem esteve em qual quadra e quando. Guardar só
   isso — nada de posição GPS, rota ou horário de deslocamento no `BlockWorkLog`.
 - **Ordem das coordenadas** é a fonte clássica de bug aqui: PostGIS/GeoJSON usam `(lon, lat)` e o
-  Leaflet (admin) e o MapLibre Native (app) usam `(lat, lon)`. A conversão mora numa única função
-  por lado — `admin/src/shared/geo.ts` no admin, `app/src/domain/models.ts` no app —, cada uma com
-  teste. Não converter à mão em nenhum outro lugar.
+  Leaflet (admin) e o MapLibre Native (os dois apps) usam `(lat, lon)`. A conversão mora numa única
+  função por lado — `admin/src/shared/geo.ts` no admin, `app/src/domain/models.ts` no app,
+  `admin-app/src/domain/models.ts` no app admin —, cada uma com teste. Não converter à mão em nenhum
+  outro lugar.
+- **A regra de cor da quadra está duplicada de propósito, em três arquivos idênticos**:
+  `admin/src/renderer/map/blockColor.ts`, `app/src/domain/blockColor.ts` e
+  `admin-app/src/domain/blockColor.ts`. É o custo aceito de não haver pacote compartilhado entre os
+  clientes: **quem mexer em um precisa mexer nos três**, senão a mesma quadra fica de uma cor na
+  mesa do admin e de outra no celular. Cada cópia tem seu próprio teste — o jeito de perceber a
+  divergência é os três suítes concordarem.
 - **O admin guarda a senha da congregação no desktop**, não só o token — é o preço do login
   automático. Usar o `safeStorage` do Electron (criptografa com o keychain do sistema operacional) e
   nunca gravar as credenciais em texto puro. Nunca logar essas credenciais, nem em modo debug.
+- **O app admin guarda a mesma senha no celular**, pela mesma razão e com o mesmo cuidado: nome,
+  cidade e senha da congregação vão para o **keystore do Android** via `react-native-keychain`
+  (`admin-app/src/data/credentials-store.ts`), num `service` próprio, nunca em `AsyncStorage`, em
+  arquivo ou em texto puro. **Nunca logar essas credenciais, nem em modo debug** — nem em teste,
+  onde o keychain é mockado. Um aparelho com este APK vale a senha do admin: é por isso que ele não
+  é o app do publicador, e é por isso que "Sair da congregação" existe na tela.
 - **Binários do admin não são assinados.** Windows SmartScreen e Gatekeeper (macOS) vão reclamar na
   primeira execução. É esperado; instruir o admin em vez de tentar contornar.
 - **Uso dos tiles do OSM** tem política própria: sem *bulk download*, com User-Agent identificado.
@@ -1034,8 +1247,12 @@ o `.env` exige gerar o `.apk` de novo. Detalhes em `app/README.md`.
 - Estratégia de **sincronização offline** do app (pull completo vs. delta por timestamp) — hoje é
   pull completo a cada abertura bem-sucedida (`app/src/presentation/App.tsx` recarrega e
   sobrescreve o cache inteiro via `saveTerritories`); delta por timestamp não foi avaliado.
-- Se o admin precisa **exportar** territórios (PDF/imagem do mapa) para uso impresso — a
-  exportação que existe hoje é a das **designações** em `.xlsx` (spec 0007), não a do desenho.
+- Se o admin precisa **exportar** territórios (PDF/imagem do mapa) para uso impresso — as
+  exportações que existem hoje são todas das **designações**: a planilha por território em `.xlsx`
+  (spec 0007) e o formulário oficial **S-13-T** em `.docx` ou `.xlsx`. Nenhuma delas leva o desenho.
+- **Nenhuma tela do app admin foi vista rodando.** Falta o JDK 17 nesta máquina, então nem
+  `npm run android` nem `assembleRelease` foram executados; o que garante o comportamento até aqui
+  são os testes de Jest. O passo manual está anotado em `admin-app/README.md`.
 - **Reinstalar o app custa um código novo.** Limpar os dados ou trocar de celular apaga o token, e
   só o admin consegue devolver o acesso. Se isso virar chamado frequente, o remédio é o admin poder
   gerar o código em lote e a tela deixar isso a dois cliques — não afrouxar a regra.
@@ -1061,7 +1278,14 @@ quando os registros não contam a história toda (spec 0010): adicionar, apagar 
 na tabela de quadras da página de configurações do território, e o forçado se desfaz sozinho na
 primeira visita nova. E **apagar publicador** deixou de ser impossível (spec 0011): o histórico
 passou a guardar o nome em vez de uma FK, então a pessoa some sem levar junto o que ela trabalhou —
-só quem tem designação aberta é recusado, até que a designação seja concluída.
+só quem tem designação aberta é recusado, até que a designação seja concluída. Por último, **o admin
+deixou de depender do computador para designar** (spec 0012): `admin-app/` é um segundo APK, com a
+credencial da congregação no keystore do Android, que faz em campo o cartão S-13 e a marcação de
+quadra — sem nenhuma rota nova no servidor, e sem trazer junto o que só faz sentido na mesa (desenho,
+gestão de publicador, status forçado, página Histórico, import/export S-13/T). E esse app deixou de
+ser cego para as quadras (spec 0013): o mapa agora as desenha numeradas e coloridas pelo status,
+tocar numa delas abre um painel único com as ações da quadra e, separadas, as do território, apagar
+registro de trabalho passou a existir no celular, e o app ganhou a logo e o ícone do produto.
 
 ## Implementações
 
