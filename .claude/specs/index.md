@@ -15,6 +15,8 @@ Planejamentos de implementações complexas, decompostos em tasks para subagente
 | [0009](0009/README.md) | Marcação de quadra pelo admin, rotação por território e página de configurações | 2026-08-19 | Concluída | 13 tasks |
 | [0010](0010/README.md) | Tabela de quadras na configuração do território, com histórico e status forçado | 2026-08-20 | Concluída | 12 tasks |
 | [0011](0011/README.md) | Apagar publicador, com o nome preservado no histórico | 2026-08-20 | Concluída | 8 tasks |
+| [0012](0012/README.md) | App admin Android: designação de territórios e marcação de quadra | 2026-08-23 | Concluída | 14 tasks |
+| [0013](0013/README.md) | App admin: logo, quadras no mapa e painel combinado | 2026-08-23 | Concluída | 8 tasks |
 
 ---
 

@@ -195,22 +195,41 @@ quadra e o `rotationDays` do território **dono** dela — com o número por cim
 raster puro, sem `glyphs`, e um servidor de fontes é o que escolher OSM + MapLibre existe para
 evitar. O alvo do toque é o polígono inteiro, não só o número.
 
-**Com quadras à vista, os rótulos de território somem** — é `shouldShowTerritoryLabels`, e não é
-detalhe de estilo: o balão do nome do dirigente é ancorado no centroide do território, exatamente
-onde os números das quadras estão, e sem essa regra ele senta em cima deles. Foi o problema que o
-usuário relatou, e é a mesma solução que o app do publicador já aplicava. Um refactor que reintroduza
-o rótulo incondicional derruba isso sem perceber.
+**Os rótulos de território ficam sempre visíveis no mapa, mesmo com as quadras à vista** —
+decisão revertida em 2026-08-26 depois de um relato de campo: a spec 0013 os escondia quando havia
+quadra desenhada (`shouldShowTerritoryLabels`, hoje removida), para o balão do dirigente não sentar
+em cima dos números. Com uma congregação de 28 territórios, o efeito colateral pesou mais que o
+problema que a regra resolvia — sem o rótulo o admin não sabia a qual território pertencia cada
+grupo de quadras no mapa. O balão volta a aparecer sempre; a sobreposição ocasional com um número é
+o preço aceito.
 
-Tocar numa quadra abre o **painel combinado** (`presentation/screens/BlockPanel.tsx`): um lugar só
-com os dois níveis de ação entre os quais aquela quadra está. Em cima, a quadra — status por
-extenso, o histórico de trabalho dela com um **apagar em cada registro**, e o formulário de marcar
-como trabalhada. Embaixo, numa seção visualmente separada e rotulada com o nome do território, o
-cartão S-13 dele: dirigente atual, designar, marcar como concluído e apagar registro da designação.
-**A separação não é decoração**, e nem a frase que a acompanha: designar troca o responsável pelo
-território **inteiro**, não pela quadra que o admin acabou de tocar — e ele chegou ali dizendo "vou
-marcar esta quadra". O painel diz de quem é o escopo antes de oferecer o botão. Nada é reescrito:
-a metade de cima é o `BlockWorkSection` que a `BlocksScreen` já usa, agora com a capacidade de
-apagar que lá ele não tem, e a de baixo é o próprio `AssignmentPanel`.
+**No mapa principal, tocar num território (fora de uma quadra) abre a tela de quadras, não o cartão
+S-13** — outra mudança do mesmo relato: no mapa o admin já está olhando as quadras, e a pergunta
+natural ali é "o que já foi trabalhado", não "quem é o responsável". Designar continua alcançável
+pela linha da lista, que abre o cartão S-13 como sempre, e agora tem também um atalho de "Marcar
+como concluído" direto nela, ao lado da contagem de quadras do território. **Tocar numa quadra
+continua abrindo o painel combinado** (`presentation/screens/BlockPanel.tsx`), sem mudança nenhuma
+aqui: um lugar só com os dois níveis de ação entre os quais aquela quadra está. Em cima, a quadra —
+status por extenso, o histórico de trabalho dela com um **apagar em cada registro**, e o formulário
+de marcar como trabalhada. Embaixo, numa seção visualmente separada e rotulada com o nome do
+território, o cartão S-13 dele: dirigente atual, designar, marcar como concluído e apagar registro
+da designação. **A separação não é decoração**, e nem a frase que a acompanha: designar troca o
+responsável pelo território **inteiro**, não pela quadra que o admin acabou de tocar — e ele chegou
+ali dizendo "vou marcar esta quadra". O painel diz de quem é o escopo antes de oferecer o botão.
+Nada é reescrito: a metade de cima é o `BlockWorkSection` que a `BlocksScreen` já usa, agora com a
+capacidade de apagar que lá ele não tem, e a de baixo é o próprio `AssignmentPanel`.
+
+A **tela de quadras** (`presentation/screens/BlocksScreen.tsx`) ganhou seu próprio mapa, do mesmo
+jeito: um `AssignmentsMapView` recebendo só o território em vista (`[current]`), o que já desenha a
+demarcação dele e suas quadras numeradas e coloridas sem nenhum código de mapa novo — o componente já
+sabia desenhar o que recebesse. Tocar numa quadra ali abre a mesma seção que tocar na sua linha na
+lista abre.
+
+A **lista de territórios** é ordenada por `compareTerritoriesByNumber`
+(`admin-app/src/domain/models.ts`), a mesma regra que o admin desktop já usa
+(`admin/src/shared/models.ts`) — pelo número que o nome do território carrega por convenção
+("Centro - N5"), não pela ordem alfabética do nome, senão "Casarotto -N28" lia antes de "Centro - N5"
+só porque "C" vem antes de "C" do jeito errado. Nome sem número vai para o fim, alfabético entre si.
 
 Todo o resto é coberto por
 teste (Jest + `@testing-library/react-native`), com a mesma exceção de sempre para a view nativa do

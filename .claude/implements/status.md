@@ -228,3 +228,53 @@ _Atualizado automaticamente pelas skills `/centaur-driven-tdd` e `/centaur-drive
 | [0168](0168/README.md) | Admin: apagar publicador pela tela (spec 0011, Task 07) | 2026-08-20 | Concluído | `admin/src/renderer/screens/PublishersScreen.tsx`, `admin/src/renderer/screens/PublishersScreen.test.tsx` |
 
 | [0169](0169/README.md) | Documentar a exclusão de publicador no `CLAUDE.md` (spec 0011, Task 08) | 2026-08-20 | Concluído | `CLAUDE.md` |
+
+| [0170](0170/README.md) | Scaffold do app admin Android (`admin-app/`) (spec 0012, Task 01) | 2026-08-23 | Concluído | `admin-app/` (projeto novo: `package.json`, `app.json`, `index.js`, `tsconfig.json`, `babel.config.js`, `metro.config.js`, `jest.config.js`, `jest.setup.js`, `.eslintrc.js`, `.prettierrc.js`, `.env.example`, `.gitignore`, `android/**`, `src/domain/index.ts`, `src/data/index.ts`, `src/presentation/index.ts`, `src/presentation/screens/index.ts`, `src/presentation/map/index.ts`, `src/presentation/App.tsx`, `src/smoke.test.tsx`) |
+
+| [0171](0171/README.md) | App admin Android: credenciais da congregação no keystore (spec 0012, Task 05) | 2026-08-23 | Concluído | `admin-app/src/data/credentials-store.ts`, `admin-app/src/data/credentials-store.test.ts` |
+
+| [0172](0172/README.md) | App admin: modelos do domínio e conversão de coordenadas (spec 0012, Task 02) | 2026-08-23 | Concluído | `admin-app/src/domain/models.ts`, `admin-app/src/domain/models.test.ts` |
+
+| [0173](0173/README.md) | App admin: o mapa das designações em MapLibre (spec 0012, Task 09) | 2026-08-23 | Concluído | `admin-app/src/domain/territoryMap.ts`, `admin-app/src/domain/territoryMap.test.ts`, `admin-app/src/presentation/map/AssignmentsMapView.tsx`, `admin-app/src/presentation/map/index.ts` |
+
+| [0174](0174/README.md) | App admin: regras puras da designação e do status da quadra (spec 0012, Task 03) | 2026-08-23 | Concluído | `admin-app/src/domain/assignment.ts`, `admin-app/src/domain/assignment.test.ts`, `admin-app/src/domain/blockColor.ts`, `admin-app/src/domain/blockColor.test.ts`, `admin-app/src/domain/blockStatusLabel.ts`, `admin-app/src/domain/blockStatusLabel.test.ts` |
+
+| [0175](0175/README.md) | App admin: cliente HTTP da API (spec 0012, Task 04) | 2026-08-23 | Concluído | `admin-app/src/data/api-client.ts`, `admin-app/src/data/api-client.test.ts` |
+
+| [0176](0176/README.md) | App admin: sessão com reautenticação silenciosa (spec 0012, Task 06) | 2026-08-23 | Concluído | `admin-app/src/data/session.ts`, `admin-app/src/data/session.test.ts`, `admin-app/src/data/index.ts` |
+
+| [0177](0177/README.md) | App admin: a tela de configuração inicial (`SetupScreen`) (spec 0012, Task 07) | 2026-08-23 | Concluído | `admin-app/src/presentation/screens/SetupScreen.tsx`, `admin-app/src/presentation/screens/SetupScreen.test.tsx`, `admin-app/src/presentation/theme.ts`, `admin-app/src/presentation/screens/index.ts` |
+
+| [0178](0178/README.md) | App admin: o painel S-13 do território (spec 0012, Task 11) | 2026-08-23 | Concluído | `admin-app/src/presentation/screens/AssignmentPanel.tsx`, `admin-app/src/presentation/screens/AssignmentPanel.test.tsx` |
+
+| [0179](0179/README.md) | App admin: quadras do território e marcar como trabalhada (spec 0012, Task 12) | 2026-08-23 | Concluído | `admin-app/src/presentation/screens/BlocksScreen.tsx`, `admin-app/src/presentation/screens/BlocksScreen.test.tsx`, `admin-app/src/presentation/screens/index.ts` |
+
+| [0180](0180/README.md) | `admin-app/README.md`: como rodar, empacotar e o que o app admin não faz (spec 0012, Task 13) | 2026-08-23 | Concluído | `admin-app/README.md` |
+
+| [0181](0181/README.md) | App admin: navegação, bootstrap e sair da congregação (spec 0012, Task 08) | 2026-08-23 | Concluído | `admin-app/src/presentation/App.tsx`, `admin-app/src/presentation/App.test.tsx`, `admin-app/src/presentation/screens/SetupScreen.tsx`, `admin-app/src/presentation/index.ts`, `admin-app/src/smoke.test.tsx` (removido) |
+
+| [0182](0182/README.md) | Documentar o app admin Android no `CLAUDE.md`, e corrigir HTTPS e import/export S-13/T (spec 0012, Task 14) | 2026-08-23 | Concluído | `CLAUDE.md` |
+
+| [0183](0183/README.md) | App admin: a tela de Designações, mapa e lista (spec 0012, Task 10) | 2026-08-23 | Concluído | `admin-app/src/presentation/screens/DesignationsScreen.tsx`, `admin-app/src/presentation/screens/DesignationsScreen.test.tsx`, `admin-app/src/presentation/App.tsx`, `admin-app/src/presentation/App.test.tsx`, `admin-app/src/presentation/screens/index.ts`, `admin-app/jest.setup.js` |
+
+| [0184](0184/README.md) | Remover do README do app admin o aviso de navegação não ligada | 2026-08-23 | Concluído | `admin-app/README.md` |
+
+| [0185](0185/README.md) | Logo e ícone do produto no app admin (spec 0013, Task 01) | 2026-08-23 | Concluído | `admin-app/src/presentation/screens/SetupScreen.tsx`, `admin-app/src/presentation/assets/logo.png`, `admin-app/src/presentation/assets/images.d.ts`, `admin-app/android/app/src/main/res/mipmap-*/ic_launcher.png`, `admin-app/android/app/src/main/res/mipmap-*/ic_launcher_round.png` |
+
+| [0186](0186/README.md) | App admin: apagar registro de trabalho no cliente HTTP (spec 0013, Task 03) | 2026-08-23 | Concluído | `admin-app/src/data/api-client.ts`, `admin-app/src/data/api-client.test.ts`, `admin-app/src/data/session.test.ts` |
+
+| [0187](0187/README.md) | App admin: as quadras do mapa como dado puro (spec 0013, Task 02) | 2026-08-23 | Concluído | `admin-app/src/domain/territoryMap.ts`, `admin-app/src/domain/territoryMap.test.ts` |
+
+| [0188](0188/README.md) | App admin: o mapa desenha as quadras e responde ao toque (spec 0013, Task 04) | 2026-08-23 | Concluído | `admin-app/src/presentation/map/AssignmentsMapView.tsx` |
+
+| [0189](0189/README.md) | App admin: o painel combinado da quadra (spec 0013, Task 05) | 2026-08-23 | Concluído | `admin-app/src/presentation/screens/BlockPanel.tsx`, `admin-app/src/presentation/screens/BlockPanel.test.tsx`, `admin-app/src/presentation/screens/BlockWorkSection.tsx`, `admin-app/src/presentation/screens/BlocksScreen.tsx`, `admin-app/src/presentation/screens/AssignmentPanel.tsx`, `admin-app/src/presentation/screens/index.ts` |
+
+| [0190](0190/README.md) | App admin: paleta única na BlocksScreen e área segura no overlay (spec 0013, Task 07) | 2026-08-23 | Concluído | `admin-app/src/presentation/screens/BlocksScreen.tsx`, `admin-app/src/presentation/screens/DesignationsScreen.tsx` |
+
+| [0191](0191/README.md) | App admin: o toque na quadra abre o painel combinado (spec 0013, Task 06) | 2026-08-23 | Concluído | `admin-app/src/presentation/screens/DesignationsScreen.tsx`, `admin-app/src/presentation/screens/DesignationsScreen.test.tsx` |
+
+| [0192](0192/README.md) | Documentar as quadras no mapa do app admin, o painel combinado e a logo (spec 0013, Task 08) | 2026-08-23 | Concluído | `CLAUDE.md`, `admin-app/README.md` |
+
+| [0193](0193/README.md) | Números das quadras vazando para o header, e concluir designação pela linha | 2026-08-26 | Concluído | `admin-app/src/presentation/screens/DesignationsScreen.tsx`, `admin-app/src/presentation/screens/DesignationsScreen.test.tsx` |
+
+| [0194](0194/README.md) | Ordem da lista de territórios, rótulos sempre visíveis, tocar num território abre as quadras, mapa embutido na tela de quadras | 2026-08-26 | Concluído | `admin-app/src/domain/models.ts`, `admin-app/src/domain/models.test.ts`, `admin-app/src/domain/territoryMap.ts`, `admin-app/src/domain/territoryMap.test.ts`, `admin-app/src/presentation/map/AssignmentsMapView.tsx`, `admin-app/src/presentation/screens/DesignationsScreen.tsx`, `admin-app/src/presentation/screens/DesignationsScreen.test.tsx`, `admin-app/src/presentation/screens/BlocksScreen.tsx`, `admin-app/src/presentation/screens/BlocksScreen.test.tsx`, `CLAUDE.md`, `admin-app/README.md` |
