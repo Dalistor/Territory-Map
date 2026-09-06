@@ -2,7 +2,7 @@
 // they are currently responsible for. `session` arrives already active (the
 // activation/restoration flow, Task 22/26, owns getting one) and `apiClient`
 // is injected rather than created here -- this is Presentation, and per
-// CLAUDE.md's Arquitetura de Camadas it never talks HTTP directly. `onOpenMap`
+// AGENTS.md's Arquitetura de Camadas it never talks HTTP directly. `onOpenMap`
 // is wired to real navigation in Task 26; here it is just a callback.
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';

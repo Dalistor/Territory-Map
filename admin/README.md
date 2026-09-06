@@ -3,7 +3,7 @@
 App desktop (Electron + React + TypeScript) para quem é responsável pelos territórios de uma
 congregação: desenha as demarcações no mapa, marca, numera e apaga as quadras, cadastra
 publicadores e acompanha o histórico de trabalho. Fala direto com o servidor da API. Veja o
-`CLAUDE.md` na raiz do monorepo para a visão geral do projeto inteiro.
+`AGENTS.md` na raiz do monorepo para a visão geral do projeto inteiro.
 
 ## Instalar
 
@@ -26,7 +26,7 @@ Depois preencha `admin/.env`:
 | Variável       | Para que serve                                                                                                                                 |
 | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `API_BASE_URL` | URL base do servidor da Territory Map (ex. `http://localhost:8000` em desenvolvimento, ou o domínio de produção).                              |
-| `APP_KEY`      | O mesmo valor de `APP_SECRET` do servidor. Vai em toda requisição como o header `X-App-Key` — ver "Chave de aplicação" no `CLAUDE.md` da raiz. |
+| `APP_KEY`      | O mesmo valor de `APP_SECRET` do servidor. Vai em toda requisição como o header `X-App-Key` — ver "Chave de aplicação" no `AGENTS.md` da raiz. |
 
 `.env` está no `.gitignore` — nunca commitar as duas chaves preenchidas.
 

@@ -74,7 +74,7 @@ class UserPatchIn(BaseModel):
 
     Renaming does **not** rewrite history: `block_work_logs.user_name` and
     `territory_assignments.user_name` are copies taken when those rows were written
-    (see "O nome na linha, em vez da FK" in CLAUDE.md), so past work keeps the name
+    (see "O nome na linha, em vez da FK" in AGENTS.md), so past work keeps the name
     the person had at the time.
     """
 

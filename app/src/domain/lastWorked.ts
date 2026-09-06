@@ -38,7 +38,7 @@ function calendarDaysBetween(from: Date, to: Date): number {
  * date plus how long ago it was ("Última visita: 06/08/2026 (há 12 dias)").
  *
  * The day count is spelled out next to the date because that is the number
- * the decision actually turns on -- CLAUDE.md's "última vez trabalhada é a
+ * the decision actually turns on -- AGENTS.md's "última vez trabalhada é a
  * informação mais útil do sistema no dia a dia".
  */
 export function describeLastWorked(block: Block, now: Date): string {

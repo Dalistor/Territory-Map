@@ -3,7 +3,7 @@
 App Android (React Native, CLI puro, TypeScript — sem Expo) para o **responsável pelos territórios**
 fazer em campo o que hoje só o admin desktop faz na mesa: ver quem está com cada território,
 designar, marcar como concluído, corrigir o histórico da designação, e lançar — ou apagar — o
-registro de que uma quadra foi trabalhada. Fala direto com o servidor da API. Veja o `CLAUDE.md` na
+registro de que uma quadra foi trabalhada. Fala direto com o servidor da API. Veja o `AGENTS.md` na
 raiz do monorepo para a visão geral do projeto inteiro.
 
 Usa a **mesma logo e o mesmo ícone** do app do publicador: é o mesmo produto, e o que separa os dois
@@ -39,7 +39,7 @@ Depois preencha `admin-app/.env`:
 | Variável | Para que serve |
 |----------|-----------------|
 | `API_BASE_URL` | URL base do servidor da Territory Map. No emulador Android, `localhost` do servidor é acessado como `http://10.0.2.2:8000`; num aparelho físico, o IP da máquina na rede local, ou o domínio de produção. |
-| `APP_KEY` | O mesmo valor de `APP_SECRET` do servidor. Vai em toda requisição como o header `X-App-Key` — ver "Chave de aplicação" no `CLAUDE.md` da raiz. |
+| `APP_KEY` | O mesmo valor de `APP_SECRET` do servidor. Vai em toda requisição como o header `X-App-Key` — ver "Chave de aplicação" no `AGENTS.md` da raiz. |
 
 `.env` está no `.gitignore` da raiz do monorepo — nunca commitar as duas chaves preenchidas.
 
@@ -225,7 +225,7 @@ si.
 - `src/presentation/map/AssignmentsMapView.tsx` (o mapa MapLibre com as demarcações, as quadras e o
   nome do dirigente) depende de uma *view* nativa de terceiro e **não tem teste automatizado** —
   mesmo
-  "risco assumido" já registrado no `CLAUDE.md` da raiz para `TerritoryMapView.tsx` do app do
+  "risco assumido" já registrado no `AGENTS.md` da raiz para `TerritoryMapView.tsx` do app do
   publicador e para o Leaflet-Geoman do admin desktop. Todo cálculo que dava para separar
   (centroide, cor, texto do rótulo, quais quadras são desenháveis, se os rótulos de território
   aparecem) vive em `src/domain/territoryMap.ts`, com teste; o componente

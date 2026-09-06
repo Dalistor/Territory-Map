@@ -2,7 +2,7 @@
 // territories' outlines, their blocks coloured by `blockColorCategory`
 // (`domain/blockColor.ts`, Task 17), and the publisher's own live position.
 // MapLibre Native (`@maplibre/maplibre-react-native`) is a third-party native
-// view this component wraps; per CLAUDE.md's "risco assumido" principle --
+// view this component wraps; per AGENTS.md's "risco assumido" principle --
 // the same one already applied to Leaflet-Geoman in the admin -- it is
 // deliberately not exercised by Jest: there is no meaningful way to render a
 // native map view in a JS test runner. Verify by eye instead: `npm run
@@ -20,7 +20,7 @@
 // -- only the visible viewport is requested, same restraint as the admin's
 // Leaflet map.
 //
-// Location is sensitive data (CLAUDE.md, "Restrições e Cuidados" /
+// Location is sensitive data (AGENTS.md, "Restrições e Cuidados" /
 // "Localização é dado sensível"): the coordinate only ever lives in this
 // component's own state, feeding the marker below. It is never sent to the
 // server and never written to disk. `watchPosition` starts once permission

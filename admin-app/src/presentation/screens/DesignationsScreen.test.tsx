@@ -5,7 +5,7 @@
  * Both collaborators are injected -- the `session` of `data/session.ts` and the
  * API client it holds the token of -- so no test here reaches the network or
  * the Android keystore. The MapLibre view underneath is a native component and
- * is not exercised by Jest (see CLAUDE.md, "Testes"); what these tests assert
+ * is not exercised by Jest (see AGENTS.md, "Testes"); what these tests assert
  * about it is only what this screen hands it and what it hands back.
  */
 import React from 'react';
@@ -32,7 +32,7 @@ jest.mock('@react-native-community/datetimepicker', () => {
   };
 });
 
-// The map draws through MapLibre's native view, which CLAUDE.md keeps out of
+// The map draws through MapLibre's native view, which AGENTS.md keeps out of
 // the automated tests on purpose. Standing in for it here is a button per
 // territory that calls `onSelectTerritory`: what this screen owes the map is
 // the list it draws and the handler it calls back, and that is exactly what

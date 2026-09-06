@@ -1,6 +1,6 @@
 // Covers the parts of `MapScreen` that are plain React: the search box and
 // the filter chips. `TerritoryMapView` is mocked out -- it wraps a native
-// MapLibre view that cannot render in Jest (CLAUDE.md, "risco assumido").
+// MapLibre view that cannot render in Jest (AGENTS.md, "risco assumido").
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { ApiErrorException, NetworkException } from '../../data/api-client';

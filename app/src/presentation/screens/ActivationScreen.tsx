@@ -17,7 +17,7 @@ import { colors, radius, shadows, spacing } from '../theme';
 
 /**
  * The server already answers an invalid, expired and already-redeemed code
- * with the same generic response (see the root CLAUDE.md, "Cadastro de
+ * with the same generic response (see the root AGENTS.md, "Cadastro de
  * publicador" -- distinguishing them here would invent a difference the
  * server deliberately does not expose) so this is the one message shown for
  * every rejection, regardless of what `activate` actually threw.

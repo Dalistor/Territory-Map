@@ -2,7 +2,7 @@
 // `X-App-Key` header (read from `react-native-config`, see `app/.env.example`
 // for the two variables it reads) and, when a token is passed,
 // `Authorization: Bearer <token>`. The server always answers a non-2xx
-// response with a `{code, detail}` body (see the root CLAUDE.md, "Chave de
+// response with a `{code, detail}` body (see the root AGENTS.md, "Chave de
 // aplicação" / error contract) -- that becomes `ApiErrorException`. A `fetch`
 // that never got a response at all (offline, DNS, refused connection)
 // becomes `NetworkException` instead, so a caller (the offline queue) can

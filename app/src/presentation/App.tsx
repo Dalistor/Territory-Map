@@ -8,7 +8,7 @@
 // code on this device, so `ActivationScreen` opens directly. A saved
 // session is *not* trusted blindly -- it is checked against the server
 // (`listTerritories`, the same call `DashboardScreen` needs anyway) because
-// the CLAUDE.md `token_version` mechanism can have revoked it on the
+// the AGENTS.md `token_version` mechanism can have revoked it on the
 // backend (a new code redeemed on another device) since the last launch:
 //   - the server confirms it (any 2xx) -> skip straight to the Dashboard,
 //     and refresh the territory cache with the answer.

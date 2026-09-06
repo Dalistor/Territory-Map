@@ -18,7 +18,7 @@
 // the S-13 card since the same report).
 //
 // MapLibre Native (`@maplibre/maplibre-react-native`) is a third-party native
-// view this component wraps; per CLAUDE.md's "risco assumido" principle -- the
+// view this component wraps; per AGENTS.md's "risco assumido" principle -- the
 // same one already applied to Leaflet-Geoman in the desktop admin and to
 // `app/src/presentation/map/TerritoryMapView.tsx` -- it is deliberately not
 // exercised by Jest: there is no meaningful way to render a native map view in

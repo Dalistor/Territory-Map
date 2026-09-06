@@ -36,7 +36,7 @@ jest.mock('react-native-config', () => ({
 // MapLibre draws through a native view; under Jest it is replaced by plain
 // host components so a screen that renders the map still mounts. The map view
 // itself is not covered by automated tests (see "Testes" in the root
-// CLAUDE.md) -- this mock only keeps the screens around it testable.
+// AGENTS.md) -- this mock only keeps the screens around it testable.
 //
 // The names are the v11 surface `presentation/map/AssignmentsMapView.tsx`
 // actually imports (`Map`, `Layer`, `GeoJSONSource`, `Marker`,

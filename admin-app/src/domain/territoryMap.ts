@@ -5,7 +5,7 @@
 //
 // It is deliberately separated from `presentation/map/AssignmentsMapView.tsx`:
 // that component wraps a native MapLibre view, which no JS test runner can
-// meaningfully render (CLAUDE.md, "Testes"), so it is the one file in this app
+// meaningfully render (AGENTS.md, "Testes"), so it is the one file in this app
 // without automated coverage. Keeping every calculation out of it is what
 // makes that untested surface as small as it can be -- the component ends up
 // only translating the values below into JSX.

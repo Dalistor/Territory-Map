@@ -3,7 +3,7 @@
 App Android (React Native, CLI puro, TypeScript — sem Expo) para o publicador em campo: abre e já
 mostra a posição do usuário no mapa, com os territórios e quadras da congregação desenhados por
 cima, e permite marcar uma quadra como trabalhada. Fala direto com o servidor da API. Veja o
-`CLAUDE.md` na raiz do monorepo para a visão geral do projeto inteiro.
+`AGENTS.md` na raiz do monorepo para a visão geral do projeto inteiro.
 
 Alvo **Android apenas** — o projeto não tem pasta `ios/`.
 
@@ -29,7 +29,7 @@ Depois preencha `app/.env`:
 | Variável | Para que serve |
 |----------|-----------------|
 | `API_BASE_URL` | URL base do servidor da Territory Map. No emulador Android, `localhost` do servidor é acessado como `http://10.0.2.2:8000`; num aparelho físico, o IP da máquina na rede local, ou o domínio de produção. |
-| `APP_KEY` | O mesmo valor de `APP_SECRET` do servidor. Vai em toda requisição como o header `X-App-Key` — ver "Chave de aplicação" no `CLAUDE.md` da raiz. |
+| `APP_KEY` | O mesmo valor de `APP_SECRET` do servidor. Vai em toda requisição como o header `X-App-Key` — ver "Chave de aplicação" no `AGENTS.md` da raiz. |
 
 `.env` está no `.gitignore` da raiz do monorepo — nunca commitar as duas chaves preenchidas.
 
@@ -39,7 +39,7 @@ reload*.
 
 ## Estrutura
 
-Três camadas, mesmo espírito do antigo alvo em Flutter documentado no `CLAUDE.md` (só a linguagem
+Três camadas, mesmo espírito do antigo alvo em Flutter documentado no `AGENTS.md` (só a linguagem
 mudou):
 
 | Camada | Pasta | Responsabilidade |
@@ -48,7 +48,7 @@ mudou):
 | Domain | `src/domain/` | Entidades e funções puras — sem depender de React Native, HTTP ou armazenamento |
 | Data | `src/data/` | Cliente HTTP, `react-native-keychain` (token), `AsyncStorage` (cache do mapa) |
 
-As três pastas existem vazias por enquanto — ver a spec 0005 (`.claude/specs/0005/`, Tasks 17 a 26)
+As três pastas existem vazias por enquanto — ver a spec 0005 (`.centaur/specs/0005/`, Tasks 17 a 26)
 para o que entra em cada uma.
 
 ## Rodar em desenvolvimento
@@ -95,7 +95,7 @@ instalar a permitir a instalação mesmo assim, em vez de tentar contornar o avi
 desenhados e a localização do publicador) e `src/presentation/screens/MapScreen.tsx` (a tela que o
 compõe com o filtro e a confirmação de marcação) dependem de uma *view* nativa de terceiro — não são
 razoavelmente testáveis com Jest (mesmo "risco assumido" já registrado para o Leaflet-Geoman do
-admin no `CLAUDE.md` da raiz), então não têm teste automatizado. **Passo manual pendente:** depois
+admin no `AGENTS.md` da raiz), então não têm teste automatizado. **Passo manual pendente:** depois
 que a tela estiver ligada à navegação real (spec 0005, Task 26), rodar `npm run android` num
 emulador ou aparelho Android e confirmar visualmente:
 

@@ -1,7 +1,7 @@
 # Territory Map — Server
 
 API REST em FastAPI, dona das regras de negócio e da validação geométrica do projeto.
-Visão geral, modelo de dados e regras estão no [`CLAUDE.md`](../CLAUDE.md) na raiz do repositório.
+Visão geral, modelo de dados e regras estão no [`AGENTS.md`](../AGENTS.md) na raiz do repositório.
 
 - Python 3.12, gerenciado com [uv](https://docs.astral.sh/uv/)
 - SQLAlchemy 2.x síncrono + psycopg 3, PostgreSQL 16 + PostGIS

@@ -27,7 +27,7 @@ import { createGeocoder } from './geocode'
  *   `extraResources` in `electron-builder.yml`. Deliberately *outside* the
  *   asar, so the file stays editable after install: pointing an installed copy
  *   at another server is a text edit, not a rebuild. It is still inside the
- *   bundle and therefore extractable — the same thing CLAUDE.md already says
+ *   bundle and therefore extractable — the same thing AGENTS.md already says
  *   about `APP_KEY` shipping inside the binary, which is why the key is a
  *   shutter against scanners and never authentication.
  *

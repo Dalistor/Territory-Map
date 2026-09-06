@@ -125,7 +125,7 @@ export function MapScreen({
       setConfirmTarget({ territory, block });
     } else {
       // Outside a territory designated to this publisher: read-only info,
-      // never the option to mark it (CLAUDE.md, "Marcar quadra como
+      // never the option to mark it (AGENTS.md, "Marcar quadra como
       // trabalhada" / spec 0005's designation rule).
       setReadOnlyTarget({ territory, block });
     }

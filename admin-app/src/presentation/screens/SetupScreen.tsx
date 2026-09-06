@@ -27,7 +27,7 @@ import { colors, radius, shadows, spacing } from '../theme';
 /**
  * The server answers a wrong name, a wrong city and a wrong password with the
  * same deliberately vague "credenciais inválidas" (see "Login (admin)" in the
- * root CLAUDE.md), so repeating it would leave the admin guessing which of the
+ * root AGENTS.md), so repeating it would leave the admin guessing which of the
  * three to fix. This says what to do instead.
  */
 const CREDENTIALS_REJECTED_MESSAGE =
