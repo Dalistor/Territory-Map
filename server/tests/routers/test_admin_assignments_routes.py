@@ -154,7 +154,7 @@ async def test_the_history_lists_every_stint_most_recent_first(client, make_admi
     )
 
     assert response.status_code == 200
-    body = response.json()["items"]
+    body = response.json()
     assert [entry["user"]["name"] for entry in body] == ["Irmã Maria", "Irmão João"]
     assert body[0]["completed_at"] is None
     assert body[1]["completed_at"] is not None
@@ -348,7 +348,7 @@ async def test_the_general_listing_keeps_open_and_completed_records_together(
 
     response = await client.get("/admin/assignments", headers=bearer(token))
 
-    body = response.json()
+    body = response.json()["items"]
     assert [entry["user"]["name"] for entry in body] == ["Irmã Maria", "Irmão João"]
     assert body[0]["completed_at"] is None
     assert body[1]["completed_at"] is not None
