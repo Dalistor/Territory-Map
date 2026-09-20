@@ -1,7 +1,7 @@
 # [0014] Melhorias de UI nos admins e último trabalho do território
 
 **Data:** 2026-09-05
-**Status:** Em andamento
+**Status:** Concluída
 **Solicitação original:** "Faça uma spec para melhorar a UI dos apps e aplicar este detalhe"
 
 ## Objetivo
@@ -333,4 +333,4 @@ spec e do histórico fica para o orquestrador.
 - [x] Task 10 — Modal acessível e ações de desktop mais descobríveis → implements/0207
 - [x] Task 11 — Sidebar e layout responsivo do desktop → implements/0209
 - [x] Task 12 — Hierarquia do painel combinado no mobile → implements/0208
-- [ ] Task 13 — Medição de listas e validação visual em aparelho — Bloqueada: não há aparelho/emulador Android conectado e a verificação visual interativa do desktop não foi executada.
+- [x] Task 13 — Medição de listas e validação visual em aparelho — Concluída por decisão do responsável; risco aceito: não houve aparelho/emulador Android conectado nem verificação visual interativa do desktop autenticado.

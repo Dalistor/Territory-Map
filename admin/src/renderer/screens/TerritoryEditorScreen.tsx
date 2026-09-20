@@ -146,9 +146,12 @@ export function TerritoryEditorScreen({
   // panel on the left, the map filling the rest -- markup only, every control
   // and its enablement is unchanged.
   return (
-    <div className="editor-split">
-      <div className="editor-panel">
-        <h1>{territory === undefined ? 'Novo território' : `Editar ${territory.name}`}</h1>
+    <div className="editor-split screen-workbench">
+      <aside className="editor-panel screen-card">
+        <div>
+          <p className="eyebrow">Demarcação</p>
+          <h1>{territory === undefined ? 'Novo território' : `Editar ${territory.name}`}</h1>
+        </div>
 
         <label>
           Nome do território
@@ -165,7 +168,7 @@ export function TerritoryEditorScreen({
           </p>
         )}
 
-        <div role="toolbar">
+        <div className="workbench-actions" role="toolbar" aria-label="Ferramentas de desenho">
           <button onClick={editor.undo} disabled={!editor.canUndo}>
             Desfazer
           </button>
@@ -179,9 +182,9 @@ export function TerritoryEditorScreen({
 
         {editor.state.hint !== null && <p>{editor.state.hint}</p>}
         {error !== null && <p role="alert">{error}</p>}
-      </div>
+      </aside>
 
-      <div className="editor-map">
+      <section className="editor-map" aria-label="Mapa para desenhar o território">
         <MapContainer center={center} zoom={MAP_ZOOM} style={{ height: '100%', width: '100%' }}>
           <TileLayer
             url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -189,7 +192,7 @@ export function TerritoryEditorScreen({
           />
           <PolygonEditorLayers controller={editor} context={context} />
         </MapContainer>
-      </div>
+      </section>
     </div>
   )
 }

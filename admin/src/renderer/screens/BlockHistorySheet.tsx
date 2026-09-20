@@ -95,20 +95,23 @@ export function BlockHistorySheet({
   // DesignationsScreen), so the sheet inherits the shared chrome spacing
   // instead of sitting edge-to-edge inside the pushed screen.
   return (
-    <div>
-      <header>
-        <h2>
-          Quadra {block.number} — {territory.name}
-        </h2>
+    <div className="screen screen-block-history">
+      <header className="screen-header">
+        <div className="screen-title-block">
+          <p className="eyebrow">Histórico da quadra</p>
+          <h2>
+            Quadra {block.number} — {territory.name}
+          </h2>
+        </div>
       </header>
-      <main>
+      <main className="screen-body">
         {error && <p role="alert">{error}</p>}
         {isLoading ? (
           <p>Carregando…</p>
         ) : logs.length === 0 ? (
           <p>Esta quadra nunca foi trabalhada.</p>
         ) : (
-          <ul>
+          <ul className="record-list">
             {logs.map((log) => (
               <li key={log.id}>
                 <span>{log.publisher.name}</span>
@@ -119,6 +122,7 @@ export function BlockHistorySheet({
                 <button
                   type="button"
                   aria-label={`Remover registro de ${log.publisher.name} em ${formatDateTime(log.workedAt)}`}
+                  className="button-danger button-quiet"
                   disabled={isDeleting}
                   onClick={() => setPendingDeleteId(log.id)}
                 >

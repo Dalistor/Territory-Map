@@ -477,10 +477,8 @@ function authedApi(overrides: Partial<IpcApi> = {}): IpcApi {
   })
 }
 
-// The permanent navigation shell (spec 0006, Task 04): a fixed sidebar with
-// the congregation at the top, the four sections (spec 0008 added
-// "Histórico"), and sign-out at the bottom, with every route rendering in
-// the content area beside it.
+// The permanent navigation shell: a compact sidebar with the congregation at
+// the top, four primary destinations and sign-out isolated at the bottom.
 describe('AuthenticatedApp sidebar shell', () => {
   it('shows the sidebar with the congregation, the four sections, and "Mapa" initially active', async () => {
     vi.stubGlobal('api', authedApi())
@@ -494,10 +492,10 @@ describe('AuthenticatedApp sidebar shell', () => {
     const mapButton = within(nav).getByRole('button', { name: 'Mapa' })
     expect(mapButton).toHaveClass('is-active')
     expect(mapButton).toHaveAttribute('aria-current', 'page')
-    expect(within(nav).getByRole('button', { name: 'Designações' })).not.toHaveAttribute(
+    expect(within(nav).getByRole('button', { name: 'Territórios' })).not.toHaveAttribute(
       'aria-current'
     )
-    expect(within(nav).getByRole('button', { name: 'Histórico' })).not.toHaveAttribute(
+    expect(within(nav).getByRole('button', { name: 'Histórico completo' })).not.toHaveAttribute(
       'aria-current'
     )
     expect(within(nav).getByRole('button', { name: 'Publicadores' })).not.toHaveAttribute(
@@ -506,10 +504,7 @@ describe('AuthenticatedApp sidebar shell', () => {
     expect(within(nav).getByRole('button', { name: 'Sair da congregação' })).toBeInTheDocument()
   })
 
-  // The order matters to the admin reading the sidebar top to bottom:
-  // "Histórico" belongs beside "Designações", the page it complements, not
-  // tacked on at the end.
-  it('places "Histórico" between "Designações" and "Publicadores"', async () => {
+  it('places the consultation destinations in their canonical order', async () => {
     vi.stubGlobal('api', authedApi())
 
     render(<App />)
@@ -520,28 +515,28 @@ describe('AuthenticatedApp sidebar shell', () => {
       .map((button) => button.textContent)
     expect(labels).toEqual([
       'Mapa',
-      'Designações',
-      'Histórico',
+      'Territórios',
       'Publicadores',
+      'Histórico completo',
       'Sair da congregação'
     ])
   })
 
-  it('shows the History screen when "Histórico" is clicked, and "Mapa" returns home', async () => {
+  it('shows the History screen when "Histórico completo" is clicked, and "Mapa" returns home', async () => {
     vi.stubGlobal('api', authedApi())
     const user = userEvent.setup()
 
     render(<App />)
 
     const nav = await screen.findByRole('navigation')
-    await user.click(within(nav).getByRole('button', { name: 'Histórico' }))
+    await user.click(within(nav).getByRole('button', { name: 'Histórico completo' }))
 
-    expect(await screen.findByRole('heading', { name: 'Histórico' })).toBeInTheDocument()
-    const historyButton = within(nav).getByRole('button', { name: 'Histórico' })
+    expect(await screen.findByRole('heading', { name: 'Histórico completo' })).toBeInTheDocument()
+    const historyButton = within(nav).getByRole('button', { name: 'Histórico completo' })
     expect(historyButton).toHaveClass('is-active')
     expect(historyButton).toHaveAttribute('aria-current', 'page')
     expect(within(nav).getByRole('button', { name: 'Mapa' })).not.toHaveAttribute('aria-current')
-    expect(within(nav).getByRole('button', { name: 'Designações' })).not.toHaveAttribute(
+    expect(within(nav).getByRole('button', { name: 'Territórios' })).not.toHaveAttribute(
       'aria-current'
     )
 
@@ -571,17 +566,17 @@ describe('AuthenticatedApp sidebar shell', () => {
     expect(within(nav).queryByText('Congregação Central')).not.toBeInTheDocument()
   })
 
-  it('shows the Designations screen when "Designações" is clicked, and "Mapa" returns home', async () => {
+  it('opens the existing Designations workspace from "Territórios", and "Mapa" returns home', async () => {
     vi.stubGlobal('api', authedApi())
     const user = userEvent.setup()
 
     render(<App />)
 
     const nav = await screen.findByRole('navigation')
-    await user.click(within(nav).getByRole('button', { name: 'Designações' }))
+    await user.click(within(nav).getByRole('button', { name: 'Territórios' }))
 
-    expect(await screen.findByRole('heading', { name: 'Designações' })).toBeInTheDocument()
-    const designationsButton = within(nav).getByRole('button', { name: 'Designações' })
+    expect(await screen.findByRole('heading', { name: 'Territórios' })).toBeInTheDocument()
+    const designationsButton = within(nav).getByRole('button', { name: 'Territórios' })
     expect(designationsButton).toHaveClass('is-active')
     expect(designationsButton).toHaveAttribute('aria-current', 'page')
     expect(within(nav).getByRole('button', { name: 'Mapa' })).not.toHaveAttribute('aria-current')
@@ -589,7 +584,7 @@ describe('AuthenticatedApp sidebar shell', () => {
     await user.click(within(nav).getByRole('button', { name: 'Mapa' }))
 
     expect(await screen.findByRole('button', { name: 'Novo território' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Designações' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Territórios', level: 1 })).not.toBeInTheDocument()
   })
 
   it('does not sign out when the confirmation is declined', async () => {

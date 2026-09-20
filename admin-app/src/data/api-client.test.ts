@@ -376,6 +376,128 @@ describe('createApiClient', () => {
     });
   });
 
+  describe('listAllAssignments', () => {
+    const ASSIGNMENT_HISTORY_ROW = {
+      id: 'assign-1',
+      user: { id: 'user-gone', name: 'Irmão Costa' },
+      territory: { id: 'terr-1', name: 'Centro - N1' },
+      started_at: '2026-08-01T12:00:00Z',
+      completed_at: null,
+    };
+
+    it('parses the page and dates while preserving the copied publisher name', async () => {
+      const { client } = makeClient(
+        jsonResponse(200, {
+          items: [ASSIGNMENT_HISTORY_ROW],
+          total: 9,
+          page: 2,
+          page_size: 3,
+        }),
+      );
+
+      const result = await client.listAllAssignments({ page: 2, pageSize: 3 });
+
+      expect(result).toEqual({
+        items: [
+          {
+            id: 'assign-1',
+            territoryId: 'terr-1',
+            territory: { id: 'terr-1', name: 'Centro - N1' },
+            publisher: { id: 'user-gone', name: 'Irmão Costa' },
+            startedAt: new Date('2026-08-01T12:00:00Z'),
+            completedAt: null,
+          },
+        ],
+        total: 9,
+        page: 2,
+        pageSize: 3,
+      });
+    });
+
+    it('normalizes the legacy array response into the first history page', async () => {
+      const { client } = makeClient(jsonResponse(200, [ASSIGNMENT_HISTORY_ROW]));
+
+      await expect(client.listAllAssignments()).resolves.toEqual({
+        items: [
+          {
+            id: 'assign-1',
+            territoryId: 'terr-1',
+            territory: { id: 'terr-1', name: 'Centro - N1' },
+            publisher: { id: 'user-gone', name: 'Irmão Costa' },
+            startedAt: new Date('2026-08-01T12:00:00Z'),
+            completedAt: null,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 50,
+      });
+    });
+
+    it('filters and paginates a legacy array when the deployed server ignores query parameters', async () => {
+      const otherPublisher = {
+        ...ASSIGNMENT_HISTORY_ROW,
+        id: 'assign-2',
+        user: { id: 'someone-else', name: 'Outra pessoa' },
+      };
+      const secondMatching = {
+        ...ASSIGNMENT_HISTORY_ROW,
+        id: 'assign-3',
+        territory: { id: 'terr-2', name: 'Jardim - N2' },
+      };
+      const { client } = makeClient(
+        jsonResponse(200, [ASSIGNMENT_HISTORY_ROW, otherPublisher, secondMatching]),
+      );
+
+      await expect(
+        client.listAllAssignments({ publisherId: 'user-gone', page: 2, pageSize: 1 }),
+      ).resolves.toEqual({
+        items: [
+          {
+            id: 'assign-3',
+            territoryId: 'terr-2',
+            territory: { id: 'terr-2', name: 'Jardim - N2' },
+            publisher: { id: 'user-gone', name: 'Irmão Costa' },
+            startedAt: new Date('2026-08-01T12:00:00Z'),
+            completedAt: null,
+          },
+        ],
+        total: 2,
+        page: 2,
+        pageSize: 1,
+      });
+    });
+
+    it('omits query parameters that were not chosen', async () => {
+      const { client, fetchImpl } = makeClient(
+        jsonResponse(200, { items: [], total: 0, page: 1, page_size: 50 }),
+      );
+
+      await client.listAllAssignments();
+
+      expect(fetchImpl.mock.calls[0][0]).toBe(`${BASE_URL}/admin/assignments`);
+    });
+
+    it('serializes supplied filters and pagination as ISO-8601 query parameters', async () => {
+      const { client, fetchImpl } = makeClient(
+        jsonResponse(200, { items: [], total: 0, page: 3, page_size: 20 }),
+      );
+
+      await client.listAllAssignments({
+        from: new Date('2026-08-01T03:00:00.000Z'),
+        to: new Date('2026-09-01T03:00:00.000Z'),
+        publisherId: 'publisher/1',
+        territoryId: 'territory 1',
+        page: 3,
+        pageSize: 20,
+      });
+
+      expect(fetchImpl.mock.calls[0][0]).toBe(
+        `${BASE_URL}/admin/assignments?from=2026-08-01T03%3A00%3A00.000Z&to=2026-09-01T03%3A00%3A00.000Z&publisher_id=publisher%2F1&territory_id=territory+1&page=3&page_size=20`,
+      );
+    });
+  });
+
   describe('designate', () => {
     it('POSTs the chosen publisher as user_id and returns the new open assignment', async () => {
       const { client, fetchImpl } = makeClient(

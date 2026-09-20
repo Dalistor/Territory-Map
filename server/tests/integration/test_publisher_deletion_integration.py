@@ -130,8 +130,8 @@ async def test_a_deleted_publisher_leaves_the_list_and_stays_in_the_history(
     # -- and so does the closed stint on the History page -----------------------
     history = await all_assignments(api, admin_token)
     assert history.status_code == 200, history.text
-    assert len(history.json()) == 1
-    row = history.json()[0]
+    assert history.json()["total"] == 1
+    row = history.json()["items"][0]
     assert row["id"] == assignment_id
     assert row["user"] == {"id": marta_id, "name": "Irmã Marta"}
     assert row["completed_at"] is not None

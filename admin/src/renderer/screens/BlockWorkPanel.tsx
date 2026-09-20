@@ -153,7 +153,7 @@ export function BlockWorkPanel({
   }
 
   return (
-    <div className="block-work-panel">
+    <div className="block-work-panel screen-card">
       {error !== null && <p role="alert">{error}</p>}
 
       <section className="block-work-status">
@@ -183,7 +183,7 @@ export function BlockWorkPanel({
         ) : logs.length === 0 ? (
           <p>Esta quadra nunca foi trabalhada.</p>
         ) : (
-          <ul>
+          <ul className="record-list">
             {logs.map((log) => (
               <li key={log.id}>
                 <span>{log.publisher.name}</span>
@@ -193,6 +193,7 @@ export function BlockWorkPanel({
                 )}
                 <button
                   type="button"
+                  className="button-danger button-quiet"
                   disabled={isActionPending}
                   aria-label={`Remover registro de ${log.publisher.name} em ${formatDateTime(log.workedAt)}`}
                   onClick={() => setPendingDeleteId(log.id)}
@@ -216,7 +217,12 @@ export function BlockWorkPanel({
           onCancel={() => setIsAdding(false)}
         />
       ) : (
-        <button type="button" disabled={isActionPending} onClick={() => setIsAdding(true)}>
+        <button
+          className="button-secondary"
+          type="button"
+          disabled={isActionPending}
+          onClick={() => setIsAdding(true)}
+        >
           {isActionPending ? 'Atualizando…' : 'Adicionar registro'}
         </button>
       )}

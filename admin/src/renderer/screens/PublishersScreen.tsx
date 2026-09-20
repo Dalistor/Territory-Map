@@ -8,7 +8,7 @@
 // reinstall or an expired code -- and it invalidates whatever the person had
 // before.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Publisher } from '../../shared/models'
+import type { AssignmentWithTerritory, Publisher } from '../../shared/models'
 import { publisherHasLiveCode, publisherIsPending } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
 import { Dialog } from '../components/Dialog'
@@ -103,6 +103,14 @@ interface CodeDialogState {
   readonly code: string
 }
 
+function formatDate(date: Date): string {
+  return date.toLocaleDateString('pt-BR')
+}
+
+function historyCount(total: number): string {
+  return `${total} ${total === 1 ? 'território retirado' : 'territórios retirados'}`
+}
+
 /**
  * The `?? '—'` fallbacks below (create/regenerate/"Ver código") guard a
  * contract the server is supposed to uphold -- a live code always carries
@@ -128,6 +136,13 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
   const [codeDialog, setCodeDialog] = useState<CodeDialogState | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const [selectedPublisherId, setSelectedPublisherId] = useState<string | null>(null)
+  const [history, setHistory] = useState<AssignmentWithTerritory[]>([])
+  const [historyTotal, setHistoryTotal] = useState(0)
+  const [historyPage, setHistoryPage] = useState(1)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState<string | null>(null)
+  const selectedTriggerRef = useRef<HTMLButtonElement | null>(null)
 
   useEffect(() => {
     if (openMenuId === null) return
@@ -144,11 +159,12 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
     }
     const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button'))
     const current = items.indexOf(document.activeElement as HTMLElement)
-    const next = event.key === 'Home'
-      ? 0
-      : event.key === 'End'
-        ? items.length - 1
-        : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
+    const next =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? items.length - 1
+          : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
     items[next]?.focus()
   }
 
@@ -279,8 +295,44 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
     if (!window.confirm(deletePublisherConfirmMessage(publisher))) return
     await runWrite(async () => {
       await window.api.publishers.delete(publisher.id)
+      if (selectedPublisherId === publisher.id) {
+        setSelectedPublisherId(null)
+        setHistory([])
+        setHistoryTotal(0)
+      }
       await load()
     })
+  }
+
+  const selectedPublisher = publishers.find((publisher) => publisher.id === selectedPublisherId)
+
+  async function loadHistory(publisherId: string, page: number, append = false): Promise<void> {
+    setHistoryLoading(true)
+    setHistoryError(null)
+    try {
+      const result = await window.api.assignments.listAll({ publisherId, page })
+      setHistory((current) => (append ? [...current, ...result.items] : result.items))
+      setHistoryTotal(result.total)
+      setHistoryPage(result.page)
+    } catch (error) {
+      setHistoryError(errorMessage(error))
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  function selectPublisher(publisher: Publisher): void {
+    setSelectedPublisherId(publisher.id)
+    setHistory([])
+    setHistoryTotal(0)
+    void loadHistory(publisher.id, 1)
+  }
+
+  function closeHistory(): void {
+    setSelectedPublisherId(null)
+    setHistory([])
+    setHistoryTotal(0)
+    selectedTriggerRef.current?.focus()
   }
 
   function showExistingCode(publisher: Publisher): void {
@@ -297,7 +349,7 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
   )
 
   return (
-    <div>
+    <div className="publishers-screen">
       <h1>Publicadores</h1>
 
       {!loading && !loadError && publishers.length > 0 && (
@@ -338,123 +390,240 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
         />
       )}
 
-      {!loading && !loadError && publishers.length > 0 && filtered.length === 0 && (
-        <p>Nenhum publicador encontrado para a busca.</p>
-      )}
-
-      {!loading && !loadError && filtered.length > 0 && (
-        <ul>
-          {filtered.map((publisher) => (
-            <li
-              key={publisher.id}
-              className="publisher-row"
-              data-testid={`publisher-row-${publisher.name}`}
-            >
-              <span
-                className={`avatar${publisher.isActive ? '' : ' is-inactive'}`}
-                aria-hidden="true"
+      {!loading && !loadError && publishers.length > 0 && (
+        <div
+          className={`publishers-workspace${selectedPublisher === undefined ? '' : ' has-detail'}`}
+        >
+          <div className="publishers-directory">
+            {filtered.length === 0 ? (
+              <p className="publishers-no-results">Nenhum publicador encontrado para a busca.</p>
+            ) : (
+              <div
+                className="publishers-list"
+                role="region"
+                aria-label="Lista de publicadores"
+                tabIndex={0}
               >
-                {publisher.name.charAt(0).toUpperCase()}
-              </span>
-              <span className="publisher-name-block">
-                {renamingId === publisher.id ? (
-                  <form
-                    onSubmit={(event) => {
-                      event.preventDefault()
-                      void submitRename(publisher)
-                    }}
-                  >
-                    <label htmlFor={`rename-${publisher.id}`} className="sr-only">
-                      Novo nome de {publisher.name}
-                    </label>
-                    <input
-                      id={`rename-${publisher.id}`}
-                      value={renameValue}
-                      autoFocus
-                      onChange={(event) => setRenameValue(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Escape') cancelRename()
-                      }}
-                    />
-                    <button type="submit" disabled={isWriting}>
-                      {isWriting ? 'Salvando…' : 'Salvar'}
-                    </button>
-                    <button type="button" onClick={cancelRename}>
-                      Cancelar
-                    </button>
-                  </form>
-                ) : (
-                  <span>{publisher.name}</span>
-                )}
-                <span
-                  className={`status-badge status-${statusCategory(publisher, today)}`}
-                  data-testid="publisher-status"
-                >
-                  {statusOf(publisher, today)}
-                </span>
-              </span>
-              <button
-                type="button"
-                className="icon-button"
-                aria-label={`Ações de ${publisher.name}`}
-                aria-expanded={openMenuId === publisher.id}
-                onClick={() => setOpenMenuId(openMenuId === publisher.id ? null : publisher.id)}
-              >
-                ⋮
-              </button>
-              {openMenuId === publisher.id && (
-                <ul
-                  role="menu"
-                  aria-label={`Ações de ${publisher.name}`}
-                  data-publisher-menu={publisher.id}
-                  onKeyDown={moveInMenu}
-                >
-                  {publisherHasLiveCode(publisher, today) && (
-                    <li>
-                      <button type="button" onClick={() => showExistingCode(publisher)}>
-                        Ver código
+                <ul>
+                  {filtered.map((publisher) => (
+                    <li
+                      key={publisher.id}
+                      className="publisher-row"
+                      data-testid={`publisher-row-${publisher.name}`}
+                    >
+                      <span
+                        className={`avatar${publisher.isActive ? '' : ' is-inactive'}`}
+                        aria-hidden="true"
+                      >
+                        {publisher.name.charAt(0).toUpperCase()}
+                      </span>
+                      <span className="publisher-name-block">
+                        {renamingId === publisher.id ? (
+                          <form
+                            noValidate
+                            onSubmit={(event) => {
+                              event.preventDefault()
+                              void submitRename(publisher)
+                            }}
+                          >
+                            <label htmlFor={`rename-${publisher.id}`} className="sr-only">
+                              Novo nome de {publisher.name}
+                            </label>
+                            <input
+                              id={`rename-${publisher.id}`}
+                              value={renameValue}
+                              autoFocus
+                              onChange={(event) => setRenameValue(event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Escape') cancelRename()
+                              }}
+                            />
+                            <button type="submit" disabled={isWriting}>
+                              {isWriting ? 'Salvando…' : 'Salvar'}
+                            </button>
+                            <button type="button" onClick={cancelRename}>
+                              Cancelar
+                            </button>
+                          </form>
+                        ) : (
+                          <button
+                            type="button"
+                            className="publisher-history-trigger"
+                            aria-pressed={publisher.id === selectedPublisherId}
+                            ref={
+                              publisher.id === selectedPublisherId ? selectedTriggerRef : undefined
+                            }
+                            onClick={() => selectPublisher(publisher)}
+                          >
+                            {publisher.name}
+                          </button>
+                        )}
+                        <span
+                          className={`status-badge status-${statusCategory(publisher, today)}`}
+                          data-testid="publisher-status"
+                        >
+                          {statusOf(publisher, today)}
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        className="icon-button"
+                        aria-label={`Ações de ${publisher.name}`}
+                        aria-expanded={openMenuId === publisher.id}
+                        onClick={() =>
+                          setOpenMenuId(openMenuId === publisher.id ? null : publisher.id)
+                        }
+                      >
+                        ⋮
                       </button>
+                      {openMenuId === publisher.id && (
+                        <ul
+                          role="menu"
+                          aria-label={`Ações de ${publisher.name}`}
+                          data-publisher-menu={publisher.id}
+                          onKeyDown={moveInMenu}
+                        >
+                          {publisherHasLiveCode(publisher, today) && (
+                            <li>
+                              <button type="button" onClick={() => showExistingCode(publisher)}>
+                                Ver código
+                              </button>
+                            </li>
+                          )}
+                          <li>
+                            <button type="button" onClick={() => startRename(publisher)}>
+                              Renomear
+                            </button>
+                          </li>
+                          <li>
+                            <button
+                              type="button"
+                              disabled={isWriting}
+                              onClick={() => regenerate(publisher)}
+                            >
+                              Gerar novo código
+                            </button>
+                          </li>
+                          <li>
+                            <button
+                              type="button"
+                              disabled={isWriting}
+                              onClick={() => toggleActive(publisher)}
+                            >
+                              {publisher.isActive ? 'Desativar' : 'Reativar'}
+                            </button>
+                          </li>
+                          <li>
+                            <button
+                              type="button"
+                              className="block-action-danger"
+                              aria-label={`Apagar ${publisher.name}`}
+                              disabled={isWriting}
+                              onClick={() => void deletePublisher(publisher)}
+                            >
+                              Apagar
+                            </button>
+                          </li>
+                        </ul>
+                      )}
                     </li>
-                  )}
-                  <li>
-                    <button type="button" onClick={() => startRename(publisher)}>
-                      Renomear
-                    </button>
-                  </li>
-                  <li>
-                    <button
-                      type="button"
-                      disabled={isWriting}
-                      onClick={() => regenerate(publisher)}
-                    >
-                      Gerar novo código
-                    </button>
-                  </li>
-                  <li>
-                    <button
-                      type="button"
-                      disabled={isWriting}
-                      onClick={() => toggleActive(publisher)}
-                    >
-                      {publisher.isActive ? 'Desativar' : 'Reativar'}
-                    </button>
-                  </li>
-                  <li>
-                    <button
-                      type="button"
-                      className="block-action-danger"
-                      aria-label={`Apagar ${publisher.name}`}
-                      disabled={isWriting}
-                      onClick={() => void deletePublisher(publisher)}
-                    >
-                      Apagar
-                    </button>
-                  </li>
+                  ))}
                 </ul>
-              )}
-            </li>
-          ))}
-        </ul>
+              </div>
+            )}
+          </div>
+
+          {selectedPublisher !== undefined && (
+            <aside
+              className="publisher-history-panel"
+              aria-label={`Histórico de territórios de ${selectedPublisher.name}`}
+            >
+              <div className="publisher-history-panel-header">
+                <div>
+                  <h2 className="eyebrow">Histórico de territórios</h2>
+                  <p className="publisher-history-name">{selectedPublisher.name}</p>
+                  {!historyLoading && historyError === null && (
+                    <p className="publisher-history-count">{historyCount(historyTotal)}</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="button-quiet"
+                  aria-label="Fechar histórico de territórios"
+                  onClick={closeHistory}
+                >
+                  Fechar
+                </button>
+              </div>
+              <div className="publisher-history-content">
+                {historyLoading && <p role="status">Carregando histórico…</p>}
+                {!historyLoading && historyError !== null && (
+                  <div className="publisher-history-state">
+                    <p role="alert">{historyError}</p>
+                    <button type="button" onClick={() => void loadHistory(selectedPublisher.id, 1)}>
+                      Tentar novamente
+                    </button>
+                  </div>
+                )}
+                {!historyLoading && historyError === null && history.length === 0 && (
+                  <div className="publisher-history-state">
+                    <strong>Nenhum território retirado</strong>
+                    <p>Nenhum território registrado para esta pessoa.</p>
+                  </div>
+                )}
+                {!historyLoading && historyError === null && history.length > 0 && (
+                  <div
+                    className="publisher-history-table-wrap"
+                    role="region"
+                    aria-label="Registros do histórico"
+                    tabIndex={0}
+                  >
+                    <table aria-label={`Histórico de territórios de ${selectedPublisher.name}`}>
+                      <thead>
+                        <tr>
+                          <th scope="col">Território</th>
+                          <th scope="col">Retirada</th>
+                          <th scope="col">Devolução</th>
+                          <th scope="col">Situação</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {history.map((assignment) => {
+                          const ongoing = assignment.completedAt === undefined
+                          return (
+                            <tr key={assignment.id}>
+                              <td>
+                                <strong>{assignment.territory.name}</strong>
+                              </td>
+                              <td>{formatDate(assignment.startedAt)}</td>
+                              <td>{ongoing ? '—' : formatDate(assignment.completedAt)}</td>
+                              <td>
+                                <span
+                                  className={`assignment-status${ongoing ? ' is-ongoing' : ' is-returned'}`}
+                                >
+                                  {ongoing ? 'Em andamento' : 'Devolvido'}
+                                </span>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {!historyLoading && historyError === null && history.length < historyTotal && (
+                  <button
+                    type="button"
+                    className="publisher-history-more"
+                    onClick={() => void loadHistory(selectedPublisher.id, historyPage + 1, true)}
+                  >
+                    Carregar mais
+                  </button>
+                )}
+              </div>
+            </aside>
+          )}
+        </div>
       )}
 
       {showCreateForm && (
@@ -488,10 +657,7 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
       )}
 
       {codeDialog && (
-        <Dialog
-          title={`Código de ${codeDialog.publisherName}`}
-          onClose={() => setCodeDialog(null)}
-        >
+        <Dialog title={`Código de ${codeDialog.publisherName}`} onClose={() => setCodeDialog(null)}>
           <p className="access-code-display" data-testid="access-code">
             {codeDialog.code}
           </p>

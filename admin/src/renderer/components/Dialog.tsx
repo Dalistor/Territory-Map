@@ -16,7 +16,8 @@ export function Dialog({ title, children, onClose, className }: DialogProps): Re
   const titleId = useId()
 
   useEffect(() => {
-    restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    restoreFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null
     const dialog = dialogRef.current
     const firstFocusable = dialog?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)
     ;(firstFocusable ?? dialog)?.focus()

@@ -60,3 +60,24 @@ Implementações anteriores a 0156 estão em `arquivo.md`.
 | [0208](0208/README.md) | Hierarquia visual do painel combinado no admin mobile | 2026-09-06 | Concluído | `admin-app/src/presentation/screens/BlockPanel.tsx`, `BlockWorkSection.tsx`, `AssignmentPanel.tsx`, testes |
 | [0209](0209/README.md) | Sidebar e layout responsivo do desktop | 2026-09-06 | Concluído | `admin/src/renderer/App.tsx`, `admin/src/renderer/index.css`, `admin/src/renderer/App.test.tsx` |
 | [0210](0210/README.md) | Validação final dos clientes TypeScript e dos admins | 2026-09-06 | Bloqueado | Validação automatizada concluída; falta aparelho/emulador Android e inspeção visual interativa do desktop |
+| [0211](0211/README.md) | Contrato mensurável da reformulação administrativa (spec 0015, Task 07) | 2026-09-20 | Concluído | `.impeccable/build/`, `UX-CONTRACT.md` |
+| [0212](0212/README.md) | Consulta paginada de designações por congregação (spec 0015, Task 01) | 2026-09-20 | Concluído | `server/app/repositories/territory_assignment.py`, `server/tests/repositories/test_territory_assignment.py` |
+| [0213](0213/README.md) | Shell contemporâneo do admin desktop (spec 0015, Task 08) | 2026-09-20 | Concluído | `admin/src/renderer/App.tsx`, `admin/src/renderer/index.css`, `admin/src/renderer/App.test.tsx` |
+| [0214](0214/README.md) | Controles compartilhados de consulta no desktop (spec 0015, Task 09) | 2026-09-20 | Concluído | `admin/src/renderer/components/SearchField.tsx`, `SegmentedControl.tsx`, `DataTable.tsx`, `query-controls.css`, testes |
+| [0215](0215/README.md) | Contrato HTTP paginado do histórico de designações (spec 0015, Task 02) | 2026-09-20 | Concluído | `server/app/schemas/assignment.py`, `server/app/services/assignment.py`, `server/app/routers/admin_assignments.py`, testes |
+| [0216](0216/README.md) | Cliente desktop do histórico paginado (spec 0015, Task 04) | 2026-09-20 | Concluído | `admin/src/shared/models.ts`, `admin/src/main/api-client.ts`, testes |
+| [0217](0217/README.md) | Consulta paginada de designações no admin Android (spec 0015, Task 06) | 2026-09-20 | Concluído | `admin-app/src/domain/models.ts`, `admin-app/src/data/api-client.ts`, testes |
+| [0218](0218/README.md) | Integração do histórico paginado de designações (spec 0015, Task 03) | 2026-09-20 | Concluído | testes de integração de designações/publicadores; execução PostGIS pendente de infraestrutura |
+| [0219](0219/README.md) | Ponte IPC da consulta paginada de designações (spec 0015, Task 05) | 2026-09-20 | Concluído | `admin/src/shared/ipc-contract.ts`, Preload, handlers e testes IPC |
+| [0220](0220/README.md) | Navegação primária do admin Android (spec 0015, Task 14) | 2026-09-20 | Concluído | `admin-app/package*.json`, `src/presentation/App.tsx`, testes |
+| [0221](0221/README.md) | Controles compartilhados de consulta no admin Android (spec 0015, Task 15) | 2026-09-20 | Concluído | `admin-app/src/presentation/components/QueryControls.tsx`, testes |
+| [0222](0222/README.md) | Histórico de territórios por publicador no desktop (spec 0015, Task 11) | 2026-09-20 | Concluído | `admin/src/renderer/screens/PublishersScreen.tsx`, testes |
+| [0223](0223/README.md) | Histórico completo paginado no desktop (spec 0015, Task 12) | 2026-09-20 | Concluído | `admin/src/renderer/screens/HistoryScreen.tsx`, testes |
+| [0224](0224/README.md) | Workspace de territórios no desktop (spec 0015, Task 10) | 2026-09-20 | Concluído | `admin/src/renderer/screens/DesignationsScreen.tsx`, testes e `index.css` |
+| [0225](0225/README.md) | Consulta de territórios em lista ou mapa no admin Android (spec 0015, Task 16) | 2026-09-20 | Concluído | `admin-app/src/presentation/screens/DesignationsScreen.tsx`, testes |
+| [0226](0226/README.md) | Consulta móvel de histórico por publicador (spec 0015, Task 18) | 2026-09-20 | Concluído | telas/rotas de Publicadores e testes no `admin-app/` |
+| [0227](0227/README.md) | Histórico completo por período no admin Android (spec 0015, Task 19) | 2026-09-20 | Concluído | `admin-app/src/presentation/screens/HistoryScreen.tsx`, rota e testes |
+| [0228](0228/README.md) | Gramática visual das telas auxiliares do desktop (spec 0015, Task 13) | 2026-09-20 | Concluído | Presentation desktop, estilos e testes focais |
+| [0229](0229/README.md) | Detalhe empilhado de território no admin Android (spec 0015, Task 17) | 2026-09-20 | Concluído | telas/stack de território e testes no `admin-app/` |
+| [0230](0230/README.md) | Consistência e acessibilidade das consultas administrativas (spec 0015, Task 20) | 2026-09-20 | Concluído | consultas desktop/mobile, testes de comportamento e acessibilidade |
+| [0231](0231/README.md) | Verificação visual, gates e documentação final (spec 0015, Task 21) | 2026-09-20 | Bloqueado | validação automatizada e APK release prontos; falta PostGIS acessível, dispositivo Android e captura Electron válida |

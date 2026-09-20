@@ -1,0 +1,43 @@
+{
+  "title": "Escolha a composição dos admins",
+  "question": "As três opções usam a mesma linguagem de admin contemporâneo. Escolha a estrutura que deve orientar desktop e Android.",
+  "options": [
+    {
+      "id": "table-detail",
+      "label": "Tabela + detalhe",
+      "kicker": "OPÇÃO 1",
+      "lineage": "lista operacional com painel contextual",
+      "thesis": "A comparação entre territórios lidera; o mapa explica o item selecionado.",
+      "palette": ["#FFFFFF", "#172033", "#2F6FED", "#E8EDF4", "#2F7D5B"],
+      "materials": ["grade limpa", "divisores precisos", "painel contextual"],
+      "viewport": "Tabela ampla à esquerda e detalhe persistente com mapa à direita.",
+      "risk": "O mapa perde protagonismo e a versão móvel precisa transformar o painel em navegação empilhada.",
+      "comp": ".impeccable/mocks/decision/canon.webp"
+    },
+    {
+      "id": "consultation-hub",
+      "label": "Hub de consultas",
+      "kicker": "OPÇÃO 2",
+      "lineage": "áreas explícitas com consulta selecionada abaixo",
+      "thesis": "Publicadores, Territórios e Histórico completo ficam visíveis como as três perguntas centrais do produto.",
+      "palette": ["#FFFFFF", "#15365D", "#2474D8", "#EDF3F8", "#4A8B62"],
+      "materials": ["módulos de destino", "tabela compacta", "mapa de apoio"],
+      "viewport": "Três destinos no topo; abaixo, a consulta ativa combina lista e mapa sem esconder a arquitetura da informação.",
+      "risk": "Os módulos superiores podem consumir altura demais se forem repetidos em todas as telas.",
+      "comp": ".impeccable/mocks/admin-overview-hub.webp"
+    },
+    {
+      "id": "map-list",
+      "label": "Mapa + lista",
+      "kicker": "OPÇÃO 3",
+      "lineage": "workspace geográfico de duas colunas",
+      "thesis": "O mapa e a lista permanecem lado a lado, ligados pela mesma seleção.",
+      "palette": ["#FFFFFF", "#15365D", "#2474D8", "#EDF3F8", "#4A8B62"],
+      "materials": ["mapa dominante", "lista persistente", "seleção sincronizada"],
+      "viewport": "Mapa ocupa dois terços e lista um terço; o controle Mapa/Lista troca a prioridade sem perder contexto.",
+      "risk": "É excelente para Territórios, mas exige uma adaptação clara para Publicadores e Histórico completo.",
+      "comp": ".impeccable/mocks/admin-map-workspace.webp"
+    }
+  ],
+  "steer": true
+}

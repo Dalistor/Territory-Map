@@ -80,7 +80,7 @@ export function MarkWorkedForm({
   }, [])
 
   return (
-    <div className="block-mark-worked">
+    <div className="block-mark-worked form-surface">
       {loadError !== null && <p role="alert">{loadError}</p>}
       <label className="field">
         <span>Publicador</span>

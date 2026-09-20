@@ -1,0 +1,147 @@
+{
+  "title": "Escolha a linguagem visual dos admins",
+  "question": "A direção principal é Atlas Operacional. Escolha-a, adote uma alternativa ou peça um novo conjunto.",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "Atlas Operacional",
+      "kicker": "A PROPOSTA",
+      "lineage": "atlas cívicos, cadastro territorial e índices cartográficos",
+      "thesis": "Mapa, lista e histórico são três escalas da mesma folha de trabalho.",
+      "palette": ["#17212B", "#24445F", "#2F6F8F", "#D6A84B", "#F3F1E8", "#4F7C62"],
+      "materials": ["papel cartográfico", "sobreposição translúcida", "abas de índice"],
+      "viewport": "A página Territórios abre como uma prancha indexada: resumo e modos no topo, lista territorial densa ao centro e uma miniatura cartográfica persistente do item selecionado.",
+      "risk": "Pode parecer institucional demais se os controles não tiverem calor e ritmo de uso humano.",
+      "raised": [
+        {
+          "from": "terminal operacional",
+          "raise": "Estados e alertas ganham uma gramática operacional inequívoca, sem decoração gratuita."
+        },
+        {
+          "from": "capa transformável",
+          "raise": "A troca entre mapa, lista e histórico preserva seleção e contexto como uma única superfície que muda de forma."
+        },
+        {
+          "from": "campo de dados",
+          "raise": "Densidade alta continua legível e toda animação possui uma versão estática equivalente."
+        }
+      ],
+      "comp": ".impeccable/mocks/decision/assigned.webp"
+    },
+    {
+      "id": "model-pick",
+      "label": "Mesa Cartográfica",
+      "kicker": "IMPECCABLE’S PICK",
+      "lineage": "pranchetas de campo, plantas cadastrais e fichas S-13",
+      "thesis": "O responsável trabalha sobre uma mesa organizada de mapa, fichas e carimbos de data.",
+      "palette": ["#183044", "#456B7A", "#E7C35A", "#C95B47", "#F6F2E8", "#547A5E"],
+      "materials": ["papel vegetal", "grafite técnico", "presilhas de latão"],
+      "viewport": "Uma grande planta ocupa o fundo útil enquanto fichas S-13 encaixadas à direita mostram dirigente, período e quadras; um seletor troca a mesa para lista completa.",
+      "risk": "É a direção mais familiar para um produto de mapas e pode se tornar óbvia se a execução for tímida.",
+      "comp": ".impeccable/mocks/decision/model-pick.webp"
+    },
+    {
+      "id": "challenger-split-flap",
+      "label": "Quadro de Movimentos",
+      "verdict": "competitive",
+      "lineage": "quadros split-flap de estações e tabelas de circulação",
+      "thesis": "Cada território é uma linha viva cujo responsável e período mudam sem romper a grade.",
+      "palette": ["#111417", "#F2F0E9", "#E4A72D", "#A94135", "#59636B"],
+      "materials": ["lâminas foscas", "estrutura de aço escovado", "luzes de estado"],
+      "viewport": "O Histórico completo domina a tela como um quadro de linhas fixas: território, publicador, retirada, devolução e situação, com o período selecionado acima.",
+      "case": "É excepcional para leitura rápida de muitos períodos, mas identifica menos o universo cartográfico do produto.",
+      "risk": "Pode parecer cenográfico ou retro se a tabela não continuar serena e semanticamente convencional.",
+      "comp": ".impeccable/mocks/decision/challenger-split-flap.webp",
+      "hero": "https://impeccable.style/worlds/cards/signals-instruments-split-flap-concourse-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/signals-instruments-split-flap-concourse.webp"
+    },
+    {
+      "id": "challenger-starship",
+      "label": "Terminal Operacional",
+      "verdict": "declined",
+      "lineage": "terminais industriais de missão",
+      "thesis": "Consultas aparecem como comandos e respostas operacionais.",
+      "palette": ["#111713", "#B7D897", "#D8A33A", "#E6E1D4"],
+      "materials": ["fósforo", "placas esmaltadas"],
+      "viewport": "Uma consulta por vez em um painel de missão territorial.",
+      "case": "A disciplina dos estados ajuda, mas a ficção científica não pertence à cena real do usuário.",
+      "kept": "Vocabulário rigoroso de estado e alerta.",
+      "risk": "Transformaria uma ferramenta serena em adereço temático.",
+      "hero": "https://impeccable.style/worlds/cards/pop-culture-shelf-industrial-starship-terminal-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/pop-culture-shelf-industrial-starship-terminal.webp"
+    },
+    {
+      "id": "challenger-bitmap",
+      "label": "Espécime Bitmap",
+      "verdict": "declined",
+      "lineage": "catálogos tipográficos digitais dos anos 1980",
+      "thesis": "A hierarquia nasce da mesma informação repetida em escalas radicais.",
+      "palette": ["#F3F1EC", "#161616", "#315BCD"],
+      "materials": ["retícula", "pixel exposto"],
+      "viewport": "Resumo, lista e detalhe são tratados como escalas de um mesmo espécime.",
+      "case": "Tem personalidade, mas a baixa resolução compete com mapas, datas e leitura prolongada.",
+      "kept": "Hierarquia tipográfica que permanece coerente em todas as escalas.",
+      "risk": "Sacrificaria legibilidade cotidiana por assinatura visual.",
+      "hero": "https://impeccable.style/worlds/cards/emigre-bitmap-specimen-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/emigre-bitmap-specimen.webp"
+    },
+    {
+      "id": "challenger-data",
+      "label": "Campo de Dados",
+      "verdict": "declined",
+      "lineage": "instalações audiovisuais de dados em preto e branco",
+      "thesis": "Datas e territórios formam um campo preciso de linhas e frequências.",
+      "palette": ["#000000", "#FFFFFF"],
+      "materials": ["barras vetoriais", "linhas de alta precisão"],
+      "viewport": "O histórico ocupa a tela como uma matriz de períodos selecionáveis.",
+      "case": "A densidade é forte, mas a ausência de cor elimina sinais territoriais importantes.",
+      "kept": "Densidade sem ruído e movimento totalmente dispensável.",
+      "risk": "Frio demais para uma ferramenta de cuidado comunitário.",
+      "hero": "https://impeccable.style/worlds/cards/ikeda-datamatics-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/ikeda-datamatics.webp"
+    },
+    {
+      "id": "challenger-cape",
+      "label": "Superfície Transformável",
+      "verdict": "declined",
+      "lineage": "modelagem têxtil por canais e tensão",
+      "thesis": "Uma única superfície se recolhe e abre entre mapa, lista e detalhe.",
+      "palette": ["#14171B", "#CBA44A", "#59616A", "#F1EEE7"],
+      "materials": ["seda fosca", "costura técnica"],
+      "viewport": "Painéis se reúnem ao redor do território selecionado.",
+      "case": "A transformação é útil, mas a linguagem têxtil não explica o trabalho territorial.",
+      "kept": "Mudança de modo sem perder seleção ou posição.",
+      "risk": "A metáfora dominaria o produto em vez de servi-lo.",
+      "hero": "https://impeccable.style/worlds/cards/textiles-weave-drape-fashion-drawcord-transforming-cape-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/textiles-weave-drape-fashion-drawcord-transforming-cape.webp"
+    },
+    {
+      "id": "challenger-cloud",
+      "label": "Pedreira de Nuvens",
+      "verdict": "declined",
+      "lineage": "paisagens impossíveis e arquitetura atmosférica",
+      "thesis": "Territórios aparecem como camadas espaciais que se montam e desfazem.",
+      "palette": ["#F7F8F6", "#4C86B6", "#677582", "#C7D6E1"],
+      "materials": ["volume atmosférico", "cortes translúcidos"],
+      "viewport": "Blocos espaciais flutuam entre mapa e histórico.",
+      "case": "A profundidade espacial é atraente, mas enfraquece a precisão documental exigida.",
+      "kept": "Camadas espaciais devem mostrar relação sem esconder dados.",
+      "risk": "Fantasia visual incompatível com registros administrativos.",
+      "hero": "https://impeccable.style/worlds/cards/dream-surreal-impossible-worlds-cloud-quarry-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/dream-surreal-impossible-worlds-cloud-quarry.webp"
+    }
+  ],
+  "reroll": { "registers": ["safer", "bolder"] },
+  "buildPath": { "value": "comp", "toggle": true },
+  "canon": true,
+  "canonCard": {
+    "label": "Admin contemporâneo",
+    "thesis": "Sidebar, cartões, tabela e mapa executados com máxima clareza e consistência.",
+    "palette": ["#FFFFFF", "#172033", "#2F6FED", "#E8EDF4", "#2F7D5B"],
+    "materials": ["grade limpa", "superfícies neutras", "ícones funcionais"],
+    "viewport": "Sidebar à esquerda, indicadores no topo, tabela principal e seletor Mapa/Lista previsível.",
+    "risk": "Funcional e familiar, mas indistinguível de muitos outros sistemas administrativos.",
+    "comp": ".impeccable/mocks/decision/canon.webp"
+  },
+  "steer": true
+}

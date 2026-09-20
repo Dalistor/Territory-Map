@@ -18,7 +18,8 @@
 
 import type {
   Assignment,
-  AssignmentWithTerritory,
+  AssignmentHistoryPage,
+  AssignmentHistoryQuery,
   Block,
   BlockStatusOverride,
   Congregation,
@@ -229,8 +230,8 @@ export interface IpcApi {
   readonly assignments: {
     /** The territory's whole history, open assignment included. */
     listFor(territoryId: string): Promise<Assignment[]>
-    /** The congregation's whole history, most recent first. */
-    listAll(): Promise<AssignmentWithTerritory[]>
+    /** One filtered page of the congregation's assignment history, most recent first. */
+    listAll(query?: AssignmentHistoryQuery): Promise<AssignmentHistoryPage>
     /** Opens a new assignment; the server closes whatever was open before. */
     designate(territoryId: string, publisherId: string): Promise<Assignment>
     /** Closes the open assignment, freeing the territory for someone else. */

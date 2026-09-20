@@ -35,6 +35,7 @@ const DESIGNATIONS_TEXT = NO_TERRITORIES_MESSAGE;
 function makeApi(): ApiClient {
   return {
     listTerritoriesWithBlocks: jest.fn(async (): Promise<Territory[]> => []),
+    listPublishers: jest.fn(async () => []),
   } as unknown as ApiClient;
 }
 
@@ -160,6 +161,70 @@ describe('App', () => {
     expect(await screen.findByText(DESIGNATIONS_TEXT)).toBeOnTheScreen();
     // Never a flash of the credential form on a phone that has credentials.
     expect(screen.queryByLabelText('Nome da congregação')).not.toBeOnTheScreen();
+  });
+
+  it('offers the three primary destinations and keeps the current session while switching tabs', async () => {
+    const session = makeSession({ isConfigured: jest.fn(async () => true) });
+
+    await render(<App session={session} api={makeApi()} />);
+    await screen.findByText(DESIGNATIONS_TEXT);
+
+    await fireEvent.press(screen.getByLabelText('Publicadores, tab, 2 of 3'));
+    expect(await screen.findByLabelText('Buscar publicadores')).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByLabelText('Histórico, tab, 3 of 3'));
+    expect(await screen.findByRole('header', { name: 'Histórico completo' })).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByLabelText('Territórios, tab, 1 of 3'));
+    expect(await screen.findByText(DESIGNATIONS_TEXT)).toBeOnTheScreen();
+    expect(session.isConfigured).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders a local, labelled icon for each primary tab', async () => {
+    const session = makeSession({ isConfigured: jest.fn(async () => true) });
+
+    await render(<App session={session} api={makeApi()} />);
+    await screen.findByText(DESIGNATIONS_TEXT);
+
+    const expectIcon = (name: string, label: string): void => {
+      const icons = screen.getAllByTestId(`tab-icon-${name}`);
+      expect(icons).not.toHaveLength(0);
+      expect(icons.some(icon => icon.props.accessibilityLabel === label)).toBe(true);
+    };
+
+    expectIcon('territories', 'Ícone de Territórios');
+    expectIcon('publishers', 'Ícone de Publicadores');
+    expectIcon('history', 'Ícone de Histórico');
+  });
+
+  it('opens the selected territory in the stack detail instead of a placeholder', async () => {
+    const session = makeSession({ isConfigured: jest.fn(async () => true) });
+    const api = {
+      ...makeApi(),
+      getTerritory: jest.fn(async () => ({
+        id: 'territory-1', name: 'Centro - N1', boundary: [], assignedPublisher: null,
+        rotationDays: null, blocks: [],
+      })),
+      listAssignments: jest.fn(async () => []),
+    } as ApiClient;
+    const openDetail = (props: DesignationsSlotProps): React.JSX.Element => {
+      const detail = props as DesignationsSlotProps & {
+        onOpenTerritory?: (territoryId: string) => void;
+      };
+      return (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Abrir Centro"
+          onPress={() => detail.onOpenTerritory?.('territory-1')}>
+          <Text>Abrir Centro</Text>
+        </Pressable>
+      );
+    };
+
+    await render(<App session={session} api={api} renderDesignations={openDetail} />);
+    await fireEvent.press(await screen.findByRole('button', { name: 'Abrir Centro' }));
+
+    expect(await screen.findByText('Designação atual')).toBeOnTheScreen();
   });
 
   it('moves from the setup screen to the designations without restarting the app', async () => {

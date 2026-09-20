@@ -4,7 +4,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IPC_CHANNELS, type BlockUpdateInput } from '../shared/ipc-contract'
-import type { Assignment, AssignmentWithTerritory, Territory, WorkLog } from '../shared/models'
+import type {
+  Assignment,
+  AssignmentHistoryPage,
+  AssignmentHistoryQuery,
+  AssignmentWithTerritory,
+  Territory,
+  WorkLog
+} from '../shared/models'
 import type { ApiClient } from './api-client'
 import type { Session } from './session'
 import type { Geocoder } from './geocode'
@@ -62,6 +69,13 @@ const ASSIGNMENT_WITH_TERRITORY: AssignmentWithTerritory = {
   territory: { id: TERRITORY.id, name: TERRITORY.name }
 }
 
+const ASSIGNMENT_HISTORY_PAGE: AssignmentHistoryPage = {
+  items: [ASSIGNMENT_WITH_TERRITORY],
+  total: 1,
+  page: 1,
+  pageSize: 50
+}
+
 const WORK_LOG: WorkLog = {
   id: 'log-1',
   blockId: 'block-1',
@@ -76,7 +90,7 @@ function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
     markBlockWorked: vi.fn(async () => WORK_LOG),
     getTerritory: vi.fn(async () => TERRITORY),
     listAssignments: vi.fn(async () => [ASSIGNMENT]),
-    listAllAssignments: vi.fn(async () => [ASSIGNMENT_WITH_TERRITORY]),
+    listAllAssignments: vi.fn(async () => ASSIGNMENT_HISTORY_PAGE),
     ...overrides
   } as unknown as ApiClient
 }
@@ -296,7 +310,7 @@ describe('import:s13t', () => {
 })
 
 describe('assignments:listAll', () => {
-  it('returns the whole congregation history through the session', async () => {
+  it('forwards the typed query and paginated result through the session', async () => {
     const api = fakeApi()
     const session = fakeSession()
     registerIpcHandlers({
@@ -306,10 +320,19 @@ describe('assignments:listAll', () => {
       dialog: { showSaveDialog: vi.fn() }
     })
 
-    await expect(invoke(IPC_CHANNELS.assignmentsListAll)).resolves.toEqual([
-      ASSIGNMENT_WITH_TERRITORY
-    ])
-    expect(api.listAllAssignments).toHaveBeenCalledOnce()
+    const query: AssignmentHistoryQuery = {
+      fromInstant: new Date('2026-08-01T00:00:00.000Z'),
+      toInstant: new Date('2026-09-01T00:00:00.000Z'),
+      publisherId: 'pub-1',
+      territoryId: 'terr-1',
+      page: 2,
+      pageSize: 10
+    }
+
+    await expect(invoke(IPC_CHANNELS.assignmentsListAll, query)).resolves.toEqual(
+      ASSIGNMENT_HISTORY_PAGE
+    )
+    expect(api.listAllAssignments).toHaveBeenCalledWith(query)
     expect(session.run).toHaveBeenCalledOnce()
   })
 })

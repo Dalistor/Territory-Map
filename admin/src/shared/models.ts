@@ -115,6 +115,28 @@ export interface AssignmentWithTerritory extends Assignment {
   readonly territory: { readonly id: string; readonly name: string }
 }
 
+/**
+ * Optional parameters for the congregation-wide assignment history. Dates are
+ * instants because callers own the conversion from a selected local day to
+ * the half-open interval the API receives.
+ */
+export interface AssignmentHistoryQuery {
+  readonly fromInstant?: Date
+  readonly toInstant?: Date
+  readonly publisherId?: string
+  readonly territoryId?: string
+  readonly page?: number
+  readonly pageSize?: number
+}
+
+/** A server-paginated portion of the congregation-wide assignment history. */
+export interface AssignmentHistoryPage {
+  readonly items: AssignmentWithTerritory[]
+  readonly total: number
+  readonly page: number
+  readonly pageSize: number
+}
+
 /** A successful admin login. */
 export interface AdminSession {
   readonly accessToken: string

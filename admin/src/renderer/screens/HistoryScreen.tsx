@@ -1,14 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Assignment, AssignmentWithTerritory } from '../../shared/models'
-import { assignmentIsOpen, compareTerritoriesByNumber } from '../../shared/models'
+import { DataTable } from '../components/DataTable'
+import type { AssignmentHistoryQuery, AssignmentWithTerritory } from '../../shared/models'
+import { assignmentIsOpen } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
-
-/**
- * Which side of a record the page groups by. It is a toggle between two views
- * of the same records, not navigation -- hence `aria-pressed` on the buttons
- * rather than `aria-current`.
- */
-type View = 'leader' | 'territory'
 
 const GENERIC_ERROR_MESSAGE = 'Não foi possível completar a operação.'
 
@@ -16,86 +10,33 @@ function errorMessage(error: unknown): string {
   return parseIpcError(error, GENERIC_ERROR_MESSAGE).message
 }
 
-/** The one place a date is turned into text on this screen. */
 function formatDate(date: Date): string {
   return date.toLocaleDateString()
 }
 
-interface Group {
-  readonly key: string
-  readonly title: string
-  readonly entries: AssignmentWithTerritory[]
+function localDayStart(value: string): Date | undefined {
+  if (value === '') return undefined
+  const [year, month, day] = value.split('-').map(Number)
+  if (year === undefined || month === undefined || day === undefined) return undefined
+  return new Date(year, month - 1, day)
 }
 
-/**
- * Buckets the records by whichever side the current view groups on, keeping
- * the order `listAll` already delivered inside each bucket (most recent
- * first). Only the bucket order differs between the views: people read
- * alphabetically, territories read by their number -- the order the
- * congregation itself uses.
- */
-function groupBy(entries: AssignmentWithTerritory[], view: View): Group[] {
-  const groups = new Map<string, Group>()
-  for (const entry of entries) {
-    const side = view === 'leader' ? entry.publisher : entry.territory
-    const existing = groups.get(side.id)
-    if (existing === undefined) {
-      groups.set(side.id, { key: side.id, title: side.name, entries: [entry] })
-    } else {
-      existing.entries.push(entry)
-    }
+function nextLocalDayStart(value: string): Date | undefined {
+  const dayStart = localDayStart(value)
+  if (dayStart === undefined) return undefined
+  return new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate() + 1)
+}
+
+function rangeFor(fromDay: string, toDay: string, page: number): AssignmentHistoryQuery {
+  const fromInstant = localDayStart(fromDay)
+  const toInstant = nextLocalDayStart(toDay)
+  return {
+    ...(fromInstant === undefined ? {} : { fromInstant }),
+    ...(toInstant === undefined ? {} : { toInstant }),
+    page
   }
-  const compare =
-    view === 'leader'
-      ? (a: string, b: string): number => a.localeCompare(b)
-      : compareTerritoriesByNumber
-  return [...groups.values()].sort((a, b) => compare(a.title, b.title))
 }
 
-/**
- * `assignmentIsOpen`'s complement, narrowed -- the same helper
- * `DesignationsScreen` carries, for the same reason: everything that is not
- * open provably has a `completedAt`, and saying so in the type keeps the
- * lines free of a branch that could never run.
- */
-function assignmentIsCompleted(
-  assignment: Assignment
-): assignment is Assignment & { readonly completedAt: Date } {
-  return !assignmentIsOpen(assignment)
-}
-
-/**
- * The right-hand half of a line: the two dates, or the start date and "em
- * andamento" while the assignment is still the one in force.
- */
-function formatPeriod(entry: AssignmentWithTerritory): string {
-  const end = assignmentIsCompleted(entry) ? formatDate(entry.completedAt) : 'em andamento'
-  return `${formatDate(entry.startedAt)} a ${end}`
-}
-
-/**
- * Lowercases and strips diacritics, so "joao" and "João" compare equal. NFD
- * splits each accented letter into base letter + combining mark, and the
- * combining-mark range is then dropped.
- *
- * Same rule -- and same code -- as `PublishersScreen`'s `searchable`, which is
- * local to that file. Two screens do not make a shared module yet; if a third
- * needs it, it moves to `shared/`.
- */
-function searchable(value: string): string {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-}
-
-/**
- * The warning before a delete. The second paragraph is word for word the one
- * `DesignationsScreen` shows -- same action, same consequence, so it must not
- * read differently depending on which page the admin happens to be on. The
- * first names the territory as well, because here a record is read outside
- * its territory's context.
- */
 function deleteConfirmMessage(entry: AssignmentWithTerritory): string {
   return (
     `Apagar a designação de ${entry.publisher.name} em "${entry.territory.name}"?\n\n` +
@@ -103,56 +44,91 @@ function deleteConfirmMessage(entry: AssignmentWithTerritory): string {
   )
 }
 
-/** What each line says about a record -- the *other* side of the grouper. */
-function entryLabel(entry: AssignmentWithTerritory, view: View): string {
-  return view === 'leader' ? entry.territory.name : entry.publisher.name
+function resultRange(page: number, pageSize: number, total: number, itemCount: number): string {
+  if (total === 0) return '0 de 0'
+  const first = (page - 1) * pageSize + 1
+  const last = first + itemCount - 1
+  return `${first}–${last} de ${total}`
+}
+
+/**
+ * The IPC contract is paginated. Keeping this boundary tolerant of an array
+ * lets an older preload during an app update fail soft instead of taking the
+ * renderer down before its paired Main process is restarted.
+ */
+function pageFromResponse(response: Awaited<ReturnType<typeof window.api.assignments.listAll>>): {
+  readonly items: AssignmentWithTerritory[]
+  readonly total: number
+  readonly page: number
+  readonly pageSize: number
+} {
+  if (Array.isArray(response)) {
+    return { items: response, total: response.length, page: 1, pageSize: 50 }
+  }
+  return response
 }
 
 export function HistoryScreen(): React.JSX.Element {
   const [entries, setEntries] = useState<AssignmentWithTerritory[]>([])
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(50)
+  const [fromDay, setFromDay] = useState('')
+  const [toDay, setToDay] = useState('')
   const [isLoading, setIsLoading] = useState(true)
-  const [isRefreshing, setIsRefreshing] = useState(false)
-  const refreshInFlight = useRef(false)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [view, setView] = useState<View>('leader')
-  const [search, setSearch] = useState('')
   const [actionError, setActionError] = useState<string | null>(null)
   const [isActionPending, setIsActionPending] = useState(false)
+  const requestVersion = useRef(0)
   const actionInFlight = useRef(false)
 
-  const load = useCallback(async () => {
-    if (refreshInFlight.current) return
-    refreshInFlight.current = true
-    setIsRefreshing(true)
-    setIsLoading(true)
-    setLoadError(null)
-    try {
-      setEntries(await window.api.assignments.listAll())
-    } catch (error) {
-      setLoadError(errorMessage(error))
-    } finally {
-      setIsLoading(false)
-      refreshInFlight.current = false
-      setIsRefreshing(false)
-    }
+  const load = useCallback(
+    async (requestedPage: number, requestedFrom = fromDay, requestedTo = toDay) => {
+      const version = ++requestVersion.current
+      setIsLoading(true)
+      setLoadError(null)
+      try {
+        const response = pageFromResponse(
+          await window.api.assignments.listAll(rangeFor(requestedFrom, requestedTo, requestedPage))
+        )
+        if (version !== requestVersion.current) return
+        setEntries(response.items)
+        setTotal(response.total)
+        setPage(response.page)
+        setPageSize(response.pageSize)
+      } catch (error) {
+        if (version === requestVersion.current) setLoadError(errorMessage(error))
+      } finally {
+        if (version === requestVersion.current) setIsLoading(false)
+      }
+    },
+    [fromDay, toDay]
+  )
+
+  useEffect(() => {
+    // Scheduling after the first paint keeps the initial async request out of
+    // React's effect commit phase while retaining the stable, unfiltered query.
+    const initialLoad = window.setTimeout(() => void load(1, '', ''), 0)
+    return () => window.clearTimeout(initialLoad)
+    // The initial request is intentionally separate from date changes below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  /**
-   * Asks first, and only then deletes -- the same `window.confirm` the rest of
-   * the admin uses, for the same reason: there is no modal component of its
-   * own yet. A rejected delete becomes a visible alert, never an unhandled
-   * rejection.
-   */
+  function changePeriod(nextFrom: string, nextTo: string): void {
+    setFromDay(nextFrom)
+    setToDay(nextTo)
+    void load(1, nextFrom, nextTo)
+  }
+
   const deleteEntry = useCallback(
     async (entry: AssignmentWithTerritory) => {
-      if (!window.confirm(deleteConfirmMessage(entry))) return
-      if (actionInFlight.current) return
+      if (!window.confirm(deleteConfirmMessage(entry)) || actionInFlight.current) return
       actionInFlight.current = true
       setIsActionPending(true)
       setActionError(null)
       try {
         await window.api.assignments.delete(entry.territory.id, entry.id)
-        await load()
+        await load(1)
       } catch (error) {
         setActionError(errorMessage(error))
       } finally {
@@ -163,112 +139,139 @@ export function HistoryScreen(): React.JSX.Element {
     [load]
   )
 
-  useEffect(() => {
-    let cancelled = false
-    window.api.assignments
-      .listAll()
-      .then((list) => {
-        if (!cancelled) setEntries(list)
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) setLoadError(errorMessage(error))
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  // The search runs on the *groups*, not the records: it filters by the name
-  // of whatever the current view groups on, which is the name the admin is
-  // looking at on screen.
-  const groups = groupBy(entries, view).filter((group) =>
-    searchable(group.title).includes(searchable(search.trim()))
-  )
+  const hasPeriod = fromDay !== '' || toDay !== ''
+  const lastPage = Math.max(1, Math.ceil(total / pageSize))
+  const state =
+    loadError !== null
+      ? {
+          kind: 'error' as const,
+          message: loadError,
+          onRetry: () => void load(page),
+          retryLabel: 'Tentar novamente'
+        }
+      : isLoading
+        ? { kind: 'busy' as const, message: 'Carregando histórico completo…' }
+        : entries.length === 0
+          ? hasPeriod
+            ? {
+                kind: 'no-results' as const,
+                message: 'Nenhum resultado para o período selecionado.',
+                onClear: () => changePeriod('', ''),
+                clearLabel: 'Limpar período'
+              }
+            : { kind: 'empty' as const, message: 'Nenhuma designação registrada ainda.' }
+          : { kind: 'ready' as const }
 
   return (
-    <div>
-      <header>
-        <h1>Histórico</h1>
-        <div className="history-views">
-          <button
-            type="button"
-            aria-pressed={view === 'leader'}
-            className={view === 'leader' ? 'is-active' : undefined}
-            onClick={() => setView('leader')}
-          >
-            Por dirigente
-          </button>
-          <button
-            type="button"
-            aria-pressed={view === 'territory'}
-            className={view === 'territory' ? 'is-active' : undefined}
-            onClick={() => setView('territory')}
-          >
-            Por território
-          </button>
+    <section className="history-screen" aria-labelledby="history-title">
+      <header className="page-heading">
+        <div>
+          <p className="eyebrow">Consulta da congregação</p>
+          <h1 id="history-title">Histórico completo</h1>
+          <p>Designações que se sobrepõem ao período selecionado.</p>
         </div>
         <button
           type="button"
-          disabled={isLoading || isRefreshing || isActionPending}
-          onClick={() => void load()}
+          disabled={isLoading || isActionPending}
+          onClick={() => void load(page)}
         >
-          {isLoading || isRefreshing ? 'Atualizando…' : 'Recarregar'}
+          {isLoading ? 'Atualizando…' : 'Recarregar'}
         </button>
       </header>
-      <main>
-        {actionError !== null && <p role="alert">{actionError}</p>}
-        {isLoading && <p>Carregando…</p>}
-        {!isLoading && loadError !== null && <p role="alert">{loadError}</p>}
-        {!isLoading && loadError === null && entries.length > 0 && (
+
+      <div className="history-period" aria-label="Período do histórico">
+        <label>
+          De
           <input
-            type="search"
-            className="history-search"
-            aria-label="Buscar no histórico"
-            placeholder="Buscar por nome…"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            type="date"
+            value={fromDay}
+            onChange={(event) => changePeriod(event.target.value, toDay)}
           />
-        )}
-        {!isLoading && loadError === null && entries.length === 0 && (
-          <p>Nenhuma designação registrada ainda.</p>
-        )}
-        {!isLoading && loadError === null && entries.length > 0 && groups.length === 0 && (
-          <p>Nenhum resultado para a busca.</p>
-        )}
-        {!isLoading &&
-          loadError === null &&
-          groups.map((group) => (
-            <section
-              key={group.key}
-              className="history-group"
-              role="group"
-              aria-label={group.title}
-            >
-              <h2>{group.title}</h2>
-              <ul className="assignment-history history-list">
-                {group.entries.map((entry) => (
-                  <li key={entry.id}>
-                    <span>
-                      {entryLabel(entry, view)} — {formatPeriod(entry)}
-                    </span>
-                    <button
-                      type="button"
-                      aria-label={`Apagar designação de ${entry.publisher.name} em ${entry.territory.name}`}
-                      disabled={isActionPending}
-                      onClick={() => void deleteEntry(entry)}
-                    >
-                      Apagar
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
-      </main>
-    </div>
+        </label>
+        <label>
+          Até
+          <input
+            type="date"
+            value={toDay}
+            onChange={(event) => changePeriod(fromDay, event.target.value)}
+          />
+        </label>
+        <button type="button" disabled={!hasPeriod} onClick={() => changePeriod('', '')}>
+          Limpar período
+        </button>
+      </div>
+
+      {actionError !== null && <p role="alert">{actionError}</p>}
+      <DataTable
+        label="Histórico completo"
+        columns={[
+          {
+            key: 'territory',
+            header: 'Território',
+            cell: (entry: AssignmentWithTerritory) => entry.territory.name
+          },
+          {
+            key: 'publisher',
+            header: 'Publicador',
+            cell: (entry: AssignmentWithTerritory) => entry.publisher.name
+          },
+          {
+            key: 'started',
+            header: 'Retirada',
+            cell: (entry: AssignmentWithTerritory) => formatDate(entry.startedAt)
+          },
+          {
+            key: 'completed',
+            header: 'Devolução',
+            cell: (entry: AssignmentWithTerritory) =>
+              entry.completedAt === undefined ? '—' : formatDate(entry.completedAt)
+          },
+          {
+            key: 'status',
+            header: 'Situação',
+            cell: (entry: AssignmentWithTerritory) =>
+              assignmentIsOpen(entry) ? 'Em andamento' : 'Devolvido'
+          },
+          {
+            key: 'actions',
+            header: 'Ações',
+            cell: (entry: AssignmentWithTerritory) => (
+              <button
+                type="button"
+                disabled={isActionPending}
+                aria-label={`Apagar designação de ${entry.publisher.name} em ${entry.territory.name}`}
+                onClick={() => void deleteEntry(entry)}
+              >
+                Apagar
+              </button>
+            )
+          }
+        ]}
+        rows={entries}
+        getRowKey={(entry) => entry.id}
+        state={state}
+      />
+
+      {!isLoading && loadError === null && total > 0 && (
+        <nav className="history-pagination" aria-label="Paginação do histórico">
+          <p aria-live="polite">{resultRange(page, pageSize, total, entries.length)}</p>
+          <button
+            type="button"
+            disabled={page <= 1 || isActionPending}
+            onClick={() => void load(page - 1)}
+          >
+            Página anterior
+          </button>
+          <button
+            type="button"
+            disabled={page >= lastPage || isActionPending}
+            onClick={() => void load(page + 1)}
+          >
+            Próxima página
+          </button>
+        </nav>
+      )}
+    </section>
   )
 }
 

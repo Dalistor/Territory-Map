@@ -1,0 +1,177 @@
+.search-field {
+  display: grid;
+  gap: 0.35rem;
+  min-width: min(100%, 17rem);
+}
+
+.search-field > label,
+.segmented-control-label {
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.search-field-control {
+  align-items: center;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius, 8px);
+  display: flex;
+  min-height: 2.625rem;
+  padding: 0.1875rem;
+}
+
+.search-field-control:focus-within {
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-ring) 18%, transparent);
+}
+
+.search-field-control input {
+  border: 0;
+  box-shadow: none;
+  min-width: 0;
+  padding: 0.375rem 0.5rem;
+  width: 100%;
+}
+
+.search-field-control input:focus {
+  box-shadow: none;
+}
+
+.search-field-clear {
+  flex: 0 0 auto;
+  font-size: 0.8125rem;
+  min-height: 2rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.segmented-control {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.segmented-control-options {
+  align-items: stretch;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius, 8px);
+  display: inline-flex;
+  padding: 0.1875rem;
+  width: fit-content;
+}
+
+.segmented-control-options button {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  min-height: 2.25rem;
+}
+
+.segmented-control-options button:hover:not(:disabled) {
+  background: var(--surface-raised);
+  border-color: transparent;
+}
+
+.segmented-control-options button.is-selected {
+  background: var(--surface-selected);
+  border-color: var(--intent-primary);
+  color: var(--selection-text);
+  font-weight: 700;
+}
+
+.data-table {
+  min-height: 16rem;
+  min-width: 0;
+}
+
+.data-table-scroll {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius, 8px);
+  max-height: 100%;
+  max-width: 100%;
+  overflow: auto;
+}
+
+.data-table-scroll:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.data-table table {
+  border-collapse: collapse;
+  min-width: 100%;
+  width: max-content;
+}
+
+.data-table th,
+.data-table td {
+  border-bottom: 1px solid var(--border-subtle, var(--color-border));
+  padding: 0.75rem 0.875rem;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.data-table th {
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  position: sticky;
+  text-transform: uppercase;
+  top: 0;
+  z-index: 1;
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.data-table tbody tr[tabindex='0'] {
+  cursor: pointer;
+}
+
+.data-table tbody tr[tabindex='0']:hover,
+.data-table tbody tr.is-selected {
+  background: var(--surface-selected);
+}
+
+.data-table tbody tr[tabindex='0']:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: -3px;
+}
+
+.data-table-sort {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  padding: 0;
+  text-transform: inherit;
+}
+
+.data-table-sort:hover:not(:disabled) {
+  background: transparent;
+  border-color: transparent;
+  color: var(--selection-text);
+}
+
+.data-table-state-row td {
+  min-height: 12rem;
+  padding: 1.5rem;
+  white-space: normal;
+}
+
+.data-table-state-row > td > div,
+.data-table-state-row > td > p {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  justify-content: center;
+  margin: 0;
+  min-height: 9rem;
+}

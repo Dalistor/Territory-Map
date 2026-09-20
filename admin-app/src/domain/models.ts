@@ -127,6 +127,35 @@ export interface Assignment {
   readonly completedAt: Date | null;
 }
 
+/** The identity of a territory as it appears in a congregation-wide history row. */
+export interface TerritoryBrief {
+  readonly id: string;
+  readonly name: string;
+}
+
+/** An assignment read from the congregation-wide history, together with its territory. */
+export interface AssignmentWithTerritory extends Assignment {
+  readonly territory: TerritoryBrief;
+}
+
+/** Optional server-side filters for the congregation-wide assignment history. */
+export interface AssignmentHistoryFilters {
+  readonly from?: Date;
+  readonly to?: Date;
+  readonly publisherId?: string;
+  readonly territoryId?: string;
+  readonly page?: number;
+  readonly pageSize?: number;
+}
+
+/** One server-paginated page of the congregation-wide assignment history. */
+export interface AssignmentHistoryPage {
+  readonly items: AssignmentWithTerritory[];
+  readonly total: number;
+  readonly page: number;
+  readonly pageSize: number;
+}
+
 /** A record that a block was worked: who, and when (`BlockWorkLogOut`). */
 export interface WorkLog {
   readonly id: string;

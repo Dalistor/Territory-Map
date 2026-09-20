@@ -14,6 +14,9 @@
 // `app/src/domain/models.test.ts` does on its side of the monorepo.
 import type {
   Assignment,
+  AssignmentHistoryFilters,
+  AssignmentHistoryPage,
+  AssignmentWithTerritory,
   Block,
   BlockStatusOverride,
   Congregation,
@@ -292,6 +295,30 @@ describe('Assignment', () => {
     };
 
     expect(assignment.publisher.name).toBe('Irmão Costa');
+  });
+});
+
+describe('AssignmentWithTerritory', () => {
+  it('keeps the copied publisher name and territory in a congregation-wide history page', () => {
+    const assignment: AssignmentWithTerritory = {
+      id: 'assignment-4',
+      territoryId: 'territory-3',
+      territory: { id: 'territory-3', name: 'Centro - N3' },
+      publisher: { id: 'publisher-gone', name: 'Irmão Costa' },
+      startedAt: new Date('2025-03-01T09:00:00Z'),
+      completedAt: null,
+    };
+    const page: AssignmentHistoryPage = {
+      items: [assignment],
+      total: 1,
+      page: 1,
+      pageSize: 50,
+    };
+    const filters: AssignmentHistoryFilters = { publisherId: 'publisher-gone', page: 2 };
+
+    expect(page.items[0].publisher.name).toBe('Irmão Costa');
+    expect(page.items[0].territory.name).toBe('Centro - N3');
+    expect(filters.page).toBe(2);
   });
 });
 

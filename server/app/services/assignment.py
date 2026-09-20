@@ -132,6 +132,28 @@ class AssignmentService:
         """
         return self._assignments.list_by_congregation(congregation_id)
 
+    def list_page(
+        self,
+        congregation_id: UUID,
+        *,
+        publisher_id: UUID | None = None,
+        territory_id: UUID | None = None,
+        from_instant: datetime | None = None,
+        to_instant: datetime | None = None,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> tuple[list[TerritoryAssignment], int]:
+        """Orchestrate one congregation-scoped page of assignment history."""
+        return self._assignments.list_page_by_congregation(
+            congregation_id,
+            publisher_id=publisher_id,
+            territory_id=territory_id,
+            from_instant=from_instant,
+            to_instant=to_instant,
+            limit=page_size,
+            offset=(page - 1) * page_size,
+        )
+
     def _territory_of_congregation(self, congregation_id: UUID, territory_id: UUID) -> Territory:
         """Return the territory, provided it belongs to this congregation.
 

@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.territory import Territory
@@ -134,6 +134,57 @@ class TerritoryAssignmentRepository:
                 .order_by(TerritoryAssignment.started_at.desc())
             )
         )
+
+    def list_page_by_congregation(
+        self,
+        congregation_id: UUID,
+        *,
+        publisher_id: UUID | None = None,
+        territory_id: UUID | None = None,
+        from_instant: datetime | None = None,
+        to_instant: datetime | None = None,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[TerritoryAssignment], int]:
+        """Read one deterministic page of assignment history within a congregation.
+
+        The period is evaluated as an overlap, not as a start-date filter: a stint
+        already in force at its beginning remains relevant to the history being read.
+        Completion at ``from_instant`` is included because the return instant belongs
+        to the stint; a start at ``to_instant`` is outside the half-open interval.
+        """
+        filters = [Territory.congregation_id == congregation_id]
+        if publisher_id is not None:
+            filters.append(TerritoryAssignment.user_id == publisher_id)
+        if territory_id is not None:
+            filters.append(TerritoryAssignment.territory_id == territory_id)
+        if from_instant is not None:
+            filters.append(
+                or_(
+                    TerritoryAssignment.completed_at.is_(None),
+                    TerritoryAssignment.completed_at >= from_instant,
+                )
+            )
+        if to_instant is not None:
+            filters.append(TerritoryAssignment.started_at < to_instant)
+
+        scoped_assignments = (
+            select(TerritoryAssignment)
+            .join(Territory, TerritoryAssignment.territory_id == Territory.id)
+            .where(*filters)
+        )
+        total = self.session.scalar(
+            select(func.count()).select_from(scoped_assignments.order_by(None).subquery())
+        )
+        items = list(
+            self.session.scalars(
+                scoped_assignments.options(joinedload(TerritoryAssignment.territory))
+                .order_by(TerritoryAssignment.started_at.desc(), TerritoryAssignment.id.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+        )
+        return items, total or 0
 
     def get_in_congregation(
         self,

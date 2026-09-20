@@ -13,5 +13,25 @@ export type {
   DesignationsScreenProps,
   DesignationsScreenSession,
 } from './DesignationsScreen';
+export { default as PublishersScreen } from './PublishersScreen';
+export type {
+  PublishersScreenApi,
+  PublishersScreenProps,
+  PublishersScreenSession,
+} from './PublishersScreen';
+export { default as PublisherHistoryScreen } from './PublisherHistoryScreen';
+export type {
+  PublisherHistoryScreenApi,
+  PublisherHistoryScreenProps,
+  PublisherHistoryScreenSession,
+} from './PublisherHistoryScreen';
+export { default as HistoryScreen } from './HistoryScreen';
+export type { HistoryScreenApi, HistoryScreenProps, HistoryScreenSession } from './HistoryScreen';
+export { default as TerritoryDetailScreen } from './TerritoryDetailScreen';
+export type {
+  TerritoryDetailScreenApi,
+  TerritoryDetailScreenProps,
+  TerritoryDetailScreenSession,
+} from './TerritoryDetailScreen';
 export { default as SetupScreen } from './SetupScreen';
 export type { SetupScreenProps } from './SetupScreen';

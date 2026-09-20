@@ -149,7 +149,7 @@ afterEach(() => {
 })
 
 describe('DesignationsScreen loading and summary', () => {
-  it('shows the assignment count in the summary and hands every territory to the map', async () => {
+  it('shows the assignment count in the summary and hands every territory to the map view', async () => {
     const assigned = makeTerritory({
       id: 't1',
       name: 'Centro',
@@ -169,6 +169,12 @@ describe('DesignationsScreen loading and summary', () => {
     render(<DesignationsScreen />)
 
     expect(await screen.findByText('1 de 2 territórios designados')).toBeInTheDocument()
+    const user = userEvent.setup()
+    await user.click(
+      within(screen.getByRole('radiogroup', { name: 'Visualização' })).getByRole('radio', {
+        name: 'Mapa'
+      })
+    )
     const map = screen.getByTestId('fake-assignments-map')
     expect(within(map).getByRole('button', { name: 'Território Centro' })).toBeInTheDocument()
     expect(within(map).getByRole('button', { name: 'Território Bairro Sul' })).toBeInTheDocument()
@@ -227,6 +233,171 @@ describe('DesignationsScreen loading and summary', () => {
   })
 })
 
+describe('DesignationsScreen territory workspace', () => {
+  it('orders the territory table by its number and opens the selected territory in the persistent detail', async () => {
+    const later = makeTerritory({ id: 'later', name: 'Jardim - N12' })
+    const first = makeTerritory({ id: 'first', name: 'Centro - N2' })
+    vi.stubGlobal(
+      'api',
+      makeApi({
+        territories: {
+          listWithBlocks: vi.fn().mockResolvedValue([later, first]),
+          create: vi.fn(),
+          update: vi.fn(),
+          delete: vi.fn()
+        },
+        publishers: {
+          list: vi.fn().mockResolvedValue([]),
+          create: vi.fn(),
+          regenerateCode: vi.fn(),
+          rename: vi.fn(),
+          setActive: vi.fn(),
+          delete: vi.fn()
+        }
+      })
+    )
+    const user = userEvent.setup()
+
+    render(<DesignationsScreen />)
+
+    const table = await screen.findByRole('table', { name: /territórios/i })
+    const rows = within(table).getAllByRole('row').slice(1)
+    expect(rows[0]).toHaveTextContent('Centro - N2')
+    expect(rows[1]).toHaveTextContent('Jardim - N12')
+
+    await user.click(rows[0])
+
+    expect(
+      await screen.findByRole('complementary', { name: /detalhes de centro - n2/i })
+    ).toBeVisible()
+  })
+
+  it('keeps the selected territory and search when changing between list and map', async () => {
+    const territory = makeTerritory({ id: 'territory-12', name: 'Jardim - N12' })
+    vi.stubGlobal(
+      'api',
+      makeApi({
+        territories: {
+          listWithBlocks: vi.fn().mockResolvedValue([territory]),
+          create: vi.fn(),
+          update: vi.fn(),
+          delete: vi.fn()
+        },
+        publishers: {
+          list: vi.fn().mockResolvedValue([]),
+          create: vi.fn(),
+          regenerateCode: vi.fn(),
+          rename: vi.fn(),
+          setActive: vi.fn(),
+          delete: vi.fn()
+        }
+      })
+    )
+    const user = userEvent.setup()
+
+    render(<DesignationsScreen />)
+
+    await user.type(await screen.findByRole('searchbox', { name: /buscar territórios/i }), 'N12')
+    await user.click(screen.getByRole('row', { name: /jardim - n12/i }))
+    await user.click(
+      within(screen.getByRole('radiogroup', { name: 'Visualização' })).getByRole('radio', {
+        name: 'Mapa'
+      })
+    )
+
+    expect(screen.getByTestId('fake-assignments-map')).toBeVisible()
+    expect(screen.getByRole('complementary', { name: /detalhes de jardim - n12/i })).toBeVisible()
+
+    await user.click(
+      within(screen.getByRole('radiogroup', { name: 'Visualização' })).getByRole('radio', {
+        name: 'Lista'
+      })
+    )
+    expect(screen.getByRole('searchbox', { name: /buscar territórios/i })).toHaveValue('N12')
+    expect(screen.getByRole('row', { name: /jardim - n12/i })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+  })
+
+  it('opens a row by keyboard and Escape closes the detail returning focus to that row', async () => {
+    const territory = makeTerritory({ id: 'keyboard', name: 'Centro - N3' })
+    vi.stubGlobal(
+      'api',
+      makeApi({
+        territories: {
+          listWithBlocks: vi.fn().mockResolvedValue([territory]),
+          create: vi.fn(),
+          update: vi.fn(),
+          delete: vi.fn()
+        },
+        publishers: {
+          list: vi.fn().mockResolvedValue([]),
+          create: vi.fn(),
+          regenerateCode: vi.fn(),
+          rename: vi.fn(),
+          setActive: vi.fn(),
+          delete: vi.fn()
+        }
+      })
+    )
+    const user = userEvent.setup()
+
+    render(<DesignationsScreen />)
+
+    const row = await screen.findByRole('row', { name: /centro - n3/i })
+    row.focus()
+    await user.keyboard('{Enter}')
+    expect(
+      await screen.findByRole('complementary', { name: /detalhes de centro - n3/i })
+    ).toBeVisible()
+
+    await user.keyboard('{Escape}')
+    expect(
+      screen.queryByRole('complementary', { name: /detalhes de centro - n3/i })
+    ).not.toBeInTheDocument()
+    expect(row).toHaveFocus()
+  })
+
+  it('closes a stale detail when refresh no longer returns its selected territory', async () => {
+    const territory = makeTerritory({ id: 'removed', name: 'Centro - N4' })
+    const listWithBlocks = vi.fn().mockResolvedValueOnce([territory]).mockResolvedValueOnce([])
+    vi.stubGlobal(
+      'api',
+      makeApi({
+        territories: {
+          listWithBlocks,
+          create: vi.fn(),
+          update: vi.fn(),
+          delete: vi.fn()
+        },
+        publishers: {
+          list: vi.fn().mockResolvedValue([]),
+          create: vi.fn(),
+          regenerateCode: vi.fn(),
+          rename: vi.fn(),
+          setActive: vi.fn(),
+          delete: vi.fn()
+        }
+      })
+    )
+    const user = userEvent.setup()
+
+    render(<DesignationsScreen />)
+
+    await user.click(await screen.findByRole('row', { name: /centro - n4/i }))
+    expect(
+      await screen.findByRole('complementary', { name: /detalhes de centro - n4/i })
+    ).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: /recarregar/i }))
+    await waitFor(() => expect(listWithBlocks).toHaveBeenCalledTimes(2))
+    expect(
+      screen.queryByRole('complementary', { name: /detalhes de centro - n4/i })
+    ).not.toBeInTheDocument()
+  })
+})
+
 describe('DesignationsScreen assignment history panel', () => {
   const territory = makeTerritory({ name: 'Centro', assignedUser: { id: 'p2', name: 'Bia' } })
   const open = makeAssignment({
@@ -278,7 +449,8 @@ describe('DesignationsScreen assignment history panel', () => {
   async function openPanel(): Promise<HTMLElement> {
     const user = userEvent.setup()
     render(<DesignationsScreen />)
-    await user.click(await screen.findByRole('button', { name: 'Território Centro' }))
+    await user.click(await screen.findByRole('row', { name: /centro/i }))
+    await user.click(screen.getByRole('radio', { name: 'Designações' }))
     return screen.findByRole('dialog', { name: 'Designações de Centro' })
   }
 
@@ -401,7 +573,7 @@ describe('DesignationsScreen assignment history panel', () => {
     await user.click(await within(panel).findByRole('button', { name: /marcar como concluído/i }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Designação não encontrada.')
-    expect(screen.getByTestId('fake-assignments-map')).toBeInTheDocument()
+    expect(screen.getByRole('table', { name: 'Territórios' })).toBeInTheDocument()
   })
 
   it('a territory with no assignment shows "Sem dirigente", offers no completion, and still designates', async () => {
@@ -482,7 +654,7 @@ describe('DesignationsScreen assignment history panel', () => {
     const user = userEvent.setup()
 
     const panel = await openPanel()
-    await user.click(within(panel).getByRole('button', { name: /^fechar$/i }))
+    await user.click(within(panel).getByRole('button', { name: /fechar detalhes/i }))
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(designate).not.toHaveBeenCalled()

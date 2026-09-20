@@ -14,6 +14,7 @@ import {
   type TerritoryCreateInput,
   type TerritoryUpdateInput
 } from '../shared/ipc-contract'
+import type { AssignmentHistoryQuery } from '../shared/models'
 
 // Custom APIs for renderer
 const api: IpcApi = {
@@ -52,7 +53,8 @@ const api: IpcApi = {
   assignments: {
     listFor: (territoryId: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.assignmentsListFor, territoryId),
-    listAll: () => ipcRenderer.invoke(IPC_CHANNELS.assignmentsListAll),
+    listAll: (query?: AssignmentHistoryQuery) =>
+      ipcRenderer.invoke(IPC_CHANNELS.assignmentsListAll, query),
     designate: (territoryId: string, publisherId: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.assignmentsDesignate, territoryId, publisherId),
     complete: (territoryId: string) =>

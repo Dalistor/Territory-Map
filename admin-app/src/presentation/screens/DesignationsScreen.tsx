@@ -22,6 +22,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { compareTerritoriesByNumber } from '../../domain/models';
 import type { Block, LatLng, Territory } from '../../domain/models';
 import { AssignmentsMapView } from '../map/AssignmentsMapView';
+import {
+  QuerySearchField,
+  QuerySegmentedControl,
+  QueryState,
+} from '../components';
 import { colors, radius, spacing } from '../theme';
 import AssignmentPanel from './AssignmentPanel';
 import type { AssignmentPanelApi } from './AssignmentPanel';
@@ -119,17 +124,29 @@ interface TerritoryDetail {
   readonly blockId?: string;
 }
 
+type TerritoryView = 'list' | 'map';
+
+const TERRITORY_VIEW_SEGMENTS = [
+  { value: 'list', label: 'Lista' },
+  { value: 'map', label: 'Mapa' },
+] as const;
+
+const NO_SEARCH_RESULTS_MESSAGE = 'Nenhum território corresponde à busca.';
+
 export interface DesignationsScreenProps {
   readonly session: DesignationsScreenSession;
   readonly api: DesignationsScreenApi;
   /** Where the map centres while there is no territory to frame -- the congregation's city. */
   readonly fallbackCenter?: LatLng;
+  /** The app stack supplies this; isolated uses retain the local overlay. */
+  readonly onOpenTerritory?: (territoryId: string) => void;
 }
 
 export function DesignationsScreen({
   session,
   api,
   fallbackCenter,
+  onOpenTerritory,
 }: DesignationsScreenProps): React.JSX.Element {
   const [territories, setTerritories] = useState<Territory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -138,6 +155,9 @@ export function DesignationsScreen({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isWriting, setIsWriting] = useState(false);
   const writeInFlight = useRef(false);
+  const [view, setView] = useState<TerritoryView>('list');
+  const [search, setSearch] = useState('');
+  const [selectedTerritoryId, setSelectedTerritoryId] = useState<string | null>(null);
   // Which territory has a detail open and which of the two it is, by id rather
   // than by object: the list is reloaded after every write, and holding the
   // object would leave the detail pinned to the copy fetched before the change.
@@ -159,6 +179,17 @@ export function DesignationsScreen({
   const assignedCount = territories.filter(
     territory => territory.assignedPublisher !== null,
   ).length;
+
+  const visibleTerritories = useMemo(() => {
+    const normalizedSearch = search.trim().toLocaleLowerCase('pt-BR');
+    if (normalizedSearch === '') return ordered;
+    return ordered.filter(territory =>
+      [territory.name, territory.assignedPublisher?.name ?? NO_LEADER_LABEL]
+        .join(' ')
+        .toLocaleLowerCase('pt-BR')
+        .includes(normalizedSearch),
+    );
+  }, [ordered, search]);
 
   // Looked up in the current list, so the detail always holds the freshest copy
   // of the territory; a territory that vanished from a reload closes its own
@@ -248,7 +279,7 @@ export function DesignationsScreen({
     [api, load, session],
   );
 
-  /** Whether the overlay is actually on screen, and therefore covering the list. */
+  /** Whether the overlay is actually on screen, covering the active consultation mode. */
   const isDetailOpen =
     detailTerritory !== null &&
     (detail?.view !== 'block' || detailBlock !== null);
@@ -256,6 +287,15 @@ export function DesignationsScreen({
   const closeDetail = useCallback(() => {
     setDetail(null);
   }, []);
+
+  const openTerritoryDetail = useCallback((territory: Territory) => {
+    setSelectedTerritoryId(territory.id);
+    if (onOpenTerritory !== undefined) {
+      onOpenTerritory(territory.id);
+      return;
+    }
+    setDetail({ territoryId: territory.id, view: 'assignments' });
+  }, [onOpenTerritory]);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener(
@@ -325,48 +365,65 @@ export function DesignationsScreen({
       ) : (
         loadError === null && (
           <>
-            <View style={styles.map}>
-              <AssignmentsMapView
-                territories={ordered}
-                fallbackCenter={fallbackCenter}
-                // Tapping the territory itself (its outline or its name
-                // badge) opens the blocks/work-history screen, not the S-13
-                // card: on the map the admin is already looking at the
-                // blocks, and the natural next question is "what has been
-                // worked here", not "who is responsible". Designating still
-                // reaches its S-13 card from the list row, unchanged below.
-                onSelectTerritory={territory =>
-                  setDetail({ territoryId: territory.id, view: 'blocks' })
-                }
-                onSelectBlock={(block, territory) =>
-                  setDetail({
-                    territoryId: territory.id,
-                    view: 'block',
-                    blockId: block.id,
-                  })
-                }
+            <View style={styles.queryControls}>
+              <QuerySegmentedControl
+                accessibilityLabel="Visualização de territórios"
+                segments={TERRITORY_VIEW_SEGMENTS}
+                value={view}
+                onChange={nextView => setView(nextView as TerritoryView)}
+              />
+              <QuerySearchField
+                accessibilityLabel="Buscar territórios"
+                placeholder="Buscar território ou dirigente"
+                value={search}
+                onChangeText={setSearch}
               />
             </View>
-            <ScrollView contentContainerStyle={styles.list}>
-              {ordered.length === 0 && (
-                <Text style={styles.emptyMessage}>
-                  {NO_TERRITORIES_MESSAGE}
-                </Text>
-              )}
-              {ordered.map(territory => (
+            {view === 'map' ? (
+              <View style={styles.map}>
+                <AssignmentsMapView
+                  territories={visibleTerritories}
+                  fallbackCenter={fallbackCenter}
+                  onSelectTerritory={openTerritoryDetail}
+                  onSelectBlock={(block, territory) => {
+                    setSelectedTerritoryId(territory.id);
+                    setDetail({
+                      territoryId: territory.id,
+                      view: 'block',
+                      blockId: block.id,
+                    });
+                  }}
+                />
+              </View>
+            ) : (
+              <ScrollView contentContainerStyle={styles.list}>
+                {ordered.length === 0 && (
+                  <Text style={styles.emptyMessage}>
+                    {NO_TERRITORIES_MESSAGE}
+                  </Text>
+                )}
+                {ordered.length > 0 && visibleTerritories.length === 0 && (
+                  <QueryState
+                    kind="no-results"
+                    title="Nenhum território encontrado"
+                    message={NO_SEARCH_RESULTS_MESSAGE}
+                  />
+                )}
+              {visibleTerritories.map(territory => (
                 <View
                   key={territory.id}
                   testID={`territory-row-${territory.id}`}
-                  style={styles.card}
+                  style={[
+                    styles.card,
+                    selectedTerritoryId === territory.id && styles.cardSelected,
+                  ]}
                 >
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={`Ver designações de ${territory.name}`}
+                    accessibilityState={{ selected: selectedTerritoryId === territory.id }}
                     onPress={() =>
-                      setDetail({
-                        territoryId: territory.id,
-                        view: 'assignments',
-                      })
+                      openTerritoryDetail(territory)
                     }
                     style={({ pressed }) => [
                       styles.cardMain,
@@ -385,6 +442,11 @@ export function DesignationsScreen({
                     </Text>
                     <Text style={styles.blockCount}>
                       {blockCountLabel(territory.blocks.length)}
+                    </Text>
+                    <Text style={styles.situation}>
+                      {territory.assignedPublisher === null
+                        ? 'Situação: Disponível'
+                        : 'Situação: Designado'}
                     </Text>
                     <Text style={styles.lastWork}>
                       {territory.lastWork
@@ -436,7 +498,8 @@ export function DesignationsScreen({
                   )}
                 </View>
               ))}
-            </ScrollView>
+              </ScrollView>
+            )}
           </>
         )
       )}
@@ -540,13 +603,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-  /**
-   * A fixed share of the screen rather than `flex: 1`: the map and the list
-   * are read together -- "who is where" on one, "who has what" on the other --
-   * and a map that grows to fill the space would push the list off a phone.
-   */
+  /** The selected map gets the consultation area without displacing its controls. */
   map: {
-    height: 260,
+    flex: 1,
     // Clips the MapLibre `Marker`s to the map's own box. They are native
     // React Native views positioned over the map, and Android does not clip
     // children to the parent's bounds on its own -- without this, a block
@@ -562,6 +621,10 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.md,
     borderWidth: 1,
+  },
+  cardSelected: {
+    borderColor: colors.primary,
+    borderWidth: 2,
   },
   cardMain: {
     padding: spacing.md,
@@ -600,6 +663,16 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 13,
     marginTop: 2,
+  },
+  situation: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    marginTop: 2,
+  },
+  queryControls: {
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
   },
   lastWork: {
     color: colors.textMuted,

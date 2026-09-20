@@ -1,11 +1,8 @@
-// The Historico page (spec 0008, Task 07). `window.api` is never the real IPC
-// bridge here -- a fake stubbed with `vi.stubGlobal` stands in, per the
-// convention every other screen test in this folder follows.
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { IpcApi } from '../../shared/ipc-contract'
-import type { AssignmentWithTerritory } from '../../shared/models'
+import type { AssignmentHistoryPage, AssignmentWithTerritory } from '../../shared/models'
 import { HistoryScreen } from './HistoryScreen'
 
 function makeEntry(overrides: Partial<AssignmentWithTerritory> = {}): AssignmentWithTerritory {
@@ -19,10 +16,11 @@ function makeEntry(overrides: Partial<AssignmentWithTerritory> = {}): Assignment
   }
 }
 
-/** The same formatting the screen uses, so the expectation does not hard-code
- * a locale the test runner may not have. */
-function asDate(date: Date): string {
-  return date.toLocaleDateString()
+function makePage(
+  items: AssignmentWithTerritory[] = [],
+  overrides: Partial<AssignmentHistoryPage> = {}
+): AssignmentHistoryPage {
+  return { items, total: items.length, page: 1, pageSize: 50, ...overrides }
 }
 
 function makeApi(overrides: Partial<IpcApi> = {}): IpcApi {
@@ -41,12 +39,7 @@ function makeApi(overrides: Partial<IpcApi> = {}): IpcApi {
       delete: vi.fn(),
       ...overrides.territories
     },
-    blocks: {
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-      ...overrides.blocks
-    },
+    blocks: { create: vi.fn(), update: vi.fn(), delete: vi.fn(), ...overrides.blocks },
     publishers: {
       list: vi.fn().mockResolvedValue([]),
       create: vi.fn(),
@@ -57,349 +50,168 @@ function makeApi(overrides: Partial<IpcApi> = {}): IpcApi {
       ...overrides.publishers
     },
     assignments: {
-      listAll: vi.fn().mockResolvedValue([]),
+      listAll: vi.fn().mockResolvedValue(makePage()),
       listFor: vi.fn().mockResolvedValue([]),
       designate: vi.fn(),
       complete: vi.fn(),
       delete: vi.fn().mockResolvedValue(undefined),
       ...overrides.assignments
     },
-    exports: {
-      assignments: vi.fn().mockResolvedValue(null),
-      s13t: vi.fn().mockResolvedValue(null),
-      s13tDocx: vi.fn().mockResolvedValue(null),
-      ...overrides.exports
-    },
+    exports: { assignments: vi.fn(), s13t: vi.fn(), s13tDocx: vi.fn(), ...overrides.exports },
     imports: {
-      s13tSelectAndPreview: vi.fn().mockResolvedValue(null),
-      s13tExecute: vi.fn().mockResolvedValue({
-        importedAssignmentsCount: 0,
-        importedPublishersCount: 0,
-        errors: []
-      }),
+      s13tSelectAndPreview: vi.fn(),
+      s13tExecute: vi
+        .fn()
+        .mockResolvedValue({ importedAssignmentsCount: 0, importedPublishersCount: 0, errors: [] }),
       ...overrides.imports
     },
-    workLogs: {
-      listFor: vi.fn(),
-      delete: vi.fn(),
-      markWorked: vi.fn(),
-      ...overrides.workLogs
-    },
-    geo: {
-      geocodeCity: vi.fn(),
-      ...overrides.geo
-    }
+    workLogs: { listFor: vi.fn(), delete: vi.fn(), markWorked: vi.fn(), ...overrides.workLogs },
+    geo: { geocodeCity: vi.fn(), ...overrides.geo }
   }
 }
 
-let confirmSpy: ReturnType<typeof vi.spyOn>
+function expectedLocalDay(day: string): string {
+  const [year, month, date] = day.split('-').map(Number)
+  return new Date(year!, month! - 1, date!).toISOString()
+}
 
+let confirmSpy: ReturnType<typeof vi.spyOn>
 beforeEach(() => {
   confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
 })
-
 afterEach(() => {
   vi.unstubAllGlobals()
   confirmSpy.mockRestore()
 })
 
-describe('HistoryScreen grouped by leader', () => {
-  it('groups the records by publisher, alphabetically, each line naming the territory and the two dates', async () => {
-    const entries = [
-      makeEntry({
-        id: 'a1',
-        publisher: { id: 'p2', name: 'Bia' },
-        territory: { id: 't2', name: 'Bairro Sul - N2' },
-        startedAt: new Date('2026-05-01T12:00:00Z'),
-        completedAt: new Date('2026-06-01T12:00:00Z')
-      }),
-      makeEntry({ id: 'a2' })
-    ]
+describe('HistoryScreen', () => {
+  it('shows a semantic table with territory, publisher, dates and an open status', async () => {
     vi.stubGlobal(
       'api',
       makeApi({
         assignments: {
-          listAll: vi.fn().mockResolvedValue(entries)
+          listAll: vi.fn().mockResolvedValue(makePage([makeEntry({ completedAt: undefined })]))
         } as unknown as IpcApi['assignments']
       })
     )
-
     render(<HistoryScreen />)
-
-    const groups = await screen.findAllByRole('group')
-    expect(groups.map((group) => group.getAttribute('aria-label'))).toEqual(['Ana', 'Bia'])
-
+    const table = await screen.findByRole('table', { name: 'Histórico completo' })
     expect(
-      within(groups[0]).getByText(
-        `Centro - N1 — ${asDate(new Date('2026-03-01T12:00:00Z'))} a ${asDate(new Date('2026-04-01T12:00:00Z'))}`
-      )
-    ).toBeInTheDocument()
-    expect(
-      within(groups[1]).getByText(
-        `Bairro Sul - N2 — ${asDate(new Date('2026-05-01T12:00:00Z'))} a ${asDate(new Date('2026-06-01T12:00:00Z'))}`
-      )
-    ).toBeInTheDocument()
+      within(table)
+        .getAllByRole('columnheader')
+        .map((header) => header.textContent)
+    ).toEqual(['Território', 'Publicador', 'Retirada', 'Devolução', 'Situação', 'Ações'])
+    expect(within(table).getByText('Centro - N1')).toBeInTheDocument()
+    expect(within(table).getByText('Ana')).toBeInTheDocument()
+    expect(within(table).getByText('Em andamento')).toBeInTheDocument()
   })
-})
 
-describe('HistoryScreen grouped by territory', () => {
-  it('regroups the same records by territory, in territory-number order, naming the publisher on each line', async () => {
+  it('turns selected local days into a half-open ISO interval', async () => {
     const user = userEvent.setup()
-    const entries = [
-      makeEntry({
-        id: 'a1',
-        publisher: { id: 'p1', name: 'Ana' },
-        territory: { id: 't2', name: 'Bairro Sul - N10' }
-      }),
-      makeEntry({
-        id: 'a2',
-        publisher: { id: 'p2', name: 'Bia' },
-        territory: { id: 't1', name: 'Centro - N2' }
-      })
-    ]
-    vi.stubGlobal(
-      'api',
-      makeApi({
-        assignments: {
-          listAll: vi.fn().mockResolvedValue(entries)
-        } as unknown as IpcApi['assignments']
+    const listAll = vi.fn().mockResolvedValue(makePage())
+    vi.stubGlobal('api', makeApi({ assignments: { listAll } as unknown as IpcApi['assignments'] }))
+    render(<HistoryScreen />)
+    await screen.findByText('Nenhuma designação registrada ainda.')
+    await user.type(screen.getByLabelText('De'), '2026-03-01')
+    await user.type(screen.getByLabelText('Até'), '2026-03-03')
+    await waitFor(() =>
+      expect(listAll).toHaveBeenLastCalledWith({
+        fromInstant: new Date(expectedLocalDay('2026-03-01')),
+        toInstant: new Date(expectedLocalDay('2026-03-04')),
+        page: 1
       })
     )
-
-    render(<HistoryScreen />)
-    await screen.findAllByRole('group')
-
-    await user.click(screen.getByRole('button', { name: 'Por território' }))
-
-    const groups = screen.getAllByRole('group')
-    expect(groups.map((group) => group.getAttribute('aria-label'))).toEqual([
-      'Centro - N2',
-      'Bairro Sul - N10'
-    ])
-    expect(
-      within(groups[0]).getByText(
-        `Bia — ${asDate(new Date('2026-03-01T12:00:00Z'))} a ${asDate(new Date('2026-04-01T12:00:00Z'))}`
-      )
-    ).toBeInTheDocument()
-    expect(within(groups[1]).getByText(/^Ana — /)).toBeInTheDocument()
   })
 
-  it('marks the active view with aria-pressed, starting on "Por dirigente"', async () => {
-    const user = userEvent.setup()
-    vi.stubGlobal('api', makeApi())
-
-    render(<HistoryScreen />)
-
-    const byLeader = await screen.findByRole('button', { name: 'Por dirigente' })
-    const byTerritory = screen.getByRole('button', { name: 'Por território' })
-    expect(byLeader).toHaveAttribute('aria-pressed', 'true')
-    expect(byTerritory).toHaveAttribute('aria-pressed', 'false')
-
-    await user.click(byTerritory)
-    expect(byLeader).toHaveAttribute('aria-pressed', 'false')
-    expect(byTerritory).toHaveAttribute('aria-pressed', 'true')
-
-    await user.click(byLeader)
-    expect(byLeader).toHaveAttribute('aria-pressed', 'true')
-    expect(byTerritory).toHaveAttribute('aria-pressed', 'false')
-  })
-
-  it('keeps every assignment of one publisher in a single block, in the order the listing delivered them', async () => {
-    const entries = [
-      makeEntry({ id: 'recent', territory: { id: 't2', name: 'Bairro Sul - N2' } }),
-      makeEntry({ id: 'older', territory: { id: 't1', name: 'Centro - N1' } })
-    ]
-    vi.stubGlobal(
-      'api',
-      makeApi({
-        assignments: {
-          listAll: vi.fn().mockResolvedValue(entries)
-        } as unknown as IpcApi['assignments']
-      })
-    )
-
-    render(<HistoryScreen />)
-
-    const group = await screen.findByRole('group', { name: 'Ana' })
-    const lines = within(group).getAllByRole('listitem')
-    expect(lines).toHaveLength(2)
-    expect(lines[0]).toHaveTextContent(/^Bairro Sul - N2 — /)
-    expect(lines[1]).toHaveTextContent(/^Centro - N1 — /)
-  })
-})
-
-describe('HistoryScreen open assignments', () => {
-  it('reads an open assignment as "em andamento" instead of a completion date', async () => {
-    vi.stubGlobal(
-      'api',
-      makeApi({
-        assignments: {
-          listAll: vi.fn().mockResolvedValue([makeEntry({ completedAt: undefined })])
-        } as unknown as IpcApi['assignments']
-      })
-    )
-
-    render(<HistoryScreen />)
-
-    expect(
-      await screen.findByText(
-        `Centro - N1 — ${asDate(new Date('2026-03-01T12:00:00Z'))} a em andamento`
-      )
-    ).toBeInTheDocument()
-  })
-})
-
-describe('HistoryScreen search', () => {
-  const entries = [
-    makeEntry({
-      id: 'a1',
-      publisher: { id: 'p1', name: 'João' },
-      territory: { id: 't1', name: 'Centro - N1' }
-    }),
-    makeEntry({
-      id: 'a2',
-      publisher: { id: 'p2', name: 'Bia' },
-      territory: { id: 't2', name: 'Jardim Aurora - N2' }
-    })
-  ]
-
-  function renderWithEntries(): void {
-    vi.stubGlobal(
-      'api',
-      makeApi({
-        assignments: {
-          listAll: vi.fn().mockResolvedValue(entries)
-        } as unknown as IpcApi['assignments']
-      })
-    )
-    render(<HistoryScreen />)
-  }
-
-  it('filters by publisher name in the leader view, ignoring case and accents', async () => {
-    const user = userEvent.setup()
-    renderWithEntries()
-    await screen.findAllByRole('group')
-
-    await user.type(screen.getByLabelText('Buscar no histórico'), 'joao')
-
-    const groups = screen.getAllByRole('group')
-    expect(groups.map((group) => group.getAttribute('aria-label'))).toEqual(['João'])
-  })
-
-  it('filters by territory name once the territory view is on', async () => {
-    const user = userEvent.setup()
-    renderWithEntries()
-    await screen.findAllByRole('group')
-
-    await user.click(screen.getByRole('button', { name: 'Por território' }))
-    await user.type(screen.getByLabelText('Buscar no histórico'), 'JARDIM')
-
-    const groups = screen.getAllByRole('group')
-    expect(groups.map((group) => group.getAttribute('aria-label'))).toEqual(['Jardim Aurora - N2'])
-  })
-
-  it('tells an empty search apart from an empty history', async () => {
-    const user = userEvent.setup()
-    renderWithEntries()
-    await screen.findAllByRole('group')
-
-    await user.type(screen.getByLabelText('Buscar no histórico'), 'zzz')
-
-    expect(screen.getByText('Nenhum resultado para a busca.')).toBeInTheDocument()
-    expect(screen.queryByText('Nenhuma designação registrada ainda.')).not.toBeInTheDocument()
-  })
-
-  it('says nothing was ever recorded when the history itself is empty', async () => {
-    vi.stubGlobal('api', makeApi())
-
-    render(<HistoryScreen />)
-
-    expect(await screen.findByText('Nenhuma designação registrada ainda.')).toBeInTheDocument()
-    expect(screen.queryByText('Nenhum resultado para a busca.')).not.toBeInTheDocument()
-  })
-})
-
-describe('HistoryScreen deleting a record', () => {
-  it('deletes the record with its own territory/assignment pair once confirmed, and reloads', async () => {
-    const user = userEvent.setup()
-    const deleteAssignment = vi.fn().mockResolvedValue(undefined)
-    const listAll = vi.fn().mockResolvedValue([makeEntry({ id: 'a9' })])
-    vi.stubGlobal(
-      'api',
-      makeApi({
-        assignments: { listAll, delete: deleteAssignment } as unknown as IpcApi['assignments']
-      })
-    )
-
-    render(<HistoryScreen />)
-    const button = await screen.findByRole('button', {
-      name: 'Apagar designação de Ana em Centro - N1'
-    })
-
-    confirmSpy.mockReturnValue(false)
-    await user.click(button)
-    expect(deleteAssignment).not.toHaveBeenCalled()
-
-    confirmSpy.mockReturnValue(true)
-    await user.click(button)
-
-    await waitFor(() => expect(deleteAssignment).toHaveBeenCalledWith('t1', 'a9'))
-    expect(confirmSpy.mock.calls.at(-1)?.[0]).toContain(
-      'O registro sai do histórico como se não tivesse existido'
-    )
-    await waitFor(() => expect(listAll).toHaveBeenCalledTimes(2))
-  })
-
-  it('surfaces a failed delete as an alert', async () => {
-    const user = userEvent.setup()
-    vi.stubGlobal(
-      'api',
-      makeApi({
-        assignments: {
-          listAll: vi.fn().mockResolvedValue([makeEntry()]),
-          delete: vi.fn().mockRejectedValue(new Error('sem rede'))
-        } as unknown as IpcApi['assignments']
-      })
-    )
-
-    render(<HistoryScreen />)
-    await user.click(
-      await screen.findByRole('button', { name: 'Apagar designação de Ana em Centro - N1' })
-    )
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('sem rede')
-  })
-})
-
-describe('HistoryScreen load failure', () => {
-  it('shows the error and lets "Recarregar" try again', async () => {
+  it('returns to page one when dates change or are cleared', async () => {
     const user = userEvent.setup()
     const listAll = vi
       .fn()
-      .mockRejectedValueOnce(new Error('servidor fora do ar'))
-      .mockResolvedValue([makeEntry()])
+      .mockResolvedValueOnce(makePage([makeEntry()], { total: 51, page: 1 }))
+      .mockResolvedValueOnce(makePage([makeEntry({ id: 'second' })], { total: 51, page: 2 }))
+      .mockResolvedValue(makePage([makeEntry()], { total: 51, page: 1 }))
     vi.stubGlobal('api', makeApi({ assignments: { listAll } as unknown as IpcApi['assignments'] }))
-
     render(<HistoryScreen />)
-    expect(await screen.findByRole('alert')).toHaveTextContent('servidor fora do ar')
-
-    await user.click(screen.getByRole('button', { name: 'Recarregar' }))
-
-    expect(await screen.findByRole('group', { name: 'Ana' })).toBeInTheDocument()
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    await screen.findByText('1–1 de 51')
+    await user.click(screen.getByRole('button', { name: 'Próxima página' }))
+    await screen.findByText('51–51 de 51')
+    await user.type(screen.getByLabelText('De'), '2026-03-01')
+    await waitFor(() =>
+      expect(listAll).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1 }))
+    )
+    await user.click(screen.getByRole('button', { name: 'Limpar período' }))
+    await waitFor(() => expect(listAll).toHaveBeenLastCalledWith({ page: 1 }))
   })
 
-  it('keeps showing an alert when "Recarregar" fails too', async () => {
+  it('does not let an older response overwrite a newer date filter', async () => {
     const user = userEvent.setup()
-    const listAll = vi.fn().mockRejectedValue(new Error('servidor fora do ar'))
+    let resolveFirst!: (page: AssignmentHistoryPage) => void
+    let resolveSecond!: (page: AssignmentHistoryPage) => void
+    const first = new Promise<AssignmentHistoryPage>((resolve) => {
+      resolveFirst = resolve
+    })
+    const second = new Promise<AssignmentHistoryPage>((resolve) => {
+      resolveSecond = resolve
+    })
+    const listAll = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second)
     vi.stubGlobal('api', makeApi({ assignments: { listAll } as unknown as IpcApi['assignments'] }))
-
     render(<HistoryScreen />)
-    await screen.findByRole('alert')
+    await user.type(screen.getByLabelText('De'), '2026-03-01')
+    resolveSecond(makePage([makeEntry({ territory: { id: 'new', name: 'Novo - N2' } })]))
+    expect(await screen.findByText('Novo - N2')).toBeInTheDocument()
+    resolveFirst(makePage([makeEntry({ territory: { id: 'old', name: 'Antigo - N1' } })]))
+    await waitFor(() => expect(screen.queryByText('Antigo - N1')).not.toBeInTheDocument())
+  })
 
-    await user.click(screen.getByRole('button', { name: 'Recarregar' }))
+  it('keeps table headers while loading and distinguishes no-results from an empty history', async () => {
+    const listAll = vi
+      .fn()
+      .mockResolvedValueOnce(makePage())
+      .mockResolvedValue(makePage([], { page: 1 }))
+    vi.stubGlobal('api', makeApi({ assignments: { listAll } as unknown as IpcApi['assignments'] }))
+    render(<HistoryScreen />)
+    expect(screen.getByRole('columnheader', { name: 'Território' })).toBeInTheDocument()
+    expect(await screen.findByText('Nenhuma designação registrada ainda.')).toBeInTheDocument()
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('De'), '2026-03-01')
+    expect(screen.getByRole('columnheader', { name: 'Território' })).toBeInTheDocument()
+    expect(
+      await screen.findByText('Nenhum resultado para o período selecionado.')
+    ).toBeInTheDocument()
+  })
 
-    await waitFor(() => expect(listAll).toHaveBeenCalledTimes(2))
-    expect(await screen.findByRole('alert')).toHaveTextContent('servidor fora do ar')
+  it('preserves the date filter after an error and retries it', async () => {
+    const user = userEvent.setup()
+    const listAll = vi
+      .fn()
+      .mockResolvedValueOnce(makePage())
+      .mockRejectedValueOnce(new Error('sem rede'))
+      .mockResolvedValueOnce(makePage([makeEntry()]))
+    vi.stubGlobal('api', makeApi({ assignments: { listAll } as unknown as IpcApi['assignments'] }))
+    render(<HistoryScreen />)
+    await screen.findByText('Nenhuma designação registrada ainda.')
+    await user.type(screen.getByLabelText('De'), '2026-03-01')
+    expect(await screen.findByRole('alert')).toHaveTextContent('sem rede')
+    expect(screen.getByLabelText('De')).toHaveValue('2026-03-01')
+    await user.click(screen.getByRole('button', { name: 'Tentar novamente' }))
+    expect(await screen.findByText('Centro - N1')).toBeInTheDocument()
+    expect(listAll).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1 }))
+  })
+
+  it('confirms deletion and recalibrates the page to one', async () => {
+    const user = userEvent.setup()
+    const remove = vi.fn().mockResolvedValue(undefined)
+    const listAll = vi
+      .fn()
+      .mockResolvedValueOnce(makePage([makeEntry()], { total: 51, page: 2 }))
+      .mockResolvedValueOnce(makePage([makeEntry()], { total: 50, page: 1 }))
+    vi.stubGlobal(
+      'api',
+      makeApi({ assignments: { listAll, delete: remove } as unknown as IpcApi['assignments'] })
+    )
+    render(<HistoryScreen />)
+    await user.click(await screen.findByRole('button', { name: /Apagar designação/ }))
+    await waitFor(() => expect(remove).toHaveBeenCalledWith('t1', 'assignment-1'))
+    await waitFor(() => expect(listAll).toHaveBeenLastCalledWith({ page: 1 }))
   })
 })

@@ -109,7 +109,10 @@ async def test_the_general_listing_names_the_publisher_the_same_way(
 
     response = await client.get("/admin/assignments", headers=bearer(token))
 
-    assert response.json()[0]["user"] == {"id": str(publisher.id), "name": "Irmã Maria"}
+    assert response.json()["items"][0]["user"] == {
+        "id": str(publisher.id),
+        "name": "Irmã Maria",
+    }
 
 
 async def test_the_card_keeps_the_name_the_publisher_had_when_designated(
@@ -151,7 +154,7 @@ async def test_the_history_lists_every_stint_most_recent_first(client, make_admi
     )
 
     assert response.status_code == 200
-    body = response.json()
+    body = response.json()["items"]
     assert [entry["user"]["name"] for entry in body] == ["Irmã Maria", "Irmão João"]
     assert body[0]["completed_at"] is None
     assert body[1]["completed_at"] is not None
@@ -322,7 +325,7 @@ async def test_the_general_listing_names_the_territory_of_every_record(
     response = await client.get("/admin/assignments", headers=bearer(token))
 
     assert response.status_code == 200
-    body = response.json()
+    body = response.json()["items"]
     assert [entry["territory"]["name"] for entry in body] == ["Vila Nova", "Centro"]
     assert [entry["user"]["name"] for entry in body] == ["Irmã Maria", "Irmão João"]
     assert body[0]["territory"]["id"] == second_territory
@@ -358,7 +361,82 @@ async def test_a_congregation_without_assignments_lists_nothing(client, make_adm
     response = await client.get("/admin/assignments", headers=bearer(token))
 
     assert response.status_code == 200
-    assert response.json() == []
+    assert response.json() == {"items": [], "total": 0, "page": 1, "page_size": 50}
+
+
+async def test_the_general_listing_returns_an_intermediate_page_and_total(
+    client, make_admin, make_publisher
+):
+    congregation, token = make_admin()
+    territories = [
+        await draw_offset_territory(client, token, f"Território {number}", offset=float(number * 2))
+        for number in range(1, 4)
+    ]
+    publisher = make_publisher(congregation.id)
+    for territory_id in territories:
+        await client.post(
+            f"/admin/territories/{territory_id}/assignments",
+            json={"user_id": str(publisher.id)},
+            headers=bearer(token),
+        )
+
+    response = await client.get(
+        "/admin/assignments?page=2&page_size=1", headers=bearer(token)
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 3
+    assert response.json()["page"] == 2
+    assert response.json()["page_size"] == 1
+    assert len(response.json()["items"]) == 1
+
+
+async def test_the_general_listing_combines_publisher_territory_and_period_filters(
+    client, make_admin, make_publisher
+):
+    congregation, token = make_admin()
+    centro_id = await draw_territory(client, token, name="Centro")
+    bairro_id = await draw_offset_territory(client, token, "Bairro", offset=2.0)
+    ana = make_publisher(congregation.id, name="Ana")
+    bruno = make_publisher(congregation.id, name="Bruno")
+    await client.post(
+        f"/admin/territories/{centro_id}/assignments",
+        json={"user_id": str(ana.id)},
+        headers=bearer(token),
+    )
+    await client.post(
+        f"/admin/territories/{bairro_id}/assignments",
+        json={"user_id": str(bruno.id)},
+        headers=bearer(token),
+    )
+
+    response = await client.get(
+        "/admin/assignments",
+        params={
+            "publisher_id": str(ana.id),
+            "territory_id": centro_id,
+            "from": "2020-01-01T00:00:00-03:00",
+            "to": "2030-01-01T00:00:00-03:00",
+        },
+        headers=bearer(token),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    assert response.json()["items"][0]["user"]["name"] == "Ana"
+    assert response.json()["items"][0]["territory"]["id"] == centro_id
+
+
+async def test_the_general_listing_rejects_an_empty_or_reversed_period(client, make_admin):
+    _, token = make_admin()
+
+    response = await client.get(
+        "/admin/assignments",
+        params={"from": "2026-01-02T00:00:00Z", "to": "2026-01-02T00:00:00Z"},
+        headers=bearer(token),
+    )
+
+    assert response.status_code == 422
 
 
 async def test_the_general_listing_never_shows_another_congregations_record(
@@ -377,7 +455,7 @@ async def test_the_general_listing_never_shows_another_congregations_record(
     response = await client.get("/admin/assignments", headers=bearer(token))
 
     assert response.status_code == 200
-    assert response.json() == []
+    assert response.json() == {"items": [], "total": 0, "page": 1, "page_size": 50}
 
 
 async def test_the_general_listing_is_not_reachable_without_an_admin_token(client):

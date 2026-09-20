@@ -20,7 +20,12 @@ import {
   type TerritoryUpdateInput,
   type SerializedIpcError
 } from '../shared/ipc-contract'
-import { getServiceYear, territoryNumber, type Territory } from '../shared/models'
+import {
+  getServiceYear,
+  territoryNumber,
+  type AssignmentHistoryQuery,
+  type Territory
+} from '../shared/models'
 import { ApiErrorException } from '../shared/api-errors'
 import type { ApiClient } from './api-client'
 import type { Session } from './session'
@@ -144,7 +149,9 @@ export function registerIpcHandlers({
   handle(IPC_CHANNELS.assignmentsListFor, (territoryId: string) =>
     session.run(() => api.listAssignments(territoryId))
   )
-  handle(IPC_CHANNELS.assignmentsListAll, () => session.run(() => api.listAllAssignments()))
+  handle(IPC_CHANNELS.assignmentsListAll, (query?: AssignmentHistoryQuery) =>
+    session.run(() => api.listAllAssignments(query))
+  )
   handle(IPC_CHANNELS.assignmentsDesignate, (territoryId: string, publisherId: string) =>
     session.run(() => api.designate(territoryId, publisherId))
   )

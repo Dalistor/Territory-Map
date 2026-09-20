@@ -189,11 +189,14 @@ export function TerritorySettingsScreen({
   }
 
   return (
-    <div>
-      <header>
-        <h2>Configurações de {current.name}</h2>
+    <div className="screen screen-settings">
+      <header className="screen-header">
+        <div className="screen-title-block">
+          <p className="eyebrow">Territórios</p>
+          <h2>Configurações de {current.name}</h2>
+        </div>
       </header>
-      <main className="settings-screen">
+      <main className="screen-body settings-screen">
         <label className="field">
           Nome do território
           <input value={name} onChange={(event) => setName(event.target.value)} />
@@ -229,7 +232,7 @@ export function TerritorySettingsScreen({
 
         {error !== null && <p role="alert">{error}</p>}
 
-        <section className="settings-summary">
+        <section className="settings-summary screen-card">
           <h3>Resumo</h3>
           <dl>
             <dt>Quadras</dt>
@@ -247,7 +250,7 @@ export function TerritorySettingsScreen({
           </dl>
         </section>
 
-        <section className="settings-blocks">
+        <section className="settings-blocks screen-card">
           <h3>Quadras do território</h3>
           {rows.length === 0 ? (
             <p>
@@ -320,10 +323,10 @@ export function TerritorySettingsScreen({
           )}
         </section>
 
-        <section className="settings-danger">
+        <section className="settings-danger screen-danger-zone">
           <button
             type="button"
-            className="block-action-danger"
+            className="button-danger"
             disabled={deleting}
             onClick={() => void handleDelete()}
           >

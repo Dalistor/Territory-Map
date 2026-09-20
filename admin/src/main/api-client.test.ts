@@ -494,33 +494,119 @@ describe('createApiClient', () => {
       expect(assignment.startedAt).toEqual(new Date('2026-08-01T09:00:00Z'))
     })
 
-    it('listAllAssignments GETs /admin/assignments and returns the list with each territory', async () => {
-      const { client, fetchImpl } = makeClient(
-        jsonResponse(200, [
-          { ...ASSIGNMENT_JSON, territory: { id: 'terr-1', name: 'Centro - N6' } },
-          {
-            ...ASSIGNMENT_JSON,
-            id: 'asg-2',
-            completed_at: null,
-            territory: { id: 'terr-2', name: 'Vila - N7' }
-          }
-        ])
-      )
+    const ASSIGNMENT_HISTORY_PAGE_JSON = {
+      items: [
+        { ...ASSIGNMENT_JSON, territory: { id: 'terr-1', name: 'Centro - N6' } },
+        {
+          ...ASSIGNMENT_JSON,
+          id: 'asg-2',
+          completed_at: null,
+          territory: { id: 'terr-2', name: 'Vila - N7' }
+        }
+      ],
+      total: 12,
+      page: 2,
+      page_size: 10
+    }
 
-      const assignments = await client.listAllAssignments()
+    it('listAllAssignments GETs the history endpoint and parses its page', async () => {
+      const { client, fetchImpl } = makeClient(jsonResponse(200, ASSIGNMENT_HISTORY_PAGE_JSON))
+
+      const assignmentPage = await client.listAllAssignments()
 
       const [url, init] = fetchImpl.mock.calls[0]
       expect(url).toBe(`${BASE_URL}/admin/assignments`)
       expect(init.method).toBe('GET')
-      expect(assignments).toEqual([
-        { ...PARSED_ASSIGNMENT, territory: { id: 'terr-1', name: 'Centro - N6' } },
+      expect(assignmentPage).toEqual({
+        items: [
+          { ...PARSED_ASSIGNMENT, territory: { id: 'terr-1', name: 'Centro - N6' } },
+          {
+            ...PARSED_ASSIGNMENT,
+            id: 'asg-2',
+            completedAt: undefined,
+            territory: { id: 'terr-2', name: 'Vila - N7' }
+          }
+        ],
+        total: 12,
+        page: 2,
+        pageSize: 10
+      })
+    })
+
+    it('accepts the legacy array response while an Electron client awaits the paginated server deploy', async () => {
+      const legacyEntries = ASSIGNMENT_HISTORY_PAGE_JSON.items
+      const { client } = makeClient(jsonResponse(200, legacyEntries))
+
+      await expect(client.listAllAssignments()).resolves.toEqual({
+        items: [
+          { ...PARSED_ASSIGNMENT, territory: { id: 'terr-1', name: 'Centro - N6' } },
+          {
+            ...PARSED_ASSIGNMENT,
+            id: 'asg-2',
+            completedAt: undefined,
+            territory: { id: 'terr-2', name: 'Vila - N7' }
+          }
+        ],
+        total: 2,
+        page: 1,
+        pageSize: 50
+      })
+    })
+
+    it('filters and paginates a legacy array when the deployed server ignores query parameters', async () => {
+      const legacyEntries = [
+        ...ASSIGNMENT_HISTORY_PAGE_JSON.items,
         {
-          ...PARSED_ASSIGNMENT,
-          id: 'asg-2',
-          completedAt: undefined,
-          territory: { id: 'terr-2', name: 'Vila - N7' }
+          ...ASSIGNMENT_JSON,
+          id: 'asg-3',
+          user: { id: 'pub-2', name: 'Outra pessoa' },
+          territory: { id: 'terr-3', name: 'Jardim - N8' }
         }
-      ])
+      ]
+      const { client } = makeClient(jsonResponse(200, legacyEntries))
+
+      await expect(
+        client.listAllAssignments({ publisherId: 'pub-1', page: 2, pageSize: 1 })
+      ).resolves.toEqual({
+        items: [
+          {
+            ...PARSED_ASSIGNMENT,
+            id: 'asg-2',
+            completedAt: undefined,
+            territory: { id: 'terr-2', name: 'Vila - N7' }
+          }
+        ],
+        total: 2,
+        page: 2,
+        pageSize: 1
+      })
+    })
+
+    it('serializes defined history filters as ISO-8601 query parameters', async () => {
+      const { client, fetchImpl } = makeClient(jsonResponse(200, ASSIGNMENT_HISTORY_PAGE_JSON))
+
+      await client.listAllAssignments({
+        fromInstant: new Date('2026-08-01T00:00:00.000Z'),
+        toInstant: new Date('2026-08-31T00:00:00.000Z'),
+        publisherId: 'publicador com espaço',
+        territoryId: 'terr-1',
+        page: 2,
+        pageSize: 10
+      })
+
+      const [url] = fetchImpl.mock.calls[0]
+      expect(url).toBe(
+        `${BASE_URL}/admin/assignments?from=2026-08-01T00%3A00%3A00.000Z&to=2026-08-31T00%3A00%3A00.000Z&publisher_id=publicador+com+espa%C3%A7o&territory_id=terr-1&page=2&page_size=10`
+      )
+    })
+
+    it('omits absent history filters instead of serializing empty parameters', async () => {
+      const { client, fetchImpl } = makeClient(jsonResponse(200, ASSIGNMENT_HISTORY_PAGE_JSON))
+
+      await client.listAllAssignments({ publisherId: undefined, pageSize: undefined })
+
+      const [url] = fetchImpl.mock.calls[0]
+      expect(url).toBe(`${BASE_URL}/admin/assignments`)
     })
 
     it('designate POSTs /admin/territories/{id}/assignments with {user_id} and returns the parsed assignment', async () => {

@@ -77,7 +77,7 @@ export function SetupScreen({ reason }: SetupScreenProps): React.JSX.Element {
 
   return (
     <div className="setup-screen">
-      <div className="setup-card">
+      <div className="setup-card screen-card">
         {/* The logo already carries the "TERRITORY MAP" wordmark, so it
             replaces both the old emoji mark and the <h1> — keeping the
             heading would print the name twice, stacked. */}

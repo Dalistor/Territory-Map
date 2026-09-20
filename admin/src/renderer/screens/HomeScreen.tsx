@@ -142,7 +142,9 @@ export function HomeScreen({
   useEffect(() => {
     if (openTerritoryMenuId === null) return
     document
-      .querySelector<HTMLElement>(`[data-territory-menu="${openTerritoryMenuId}"] [role="menuitem"]`)
+      .querySelector<HTMLElement>(
+        `[data-territory-menu="${openTerritoryMenuId}"] [role="menuitem"]`
+      )
       ?.focus()
   }, [openTerritoryMenuId])
 
@@ -156,11 +158,12 @@ export function HomeScreen({
     }
     const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]'))
     const current = items.indexOf(document.activeElement as HTMLElement)
-    const next = event.key === 'Home'
-      ? 0
-      : event.key === 'End'
-        ? items.length - 1
-        : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
+    const next =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? items.length - 1
+          : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
     items[next]?.focus()
   }
 
@@ -247,20 +250,34 @@ export function HomeScreen({
   const title = congregation ? `${congregation.name} — ${congregation.city}` : 'Territory Map'
 
   return (
-    <div>
-      <header>
-        <h1>{title}</h1>
-        <button disabled={isLoading || isRefreshing} onClick={() => void load()}>
+    <div className="screen screen-map">
+      <header className="screen-header">
+        <div className="screen-title-block">
+          <p className="eyebrow">Workbench</p>
+          <h1>{title}</h1>
+        </div>
+        <button
+          className="button-secondary"
+          disabled={isLoading || isRefreshing}
+          onClick={() => void load()}
+        >
           {isLoading || isRefreshing ? 'Atualizando…' : 'Recarregar'}
         </button>
       </header>
-      <main>
+      <main className="screen-body">
         {actionError !== null && <p role="alert">{actionError}</p>}
         {isLoading && <p>Carregando…</p>}
         {!isLoading && loadError !== null && <p role="alert">{loadError}</p>}
         {!isLoading && loadError === null && (
           <div className="home-split">
-            <div className="home-panel">
+            <aside className="home-panel" aria-label="Territórios no mapa">
+              <div className="workbench-panel-heading">
+                <div>
+                  <p className="eyebrow">Desenho e quadras</p>
+                  <h2>Territórios</h2>
+                </div>
+                <span className="workbench-count">{sortedTerritories.length}</span>
+              </div>
               <button
                 className="button-primary"
                 onClick={() => onNewTerritory?.(sortedTerritories)}
@@ -352,7 +369,10 @@ export function HomeScreen({
                             </li>
                           </ul>
                         )}
-                        <div className="territory-quick-actions" aria-label={`Ações rápidas de ${territory.name}`}>
+                        <div
+                          className="territory-quick-actions"
+                          aria-label={`Ações rápidas de ${territory.name}`}
+                        >
                           <button type="button" onClick={() => onAddBlock?.(territory)}>
                             Quadras
                           </button>
@@ -365,7 +385,7 @@ export function HomeScreen({
                   </ul>
                 </div>
               )}
-            </div>
+            </aside>
             <div className="home-map">
               <TerritoryMap
                 territories={sortedTerritories}

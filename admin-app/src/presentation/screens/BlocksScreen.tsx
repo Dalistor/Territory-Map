@@ -57,6 +57,18 @@ export interface BlocksScreenProps {
    * threads to the main map.
    */
   readonly fallbackCenter?: LatLng;
+  /**
+   * A territory detail owns the vertical gesture for both segments. In that
+   * composition this component contributes content only, avoiding two
+   * competing `ScrollView`s. Standalone use keeps the original scroll.
+   */
+  readonly scrollable?: boolean;
+  /**
+   * Lets the territory detail promote one block to the combined panel, where
+   * deleting an incorrect work log remains available. Without it, this list
+   * keeps its compact inline work section.
+   */
+  readonly onOpenBlock?: (block: Block) => void;
 }
 
 export function BlocksScreen({
@@ -65,6 +77,8 @@ export function BlocksScreen({
   api,
   now,
   fallbackCenter,
+  scrollable = true,
+  onOpenBlock,
 }: BlocksScreenProps): React.JSX.Element {
   const moment = now ?? new Date();
 
@@ -107,11 +121,20 @@ export function BlocksScreen({
 
   /** Tapping a block on the map opens it exactly like tapping its row does. */
   const handleSelectBlock = useCallback((block: Block) => {
+    if (onOpenBlock !== undefined) {
+      onOpenBlock(block);
+      return;
+    }
     setOpenBlockId(openId => (openId === block.id ? null : block.id));
-  }, []);
+  }, [onOpenBlock]);
+
+  const Container = scrollable ? ScrollView : View;
+  const containerProps = scrollable
+    ? { style: styles.screen, contentContainerStyle: styles.screenContent }
+    : { style: styles.screenContent };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.screenContent}>
+    <Container {...containerProps}>
       <Text style={styles.title}>{current.name}</Text>
 
       {blocks.length > 0 && (
@@ -135,9 +158,7 @@ export function BlocksScreen({
               accessibilityLabel={`Quadra ${block.number}`}
               accessibilityState={{ expanded: openBlockId === block.id }}
               style={styles.row}
-              onPress={() =>
-                setOpenBlockId(openId => (openId === block.id ? null : block.id))
-              }>
+              onPress={() => handleSelectBlock(block)}>
               <Text style={styles.blockNumber}>Quadra {block.number}</Text>
               <View style={styles.rowDetails}>
                 <Text style={styles.blockStatus}>
@@ -162,7 +183,7 @@ export function BlocksScreen({
           </View>
         ))
       )}
-    </ScrollView>
+    </Container>
   );
 }
 

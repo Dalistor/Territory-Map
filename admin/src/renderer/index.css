@@ -12,22 +12,45 @@
  */
 
 :root {
-  --color-primary: #1e40af;
-  --color-primary-dark: #1e3a8a;
-  --color-primary-light: #eff6ff;
-  --color-accent: #2563eb;
-  --color-danger: #dc2626;
-  --color-success: #16a34a;
-  --color-success-light: #f0fdf4;
-  --color-warning: #d97706;
-  --color-warning-light: #fffbeb;
-  --color-text: #0f172a;
-  --color-text-muted: #64748b;
-  --color-border: #e2e8f0;
-  --color-border-strong: #cbd5e1;
-  --color-surface: #ffffff;
-  --color-surface-subtle: #f8fafc;
-  --color-background: #f1f5f9;
+  /* Semantic UI tokens. Block-status colours stay local to the map domain
+     instead of becoming app-theme tokens. */
+  --surface-canvas: #f3f6fa;
+  --surface-raised: #ffffff;
+  --surface-subtle: #f8fafc;
+  --surface-selected: #eaf1ff;
+  --text-primary: #10233f;
+  --text-secondary: #5f7088;
+  --border-subtle: #dce4ed;
+  --border-strong: #b8c6d6;
+  --focus-ring: #1769d1;
+  --selection-text: #123f80;
+  --intent-primary: #155fc0;
+  --intent-primary-strong: #124f9f;
+  --intent-danger: #c63d37;
+  --intent-success: #25834a;
+  --intent-warning: #aa6812;
+  --intent-danger-surface: #fff1f0;
+  --intent-success-surface: #eefaf1;
+  --intent-warning-surface: #fff8e8;
+
+  /* Legacy aliases keep existing screens visually coherent while they are
+     migrated in Task 13. */
+  --color-primary: var(--intent-primary);
+  --color-primary-dark: var(--intent-primary-strong);
+  --color-primary-light: var(--surface-selected);
+  --color-accent: var(--focus-ring);
+  --color-danger: var(--intent-danger);
+  --color-success: var(--intent-success);
+  --color-success-light: var(--intent-success-surface);
+  --color-warning: var(--intent-warning);
+  --color-warning-light: var(--intent-warning-surface);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-secondary);
+  --color-border: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+  --color-surface: var(--surface-raised);
+  --color-surface-subtle: var(--surface-subtle);
+  --color-background: var(--surface-canvas);
   --radius: 8px;
   --radius-lg: 12px;
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
@@ -356,7 +379,7 @@ textarea:focus {
 }
 
 button:focus-visible {
-  outline: 2px solid var(--color-primary);
+  outline: 3px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -476,7 +499,7 @@ main > p[role='status'] {
 
 button:focus-visible,
 [role='menuitem']:focus-visible {
-  outline: 3px solid var(--color-primary);
+  outline: 3px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -831,6 +854,159 @@ li > [role='menu'] {
   color: var(--color-text-muted);
 }
 
+/* The territories consultation keeps one scroll owner per pane: the table
+   scrolls horizontally inside DataTable, while a long detail scrolls inside
+   the persistent side panel. At narrow widths the detail becomes the next
+   block in the document flow, never an off-canvas drawer that hides fields. */
+.territories-workspace {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 0;
+}
+
+.territories-workspace-toolbar,
+.territories-workspace-summary,
+.territory-detail-heading {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.territories-workspace-summary {
+  align-items: center;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  justify-content: flex-start;
+}
+
+.territories-workspace-summary span + span {
+  border-left: 1px solid var(--border-subtle);
+  padding-left: 0.75rem;
+}
+
+.territories-workspace-content {
+  display: grid;
+  flex: 1;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) minmax(20rem, 26rem);
+  min-height: 0;
+}
+
+.territories-workspace-primary,
+.territories-workspace-primary > .data-table,
+.territories-workspace-map {
+  min-height: 0;
+}
+
+.territories-workspace-primary > .data-table,
+.territories-workspace-primary > .data-table .data-table-scroll,
+.territories-workspace-map,
+.territories-workspace-map > .leaflet-container {
+  height: 100%;
+}
+
+.territories-workspace-map {
+  display: flex;
+}
+
+.territory-detail-panel {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  min-height: 0;
+  overflow: auto;
+  padding: 1rem;
+}
+
+.territory-detail-heading {
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.territory-detail-heading h2,
+.territory-detail-heading p {
+  margin: 0;
+}
+
+.eyebrow {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.territory-detail-panel .segmented-control-options {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.territory-detail-overview dl {
+  display: grid;
+  gap: 0.75rem 1rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.territory-detail-overview dt {
+  color: var(--text-secondary);
+}
+
+.territory-detail-overview dd {
+  font-weight: 600;
+  margin: 0;
+  text-align: right;
+}
+
+.territory-detail-blocks ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+}
+
+.territory-detail-map {
+  height: 26rem;
+  margin-top: 1rem;
+}
+
+.territory-detail-map .map-with-status-legend,
+.territory-detail-map .leaflet-container {
+  height: 100%;
+}
+
+@media (max-width: 920px) {
+  .territories-workspace-content {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .territory-detail-panel {
+    max-height: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .territories-workspace-summary span + span {
+    border-left: 0;
+    padding-left: 0;
+  }
+
+  .territory-detail-overview dl {
+    grid-template-columns: 1fr;
+  }
+
+  .territory-detail-overview dd {
+    margin-top: -0.5rem;
+    text-align: left;
+  }
+}
+
 .assignment-history {
   list-style: none;
   margin: 0;
@@ -922,6 +1098,213 @@ li > [role='menu'] {
   gap: 12px;
 }
 
+/* Header, search and management stay in the document flow; the potentially
+   long register owns its own vertical scroll without truncating its rows. */
+.publishers-screen {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.publishers-list {
+  flex: 1 1 auto;
+  min-height: 12rem;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.publishers-list:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.publishers-list > ul {
+  margin-bottom: 0;
+}
+
+/* Publicadores is a master/detail workspace. The register remains the stable
+   anchor on the left while the selected person's S-13-like movement ledger
+   gets a bounded, readable surface on the right. */
+.publishers-workspace {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+  margin-top: 10px;
+}
+
+.publishers-workspace.has-detail {
+  gap: 16px;
+  grid-template-columns: minmax(300px, 0.78fr) minmax(520px, 1.22fr);
+}
+
+.publishers-directory {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.publishers-no-results {
+  background: var(--surface-subtle);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  color: var(--text-secondary);
+  margin: 0;
+  padding: 28px;
+  text-align: center;
+}
+
+.publisher-history-panel {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.publisher-history-panel-header {
+  align-items: flex-start;
+  background: linear-gradient(135deg, var(--surface-raised), var(--surface-selected));
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 18px 20px;
+}
+
+.publisher-history-panel-header .eyebrow {
+  color: var(--selection-text);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  margin: 0 0 5px;
+  text-transform: uppercase;
+}
+
+.publisher-history-name {
+  color: var(--text-primary);
+  font-size: 1.25rem;
+  font-weight: 750;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.publisher-history-count {
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  margin: 6px 0 0;
+}
+
+.publisher-history-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 14px;
+}
+
+.publisher-history-table-wrap {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.publisher-history-table-wrap:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.publisher-history-table-wrap table {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 600px;
+  width: 100%;
+}
+
+.publisher-history-table-wrap th {
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.055em;
+  padding: 11px 14px;
+  position: sticky;
+  text-align: left;
+  text-transform: uppercase;
+  top: 0;
+  z-index: 1;
+}
+
+.publisher-history-table-wrap td {
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  padding: 13px 14px;
+  vertical-align: middle;
+}
+
+.publisher-history-table-wrap td:first-child {
+  color: var(--text-primary);
+}
+
+.publisher-history-table-wrap tbody tr:hover {
+  background: var(--surface-subtle);
+}
+
+.assignment-status {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 4px 9px;
+  white-space: nowrap;
+}
+
+.assignment-status.is-ongoing {
+  background: var(--intent-warning-surface);
+  color: var(--intent-warning);
+}
+
+.assignment-status.is-returned {
+  background: var(--intent-success-surface);
+  color: var(--intent-success);
+}
+
+.publisher-history-state {
+  align-items: center;
+  background: var(--surface-subtle);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  margin: auto 0;
+  min-height: 180px;
+  padding: 24px;
+  text-align: center;
+}
+
+.publisher-history-state p {
+  margin: 6px 0 0;
+}
+
+.publisher-history-more {
+  align-self: center;
+  margin-top: 12px;
+}
+
 /* The one-line category count next to the title (spec 0006, Task 07). */
 .publishers-summary {
   margin: -4px 0 8px;
@@ -936,6 +1319,27 @@ li > [role='menu'] {
   margin: 12px 0 6px;
   padding: 8px 14px;
   border-radius: 999px;
+}
+
+@media (max-width: 1120px) {
+  .publishers-workspace.has-detail {
+    grid-template-columns: minmax(260px, 0.7fr) minmax(440px, 1.3fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .publishers-workspace.has-detail {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+
+  .publishers-directory {
+    min-height: 280px;
+  }
+
+  .publisher-history-panel {
+    min-height: 420px;
+  }
 }
 
 .avatar {
@@ -963,6 +1367,28 @@ li > [role='menu'] {
   gap: 3px;
   margin-right: auto;
   min-width: 0;
+}
+
+.publisher-history-trigger {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 700;
+  padding: 5px 8px;
+  text-align: left;
+  width: fit-content;
+}
+
+.publisher-history-trigger:hover:not(:disabled) {
+  background: var(--surface-subtle);
+  border-color: var(--border-subtle);
+}
+
+.publisher-history-trigger[aria-pressed='true'] {
+  background: var(--surface-selected);
+  border-color: var(--focus-ring);
+  color: var(--selection-text);
 }
 
 .status-badge {
@@ -1029,21 +1455,21 @@ li > [role='menu'] {
 }
 
 .app-sidebar {
-  width: clamp(176px, 18vw, 230px);
+  width: clamp(184px, 17vw, 224px);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  background: var(--color-surface);
-  border-right: 1px solid var(--color-border);
+  background: var(--surface-raised);
+  border-right: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-sm);
 }
 
 .sidebar-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 18px 16px;
-  border-bottom: 1px solid var(--color-border);
+  gap: 10px;
+  padding: 20px 16px 18px;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 /* The pin logo. Its source has the logo's #f5f5f5 background baked in, so
@@ -1060,23 +1486,33 @@ li > [role='menu'] {
   min-width: 0; /* let long congregation names shrink inside the 230px sidebar */
 }
 
+.sidebar-product {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--text-secondary);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
 /* App.tsx renders the congregation as <strong> name + <span> city. */
 .sidebar-header strong {
   display: block;
   font-size: 0.95rem;
   font-weight: 700;
   line-height: 1.3;
-  color: var(--color-text);
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.sidebar-header span {
+.sidebar-header span:not(.sidebar-product) {
   display: block;
   margin-top: 2px;
   font-size: 0.8rem;
-  color: var(--color-text-muted);
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1088,18 +1524,18 @@ li > [role='menu'] {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 12px 10px;
+  gap: 6px;
+  padding: 16px 10px;
 }
 
 .sidebar-nav button {
   width: 100%;
   text-align: left;
-  padding: 10px 14px;
+  padding: 10px 12px;
   border: none;
   border-radius: var(--radius);
   background: transparent;
-  color: var(--color-text);
+  color: var(--text-primary);
   font-size: 0.92rem;
   font-weight: 500;
   transition:
@@ -1108,19 +1544,20 @@ li > [role='menu'] {
 }
 
 .sidebar-nav button:hover:not(:disabled) {
-  background: var(--color-surface-subtle);
-  color: var(--color-primary);
+  background: var(--surface-subtle);
+  color: var(--intent-primary);
 }
 
 .sidebar-nav button.is-active {
-  background: var(--color-primary-light);
-  color: var(--color-primary);
+  background: var(--surface-selected);
+  box-shadow: inset 3px 0 0 var(--intent-primary);
+  color: var(--selection-text);
   font-weight: 700;
 }
 
 .sidebar-footer {
   padding: 12px 10px;
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .sidebar-footer button {
@@ -1130,7 +1567,7 @@ li > [role='menu'] {
   border: none;
   border-radius: var(--radius);
   background: transparent;
-  color: var(--color-text-muted);
+  color: var(--text-secondary);
   font-size: 0.88rem;
   transition:
     color 0.15s ease,
@@ -1138,8 +1575,8 @@ li > [role='menu'] {
 }
 
 .sidebar-footer button:hover:not(:disabled) {
-  background: #fef2f2;
-  color: var(--color-danger);
+  background: var(--intent-danger-surface);
+  color: var(--intent-danger);
 }
 
 /* Header action buttons row */
@@ -1184,7 +1621,8 @@ li > [role='menu'] {
 }
 
 .kpi-card-active {
-  border-left: 3px solid var(--color-primary);
+  border-color: var(--color-primary);
+  box-shadow: inset 0 2px 0 var(--color-primary), var(--shadow-sm);
 }
 
 .kpi-label {
@@ -1225,6 +1663,7 @@ li > [role='menu'] {
 .app-content {
   flex: 1;
   min-width: 0;
+  width: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1517,12 +1956,12 @@ li > [role='menu'] {
 }
 
 .import-preview-list li.is-unmatched {
-  border-left: 3px solid var(--color-warning);
+  border-color: var(--color-warning);
   background: var(--color-warning-light);
 }
 
 .import-preview-list li.is-matched {
-  border-left: 3px solid var(--color-success);
+  border-color: var(--color-success);
 }
 
 .import-preview-terr-header {
@@ -1550,6 +1989,238 @@ li > [role='menu'] {
   font-size: 0.8rem;
   color: var(--color-text-muted);
   font-style: italic;
+}
+
+/* Shared presentation primitives for the map, editors, configuration and
+   history routes. They deliberately describe a surface's role rather than a
+   screen name, so these older routes use the same grammar as the query
+   workspaces without changing their behaviour. */
+.screen {
+  background: var(--surface-canvas);
+}
+
+.screen-header {
+  min-height: 68px;
+  padding: 14px clamp(16px, 2.2vw, 28px);
+}
+
+.screen-title-block {
+  flex: 1;
+  min-width: 0;
+}
+
+.screen-title-block .eyebrow {
+  margin: 0 0 3px;
+}
+
+.screen-title-block h1,
+.screen-title-block h2 {
+  overflow-wrap: anywhere;
+}
+
+.screen-body {
+  padding: clamp(14px, 2vw, 24px) clamp(16px, 2.2vw, 28px);
+}
+
+.screen-card {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.button-secondary {
+  background: var(--surface-raised);
+}
+
+.button-danger {
+  background: var(--intent-danger-surface);
+  border-color: color-mix(in srgb, var(--intent-danger) 35%, white);
+  color: var(--intent-danger);
+}
+
+.button-danger:hover:not(:disabled) {
+  background: #ffe4e1;
+  border-color: var(--intent-danger);
+}
+
+.button-quiet {
+  padding: 6px 10px;
+}
+
+.screen-danger-zone {
+  border-top: 1px solid var(--border-subtle);
+  margin-top: 28px;
+  padding-top: 16px;
+}
+
+.record-list {
+  gap: 8px;
+}
+
+.record-list li {
+  align-items: center;
+  background: var(--surface-raised);
+  border-color: var(--border-subtle);
+  min-width: 0;
+}
+
+.record-list li > span:first-child {
+  flex: 1 1 11rem;
+}
+
+.record-list li > span:not(:first-child) {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+/* The map remains a drawing workbench. It owns available height; its nearby
+   list owns only its own scroll, preventing an extra page scrollbar. */
+.screen-map .home-split {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.screen-map .home-panel {
+  background: var(--surface-subtle);
+  border-right: 1px solid var(--border-subtle);
+  padding: 14px;
+}
+
+.workbench-panel-heading {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.workbench-panel-heading h2,
+.workbench-panel-heading p {
+  margin: 0;
+}
+
+.workbench-panel-heading h2 {
+  font-size: 1rem;
+}
+
+.workbench-count {
+  align-items: center;
+  background: var(--surface-selected);
+  border-radius: 999px;
+  color: var(--selection-text);
+  display: inline-flex;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  justify-content: center;
+  min-height: 28px;
+  min-width: 28px;
+  padding: 0 8px;
+}
+
+.screen-workbench {
+  background: var(--surface-canvas);
+}
+
+.screen-workbench .editor-panel {
+  padding: 16px;
+}
+
+.screen-workbench .editor-panel h1 {
+  font-size: 1.15rem;
+}
+
+.workbench-actions {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.workbench-actions button:last-child {
+  background: var(--intent-primary);
+  border-color: var(--intent-primary-strong);
+  color: #fff;
+}
+
+.editor-map .leaflet-container {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.screen-settings .settings-screen {
+  align-content: start;
+  gap: 18px;
+  max-width: min(880px, 100%);
+}
+
+.settings-summary,
+.settings-blocks {
+  padding: 18px;
+}
+
+.settings-summary,
+.settings-blocks,
+.settings-danger {
+  margin-top: 0;
+}
+
+.settings-summary dl {
+  gap: 10px 16px;
+}
+
+.settings-blocks {
+  overflow-x: auto;
+  width: 100%;
+}
+
+.settings-blocks table {
+  min-width: 540px;
+}
+
+.block-work-panel {
+  border-color: var(--border-subtle);
+  box-shadow: none;
+}
+
+.block-work-history .record-list {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.form-surface {
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+}
+
+@media (max-width: 860px) {
+  .screen-map .home-panel {
+    border-bottom: 1px solid var(--border-subtle);
+    border-right: 0;
+  }
+
+  .record-list li {
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 560px) {
+  .screen-header,
+  .screen-body {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .screen-workbench .editor-panel {
+    padding: 14px;
+  }
+
+  .settings-summary,
+  .settings-blocks {
+    padding: 14px;
+  }
 }
 
 /* Responsive adjustments */

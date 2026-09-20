@@ -32,16 +32,22 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { NavigationContainer } from '@react-navigation/native';
+import { DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import type { NativeStackNavigationOptions } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import type { BottomTabNavigationOptions } from '@react-navigation/bottom-tabs';
 import { createApiClient } from '../data/api-client';
 import type { ApiClient } from '../data/api-client';
 import { CredentialsRejectedError, createSession, credentialsStore } from '../data/session';
 import type { Session } from '../data/session';
 import DesignationsScreen from './screens/DesignationsScreen';
+import PublishersScreen from './screens/PublishersScreen';
+import PublisherHistoryScreen from './screens/PublisherHistoryScreen';
+import HistoryScreen from './screens/HistoryScreen';
+import TerritoryDetailScreen from './screens/TerritoryDetailScreen';
 import SetupScreen from './screens/SetupScreen';
-import { colors, spacing } from './theme';
+import TabIcon, { type TabIconName } from './components/TabIcon';
+import { colors, radius, spacing } from './theme';
 
 export interface AppProps {
   /**
@@ -69,6 +75,8 @@ export interface DesignationsSlotProps {
   /** Guarded: a `CredentialsRejectedError` escaping `run` sends the app back to setup. */
   readonly session: Session;
   readonly api: ApiClient;
+  /** Opens the territory route while leaving the tab mounted behind it. */
+  readonly onOpenTerritory?: (territoryId: string) => void;
 }
 
 /**
@@ -94,11 +102,39 @@ type RootState =
   | { readonly status: 'setup'; readonly reason?: string }
   | { readonly status: 'main' };
 
-type RootStackParamList = {
-  Designations: undefined;
+export type RootStackParamList = {
+  MainTabs: undefined;
+  TerritoryDetail: { readonly territoryId: string };
+  PublisherDetail: { readonly publisherId: string; readonly publisherName: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+export type PrimaryTabParamList = {
+  Territories: undefined;
+  Publishers: undefined;
+  History: undefined;
+};
+
+const Tabs = createBottomTabNavigator<PrimaryTabParamList>();
+
+/**
+ * Navigation gets the same semantic palette as the screens. Keeping it here
+ * prevents React Navigation from silently falling back to its blue defaults
+ * when a new stack screen is registered in a later task.
+ */
+const navigationTheme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: colors.primary,
+    background: colors.background,
+    card: colors.surface,
+    text: colors.textPrimary,
+    border: colors.border,
+    notification: colors.danger,
+  },
+};
 
 /**
  * Spells out both halves of what signing out does: what disappears (the
@@ -259,7 +295,7 @@ export default function App(props: AppProps): React.JSX.Element {
       {/* The blue header runs under the translucent status bar, so its icons
           flip to light there (`statusBarStyle` below); the header-less setup
           and loading states keep the dark icons set above. */}
-      <NavigationContainer>
+      <NavigationContainer theme={navigationTheme}>
         <Stack.Navigator
           screenOptions={{
             headerStyle: { backgroundColor: colors.primary },
@@ -269,12 +305,102 @@ export default function App(props: AppProps): React.JSX.Element {
             contentStyle: { backgroundColor: colors.background },
           }}
         >
-          <Stack.Screen name="Designations" options={designationsOptions(confirmSignOut)}>
-            {() => renderDesignations({ session: guardedSession, api })}
+          <Stack.Screen name="MainTabs" options={{ headerShown: false }}>
+            {() => (
+              <PrimaryTabs
+                api={api}
+                onSignOut={confirmSignOut}
+                renderDesignations={renderDesignations}
+                session={guardedSession}
+              />
+            )}
+          </Stack.Screen>
+          <Stack.Screen name="TerritoryDetail" options={{ title: 'Território' }}>
+            {({ navigation, route }) => (
+              <TerritoryDetailScreen
+                territoryId={route.params.territoryId}
+                api={api}
+                session={guardedSession}
+                onTerritoryRemoved={() => navigation.goBack()}
+              />
+            )}
+          </Stack.Screen>
+          <Stack.Screen name="PublisherDetail" options={{ title: 'Histórico de territórios' }}>
+            {({ route }) => (
+              <PublisherHistoryScreen
+                api={api}
+                publisher={{ id: route.params.publisherId, name: route.params.publisherName }}
+                session={guardedSession}
+              />
+            )}
           </Stack.Screen>
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>
+  );
+}
+
+interface PrimaryTabsProps {
+  readonly session: Session;
+  readonly api: ApiClient;
+  readonly onSignOut: () => void;
+  readonly renderDesignations: (props: DesignationsSlotProps) => React.JSX.Element;
+}
+
+/**
+ * The three destinations deliberately live under one tab navigator. Future
+ * consultation screens replace their own placeholders without changing the
+ * application's setup/sign-out boundary or the detail stack above it.
+ */
+function PrimaryTabs({ api, onSignOut, renderDesignations, session }: PrimaryTabsProps): React.JSX.Element {
+  return (
+    <Tabs.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: colors.primary },
+        headerTintColor: colors.onPrimary,
+        headerTitleStyle: { fontWeight: '600' },
+        sceneStyle: { backgroundColor: colors.background },
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textSecondary,
+        tabBarActiveBackgroundColor: colors.primaryLight,
+        tabBarStyle: {
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          minHeight: 64,
+          paddingTop: spacing.xs,
+        },
+        tabBarLabelStyle: { fontSize: 12, fontWeight: '600' },
+        tabBarItemStyle: { borderRadius: radius.sm, marginHorizontal: spacing.xs },
+        tabBarHideOnKeyboard: true,
+      }}
+    >
+      <Tabs.Screen name="Territories" options={primaryTabOptions('Territórios', 'territories', onSignOut)}>
+        {({ navigation }) => renderDesignations({
+          session,
+          api,
+          onOpenTerritory: territoryId =>
+            navigation.getParent()?.navigate('TerritoryDetail', { territoryId }),
+        })}
+      </Tabs.Screen>
+      <Tabs.Screen name="Publishers" options={primaryTabOptions('Publicadores', 'publishers', onSignOut)}>
+        {({ navigation }) => (
+          <PublishersScreen
+            api={api}
+            session={session}
+            onOpenPublisher={publisher => {
+              navigation.getParent()?.navigate('PublisherDetail', {
+                publisherId: publisher.id,
+                publisherName: publisher.name,
+              });
+            }}
+          />
+        )}
+      </Tabs.Screen>
+      <Tabs.Screen name="History" options={primaryTabOptions('Histórico', 'history', onSignOut)}>
+        {() => <HistoryScreen api={api} session={session} />}
+      </Tabs.Screen>
+    </Tabs.Navigator>
   );
 }
 
@@ -283,9 +409,17 @@ export default function App(props: AppProps): React.JSX.Element {
  * component type on every render, which React Navigation would remount each
  * time (and which `react/no-unstable-nested-components` flags).
  */
-function designationsOptions(onSignOut: () => void): NativeStackNavigationOptions {
+function primaryTabOptions(
+  title: string,
+  icon: TabIconName,
+  onSignOut: () => void,
+): BottomTabNavigationOptions {
   return {
-    title: 'Designações',
+    title,
+    tabBarLabel: title,
+    tabBarIcon: ({ color, size, focused }) => (
+      <TabIcon name={icon} color={color} size={size} focused={focused} />
+    ),
     headerRight: () => <SignOutButton onPress={onSignOut} />,
   };
 }
@@ -315,8 +449,9 @@ function SignOutButton({ onPress }: { readonly onPress: () => void }): React.JSX
 function renderDesignationsScreen({
   session,
   api,
+  onOpenTerritory,
 }: DesignationsSlotProps): React.JSX.Element {
-  return <DesignationsScreen session={session} api={api} />;
+  return <DesignationsScreen session={session} api={api} onOpenTerritory={onOpenTerritory} />;
 }
 
 const styles = StyleSheet.create({

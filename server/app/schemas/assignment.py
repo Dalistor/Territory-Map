@@ -5,10 +5,10 @@ person currently responsible. The territory's `assigned_user` is a projection of
 open row in this history, not a separate truth.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 
 from app.schemas.common import OutSchema
 from app.schemas.territory import TerritoryBriefOut
@@ -58,3 +58,48 @@ class AssignmentWithTerritoryOut(AssignmentOut):
     """
 
     territory: TerritoryBriefOut
+
+
+class AssignmentHistoryQuery(BaseModel):
+    """Optional filters for the congregation-wide assignment history.
+
+    The interval is made of instants, rather than calendar dates. Clients choose the
+    local day boundaries they need and this DTO preserves those instants in UTC, so
+    the server never guesses a congregation time zone.
+    """
+
+    from_instant: datetime | None = Field(default=None, alias="from")
+    to_instant: datetime | None = Field(default=None, alias="to")
+    publisher_id: UUID | None = None
+    territory_id: UUID | None = None
+    page: int = Field(default=1, ge=1)
+    page_size: int = Field(default=50, ge=1, le=100)
+
+    @model_validator(mode="after")
+    def normalize_instants_and_validate_period(self) -> "AssignmentHistoryQuery":
+        if self.from_instant is not None:
+            self.from_instant = _normalize_utc(self.from_instant)
+        if self.to_instant is not None:
+            self.to_instant = _normalize_utc(self.to_instant)
+        if (
+            self.from_instant is not None
+            and self.to_instant is not None
+            and self.from_instant >= self.to_instant
+        ):
+            raise ValueError("from must be before to")
+        return self
+
+
+def _normalize_utc(instant: datetime) -> datetime:
+    if instant.tzinfo is None or instant.utcoffset() is None:
+        raise ValueError("timestamps must include a timezone")
+    return instant.astimezone(UTC)
+
+
+class AssignmentHistoryPageOut(OutSchema):
+    """One page of the congregation-wide assignment history."""
+
+    items: list[AssignmentWithTerritoryOut]
+    total: int
+    page: int
+    page_size: int

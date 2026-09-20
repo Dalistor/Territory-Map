@@ -173,15 +173,18 @@ export function BlockEditorScreen({
   }
 
   return (
-    <div className="editor-split">
-      <div className="editor-panel">
-        <h1>
-          {editingBlock
-            ? `Editar quadra ${editingBlock.number}`
-            : `Nova quadra em ${territory.name}`}
-        </h1>
+    <div className="editor-split screen-workbench">
+      <aside className="editor-panel screen-card">
+        <div>
+          <p className="eyebrow">Quadras</p>
+          <h1>
+            {editingBlock
+              ? `Editar quadra ${editingBlock.number}`
+              : `Nova quadra em ${territory.name}`}
+          </h1>
+        </div>
         {confirmation !== null && <p role="status">{confirmation}</p>}
-        <div role="toolbar">
+        <div className="workbench-actions" role="toolbar" aria-label="Ferramentas de desenho">
           <button type="button" onClick={editor.undo} disabled={!editor.canUndo}>
             Desfazer
           </button>
@@ -209,8 +212,8 @@ export function BlockEditorScreen({
         </div>
         {error !== null && <p role="alert">{error}</p>}
         <p>{editor.state.hint ?? 'Arraste um ponto para mover, e segure para remover.'}</p>
-      </div>
-      <div className="editor-map">
+      </aside>
+      <section className="editor-map" aria-label="Mapa para desenhar a quadra">
         <MapContainer center={center} zoom={MAP_ZOOM} style={{ height: '100%', width: '100%' }}>
           <TileLayer
             url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -218,7 +221,7 @@ export function BlockEditorScreen({
           />
           <PolygonEditorLayers controller={editor} context={contextRings} />
         </MapContainer>
-      </div>
+      </section>
     </div>
   )
 }

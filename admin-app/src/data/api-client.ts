@@ -25,6 +25,9 @@
 import Config from 'react-native-config';
 import type {
   Assignment,
+  AssignmentHistoryFilters,
+  AssignmentHistoryPage,
+  AssignmentWithTerritory,
   Block,
   BlockStatusOverride,
   Congregation,
@@ -93,6 +96,7 @@ export interface ApiClient {
   listTerritoriesWithBlocks(): Promise<Territory[]>;
   listPublishers(): Promise<Publisher[]>;
   listAssignments(territoryId: string): Promise<Assignment[]>;
+  listAllAssignments(filters?: AssignmentHistoryFilters): Promise<AssignmentHistoryPage>;
   designate(territoryId: string, publisherId: string): Promise<Assignment>;
   completeAssignment(territoryId: string): Promise<Assignment>;
   deleteAssignment(territoryId: string, assignmentId: string): Promise<void>;
@@ -254,6 +258,69 @@ function parseAssignment(json: Record<string, unknown>, territoryId: string): As
   };
 }
 
+/** Parses a congregation-wide history row, whose wire representation includes its territory. */
+function parseAssignmentWithTerritory(json: Record<string, unknown>): AssignmentWithTerritory {
+  const territory = json.territory as Record<string, unknown>;
+  return {
+    ...parseAssignment(json, territory.id as string),
+    territory: { id: territory.id as string, name: territory.name as string },
+  };
+}
+
+function assignmentHistoryPath(filters: AssignmentHistoryFilters = {}): string {
+  const query = new URLSearchParams();
+  if (filters.from !== undefined) query.set('from', filters.from.toISOString());
+  if (filters.to !== undefined) query.set('to', filters.to.toISOString());
+  if (filters.publisherId !== undefined) query.set('publisher_id', filters.publisherId);
+  if (filters.territoryId !== undefined) query.set('territory_id', filters.territoryId);
+  if (filters.page !== undefined) query.set('page', String(filters.page));
+  if (filters.pageSize !== undefined) query.set('page_size', String(filters.pageSize));
+
+  const encoded = query.toString();
+  return encoded === '' ? '/admin/assignments' : `/admin/assignments?${encoded}`;
+}
+
+function parseAssignmentHistoryPage(
+  json: Record<string, unknown> | Record<string, unknown>[],
+  filters: AssignmentHistoryFilters = {},
+): AssignmentHistoryPage {
+  if (Array.isArray(json)) {
+    const page = filters.page ?? 1;
+    const pageSize = filters.pageSize ?? 50;
+    const filtered = json
+      .map(parseAssignmentWithTerritory)
+      .filter(assignment => {
+        if (filters.publisherId !== undefined && assignment.publisher.id !== filters.publisherId) {
+          return false;
+        }
+        if (filters.territoryId !== undefined && assignment.territory.id !== filters.territoryId) {
+          return false;
+        }
+        if (filters.from !== undefined) {
+          const completedAt = assignment.completedAt;
+          if (completedAt !== null && completedAt < filters.from) return false;
+        }
+        if (filters.to !== undefined && assignment.startedAt >= filters.to) return false;
+        return true;
+      });
+    const first = (page - 1) * pageSize;
+    return {
+      items: filtered.slice(first, first + pageSize),
+      total: filtered.length,
+      page,
+      pageSize,
+    };
+  }
+
+  const items = (json.items as Record<string, unknown>[] | undefined) ?? [];
+  return {
+    items: items.map(parseAssignmentWithTerritory),
+    total: json.total as number,
+    page: json.page as number,
+    pageSize: json.page_size as number,
+  };
+}
+
 /**
  * One recorded visit. `created_at` is on the wire but not in the domain model:
  * this app only ever shows when the block was worked, and the moment the
@@ -378,6 +445,14 @@ export function createApiClient(options: CreateApiClientOptions = {}): ApiClient
       list(`/admin/territories/${territoryId}/assignments`, json =>
         parseAssignment(json, territoryId),
       ),
+
+    async listAllAssignments(filters) {
+      const json = await request('GET', assignmentHistoryPath(filters));
+      return parseAssignmentHistoryPage(
+        json as Record<string, unknown> | Record<string, unknown>[],
+        filters,
+      );
+    },
 
     async designate(territoryId, publisherId) {
       const json = await request('POST', `/admin/territories/${territoryId}/assignments`, {

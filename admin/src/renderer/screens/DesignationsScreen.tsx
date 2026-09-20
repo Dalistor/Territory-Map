@@ -9,14 +9,19 @@
 // record). Before spec 0007 this was a one-shot "pick a publisher" dialog;
 // designation is a historical record now, so the panel has to show the past,
 // not just overwrite the present.
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { LatLngTuple } from 'leaflet'
 import type { S13TImportPreview } from '../../shared/ipc-contract'
-import type { Assignment, Publisher, Territory } from '../../shared/models'
-import { assignmentIsOpen, getServiceYear } from '../../shared/models'
+import type { Assignment, Block, Publisher, Territory } from '../../shared/models'
+import { assignmentIsOpen, compareTerritoriesByNumber, getServiceYear } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
 import { AssignmentsMap } from '../map/AssignmentsMap'
 import { Dialog } from '../components/Dialog'
+import { DataTable, type DataTableColumn, type DataTableState } from '../components/DataTable'
+import { SearchField } from '../components/SearchField'
+import { SegmentedControl } from '../components/SegmentedControl'
+import { TerritoryMap } from '../map/TerritoryMap'
+import { BlockWorkPanel } from './BlockWorkPanel'
 
 const GENERIC_ERROR_MESSAGE = 'Não foi possível completar a operação.'
 
@@ -93,6 +98,12 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
   const [assignPublishers, setAssignPublishers] = useState<Publisher[]>([])
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [selectedPublisherId, setSelectedPublisherId] = useState<string | null>(null)
+  const [view, setView] = useState<'list' | 'map'>('list')
+  const [search, setSearch] = useState('')
+  const [detailTab, setDetailTab] = useState<'overview' | 'assignments' | 'blocks' | 'map'>(
+    'overview'
+  )
+  const [selectedBlock, setSelectedBlock] = useState<Block | null>(null)
 
   // Only ever runs from an event handler ("Recarregar", reloading after an
   // action) -- the mount fetch below skips the synchronous reset, same
@@ -106,6 +117,9 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
     try {
       const list = await window.api.territories.listWithBlocks()
       setTerritories(list)
+      setPanelTarget((current) =>
+        current === null ? null : (list.find((territory) => territory.id === current.id) ?? null)
+      )
     } catch (error) {
       setLoadError(errorMessage(error))
     } finally {
@@ -122,7 +136,14 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
     window.api.territories
       .listWithBlocks()
       .then((list) => {
-        if (!cancelled) setTerritories(list)
+        if (!cancelled) {
+          setTerritories(list)
+          setPanelTarget((current) =>
+            current === null
+              ? null
+              : (list.find((territory) => territory.id === current.id) ?? null)
+          )
+        }
       })
       .catch((error: unknown) => {
         if (!cancelled) setLoadError(errorMessage(error))
@@ -193,6 +214,8 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
       setAssignments([])
       setAssignPublishers([])
       setPanelTarget(territory)
+      setDetailTab('overview')
+      setSelectedBlock(null)
       try {
         const [publishers] = await Promise.all([
           window.api.publishers.list(),
@@ -205,6 +228,19 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
     },
     [loadAssignments]
   )
+
+  const closePanel = useCallback(() => {
+    setPanelTarget(null)
+    setSelectedBlock(null)
+    // The row remains mounted when a detail is closed. Returning focus makes
+    // Escape a true close-and-return action instead of dropping keyboard
+    // users at the top of the workspace.
+    window.setTimeout(() => {
+      document
+        .querySelector<HTMLTableRowElement>('.territories-workspace tr[aria-selected="true"]')
+        ?.focus()
+    })
+  }, [])
 
   const openAssignment = assignments.find(assignmentIsOpen)
   const history = assignments.filter(assignmentIsCompleted)
@@ -280,46 +316,37 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
     [runAction]
   )
 
-  const exportS13T = useCallback(
-    () =>
-      runAction(async () => {
-        setExportPath(null)
-        setImportStatus(null)
-        setShowExportModal(false)
-        const path = await window.api.exports.s13t({
-          serviceYear: selectedServiceYear,
-          format: exportFormat
-        })
-        if (path !== null) setExportPath(path)
-      }),
-    [exportFormat, runAction, selectedServiceYear]
-  )
+  const exportS13T = (): Promise<void> =>
+    runAction(async () => {
+      setExportPath(null)
+      setImportStatus(null)
+      setShowExportModal(false)
+      const path = await window.api.exports.s13t({
+        serviceYear: selectedServiceYear,
+        format: exportFormat
+      })
+      if (path !== null) setExportPath(path)
+    })
 
-  const importS13T = useCallback(
-    () =>
-      runAction(async () => {
-        setExportPath(null)
-        setImportStatus(null)
-        const preview = await window.api.imports.s13tSelectAndPreview()
-        if (preview !== null) {
-          setImportPreview(preview)
-        }
-      }),
-    [runAction]
-  )
+  const importS13T = (): Promise<void> =>
+    runAction(async () => {
+      setExportPath(null)
+      setImportStatus(null)
+      const preview = await window.api.imports.s13tSelectAndPreview()
+      if (preview !== null) {
+        setImportPreview(preview)
+      }
+    })
 
-  const executeImport = useCallback(
-    (preview: S13TImportPreview) =>
-      runAction(async () => {
-        setImportPreview(null)
-        const result = await window.api.imports.s13tExecute(preview)
-        setImportStatus(
-          `Importação concluída: ${result.importedAssignmentsCount} designações processadas (${result.importedPublishersCount} novos publicadores criados).`
-        )
-        await load()
-      }),
-    [load, runAction]
-  )
+  const executeImport = (preview: S13TImportPreview): Promise<void> =>
+    runAction(async () => {
+      setImportPreview(null)
+      const result = await window.api.imports.s13tExecute(preview)
+      setImportStatus(
+        `Importação concluída: ${result.importedAssignmentsCount} designações processadas (${result.importedPublishersCount} novos publicadores criados).`
+      )
+      await load()
+    })
 
   const assignedCount = territories.filter(
     (territory) => territory.assignedUser !== undefined
@@ -331,11 +358,75 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
   const currentYear = getServiceYear()
   const availableYears = [currentYear - 2, currentYear - 1, currentYear, currentYear + 1]
 
+  const sortedTerritories = useMemo(
+    () => [...territories].sort((left, right) => compareTerritoriesByNumber(left.name, right.name)),
+    [territories]
+  )
+  const normalizedSearch = search.trim().toLocaleLowerCase()
+  const visibleTerritories = useMemo(
+    () =>
+      sortedTerritories.filter((territory) =>
+        normalizedSearch === ''
+          ? true
+          : territory.name.toLocaleLowerCase().includes(normalizedSearch)
+      ),
+    [normalizedSearch, sortedTerritories]
+  )
+  const tableState: DataTableState = isLoading
+    ? { kind: 'busy', message: 'Carregando territórios…' }
+    : loadError !== null
+      ? { kind: 'error', message: loadError, onRetry: () => void load() }
+      : territories.length === 0
+        ? { kind: 'empty', message: 'Nenhum território cadastrado ainda.' }
+        : visibleTerritories.length === 0
+          ? {
+              kind: 'no-results',
+              message: 'Nenhum território corresponde à busca.',
+              onClear: () => setSearch('')
+            }
+          : { kind: 'ready' }
+  const canShowMap =
+    !isLoading && loadError === null && territories.length > 0 && visibleTerritories.length > 0
+  const territoryColumns: readonly DataTableColumn<Territory>[] = [
+    {
+      key: 'territory',
+      header: 'Território',
+      cell: (territory) => territory.name,
+      sortable: true,
+      sortDirection: 'ascending'
+    },
+    {
+      key: 'leader',
+      header: 'Dirigente atual',
+      cell: (territory) => territory.assignedUser?.name ?? 'Sem dirigente'
+    },
+    {
+      key: 'withdrawn',
+      header: 'Retirada',
+      cell: (territory) =>
+        panelTarget?.id === territory.id && openAssignment !== undefined
+          ? formatDate(openAssignment.startedAt)
+          : '—'
+    },
+    {
+      key: 'status',
+      header: 'Situação',
+      cell: (territory) => (territory.assignedUser === undefined ? 'Livre' : 'Em andamento')
+    },
+    { key: 'blocks', header: 'Quadras', cell: (territory) => territory.blocks.length },
+    {
+      key: 'last-work',
+      header: 'Último trabalho',
+      cell: (territory) =>
+        territory.lastWork === undefined ? 'Nunca' : formatDate(territory.lastWork.workedAt)
+    }
+  ]
+
   return (
     <div className="designations-screen">
       <header>
         <div className="header-title-block">
-          <h1>Designações</h1>
+          <h1>Territórios</h1>
           {!isLoading && loadError === null && (
             <p>
               {assignedCount} de {territories.length} territórios designados
@@ -370,42 +461,248 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
         {actionError !== null && <p role="alert">{actionError}</p>}
         {exportPath !== null && <p role="status">Arquivo salvo em {exportPath}</p>}
         {importStatus !== null && <p role="status">{importStatus}</p>}
-        {isLoading && <p>Carregando…</p>}
-        {!isLoading && loadError !== null && <p role="alert">{loadError}</p>}
-        {!isLoading && loadError === null && (
-          <>
-            {/* KPI Summary Cards */}
-            <div className="kpi-grid">
-              <div className="kpi-card">
-                <span className="kpi-label">Total de Territórios</span>
-                <strong className="kpi-value">{territories.length}</strong>
-              </div>
-              <div className="kpi-card kpi-card-active">
-                <span className="kpi-label">Designados</span>
-                <strong className="kpi-value">{assignedCount}</strong>
-              </div>
-              <div className="kpi-card">
-                <span className="kpi-label">Livres</span>
-                <strong className="kpi-value">{unassignedCount}</strong>
-              </div>
-              <div className="kpi-card">
-                <span className="kpi-label">Taxa de Cobertura</span>
-                <strong className="kpi-value">{coveragePercent}%</strong>
-              </div>
-            </div>
-
-            <p role="note">
-              Clique em um território no mapa para ver o histórico de designações e designar,
-              concluir ou apagar um registro. Contorno azul contínuo: com dirigente; tracejado
-              cinza: sem.
-            </p>
-            <AssignmentsMap
-              territories={territories}
-              fallbackCenter={fallbackCenter}
-              onTerritoryTap={(territory) => void openPanel(territory)}
+        <section
+          className="territories-workspace"
+          aria-label="Consulta de territórios"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && panelTarget !== null) {
+              event.preventDefault()
+              closePanel()
+            }
+          }}
+        >
+          <div className="territories-workspace-toolbar">
+            <SearchField
+              label="Buscar territórios"
+              value={search}
+              placeholder="Nome ou número"
+              onChange={setSearch}
+              disabled={isLoading}
             />
-          </>
-        )}
+            <SegmentedControl
+              label="Visualização"
+              value={view}
+              onChange={setView}
+              options={[
+                { value: 'list', label: 'Lista' },
+                { value: 'map', label: 'Mapa' }
+              ]}
+            />
+          </div>
+          <div className="territories-workspace-summary" aria-label="Resumo de territórios">
+            <span>{territories.length} territórios</span>
+            <span>{assignedCount} designados</span>
+            <span>{unassignedCount} livres</span>
+            <span>{coveragePercent}% de cobertura</span>
+          </div>
+          <div className="territories-workspace-content">
+            <div className="territories-workspace-primary">
+              {view === 'list' ? (
+                <DataTable
+                  label="Territórios"
+                  columns={territoryColumns}
+                  rows={visibleTerritories}
+                  getRowKey={(territory) => territory.id}
+                  state={tableState}
+                  selectedRowKey={panelTarget?.id}
+                  onRowActivate={(territory) => void openPanel(territory)}
+                />
+              ) : (
+                <div className="territories-workspace-map">
+                  {canShowMap ? (
+                    <AssignmentsMap
+                      territories={territories}
+                      fallbackCenter={fallbackCenter}
+                      onTerritoryTap={(territory) => void openPanel(territory)}
+                    />
+                  ) : (
+                    <DataTable
+                      label="Territórios"
+                      columns={territoryColumns}
+                      rows={visibleTerritories}
+                      getRowKey={(territory) => territory.id}
+                      state={tableState}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+            {panelTarget !== null && (
+              <aside
+                className="territory-detail-panel"
+                aria-label={`Detalhes de ${panelTarget.name}`}
+              >
+                <section role="dialog" aria-label={`Designações de ${panelTarget.name}`}>
+                  <div className="territory-detail-heading">
+                    <div>
+                      <p className="eyebrow">Território</p>
+                      <h2>{panelTarget.name}</h2>
+                    </div>
+                    <button type="button" onClick={closePanel} aria-label="Fechar detalhes">
+                      Fechar
+                    </button>
+                  </div>
+                  <SegmentedControl
+                    label="Detalhe do território"
+                    value={detailTab}
+                    onChange={setDetailTab}
+                    options={[
+                      { value: 'overview', label: 'Visão geral' },
+                      { value: 'assignments', label: 'Designações' },
+                      { value: 'blocks', label: 'Quadras' },
+                      { value: 'map', label: 'Mapa' }
+                    ]}
+                  />
+                  {detailTab === 'overview' && (
+                    <div className="territory-detail-overview">
+                      <dl>
+                        <dt>Dirigente atual</dt>
+                        <dd>{panelTarget.assignedUser?.name ?? 'Sem dirigente'}</dd>
+                        <dt>Situação</dt>
+                        <dd>{panelTarget.assignedUser === undefined ? 'Livre' : 'Em andamento'}</dd>
+                        <dt>Quadras</dt>
+                        <dd>{panelTarget.blocks.length}</dd>
+                        <dt>Último trabalho</dt>
+                        <dd>
+                          {panelTarget.lastWork === undefined
+                            ? 'Nunca registrado'
+                            : formatDate(panelTarget.lastWork.workedAt)}
+                        </dd>
+                      </dl>
+                    </div>
+                  )}
+                  {detailTab === 'assignments' && (
+                    <>
+                      <h3>Designação atual</h3>
+                      {openAssignment === undefined ? (
+                        <p className="dialog-subtitle">Sem dirigente</p>
+                      ) : (
+                        <p className="status-badge status-active">
+                          {openAssignment.publisher.name} — desde{' '}
+                          {formatDate(openAssignment.startedAt)}
+                        </p>
+                      )}
+
+                      <h3 id="assignment-history-title">Histórico</h3>
+                      {history.length === 0 ? (
+                        <p className="dialog-subtitle">Nenhuma designação concluída ainda.</p>
+                      ) : (
+                        <ul
+                          className="assignment-history"
+                          aria-labelledby="assignment-history-title"
+                        >
+                          {history.map((assignment) => (
+                            <li key={assignment.id}>
+                              <span>
+                                {assignment.publisher.name} — {formatDate(assignment.startedAt)} a{' '}
+                                {formatDate(assignment.completedAt)}
+                              </span>
+                              <button
+                                type="button"
+                                disabled={isActionPending}
+                                aria-label={`Apagar designação de ${assignment.publisher.name}`}
+                                onClick={() => void deleteAssignment(assignment)}
+                              >
+                                Apagar
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+
+                      <h3>Designar a…</h3>
+                      <div className="field assign-options">
+                        {assignPublishers.map((publisher) => (
+                          <label
+                            key={publisher.id}
+                            className={
+                              selectedPublisherId === publisher.id ? 'is-selected' : undefined
+                            }
+                          >
+                            <input
+                              type="radio"
+                              name="assign-publisher"
+                              checked={selectedPublisherId === publisher.id}
+                              onChange={() => setSelectedPublisherId(publisher.id)}
+                            />
+                            <span className="assign-option-avatar" aria-hidden="true">
+                              {publisher.name.charAt(0).toUpperCase()}
+                            </span>
+                            <span className="assign-option-name">{publisher.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="dialog-actions">
+                        {openAssignment !== undefined && (
+                          <button
+                            type="button"
+                            disabled={isActionPending}
+                            onClick={() => void complete()}
+                          >
+                            {isActionPending ? 'Atualizando…' : 'Marcar como concluído'}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="button-primary"
+                          disabled={selectedPublisherId === null || isActionPending}
+                          onClick={() => void designate()}
+                        >
+                          {isActionPending ? 'Atualizando…' : 'Designar'}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                  {detailTab === 'blocks' && (
+                    <div className="territory-detail-blocks">
+                      {panelTarget.blocks.length === 0 ? (
+                        <p>Este território ainda não tem quadras.</p>
+                      ) : (
+                        <>
+                          <ul>
+                            {[...panelTarget.blocks]
+                              .sort((left, right) => left.number - right.number)
+                              .map((block) => (
+                                <li key={block.id}>
+                                  <button
+                                    type="button"
+                                    aria-expanded={selectedBlock?.id === block.id}
+                                    onClick={() => setSelectedBlock(block)}
+                                  >
+                                    Quadra {block.number}
+                                  </button>
+                                </li>
+                              ))}
+                          </ul>
+                          {selectedBlock !== null && (
+                            <BlockWorkPanel
+                              territory={panelTarget}
+                              block={selectedBlock}
+                              onChanged={() => void reloadAfterAction(panelTarget.id)}
+                            />
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {detailTab === 'map' && (
+                    <div className="territory-detail-map">
+                      <TerritoryMap
+                        territories={[panelTarget]}
+                        now={new Date()}
+                        fallbackCenter={fallbackCenter}
+                        onBlockTap={(_, block) => {
+                          setSelectedBlock(block)
+                          setDetailTab('blocks')
+                        }}
+                      />
+                    </div>
+                  )}
+                </section>
+              </aside>
+            )}
+          </div>
+        </section>
 
         {/* S-13-T Export Modal */}
         {showExportModal && (
@@ -534,86 +831,6 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
                 onClick={() => void executeImport(importPreview)}
               >
                 {isActionPending ? 'Importando…' : 'Confirmar e Importar'}
-              </button>
-            </div>
-          </Dialog>
-        )}
-
-        {panelTarget !== null && (
-          <Dialog
-            className="assignment-panel"
-            title={`Designações de ${panelTarget.name}`}
-            onClose={() => setPanelTarget(null)}
-          >
-            <h3>Designação atual</h3>
-            {openAssignment === undefined ? (
-              <p className="dialog-subtitle">Sem dirigente</p>
-            ) : (
-              <p className="status-badge status-active">
-                {openAssignment.publisher.name} — desde {formatDate(openAssignment.startedAt)}
-              </p>
-            )}
-
-            <h3 id="assignment-history-title">Histórico</h3>
-            {history.length === 0 ? (
-              <p className="dialog-subtitle">Nenhuma designação concluída ainda.</p>
-            ) : (
-              <ul className="assignment-history" aria-labelledby="assignment-history-title">
-                {history.map((assignment) => (
-                  <li key={assignment.id}>
-                    <span>
-                      {assignment.publisher.name} — {formatDate(assignment.startedAt)} a{' '}
-                      {formatDate(assignment.completedAt)}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={isActionPending}
-                      aria-label={`Apagar designação de ${assignment.publisher.name}`}
-                      onClick={() => void deleteAssignment(assignment)}
-                    >
-                      Apagar
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            <h3>Designar a…</h3>
-            <div className="field assign-options">
-              {assignPublishers.map((publisher) => (
-                <label
-                  key={publisher.id}
-                  className={selectedPublisherId === publisher.id ? 'is-selected' : undefined}
-                >
-                  <input
-                    type="radio"
-                    name="assign-publisher"
-                    checked={selectedPublisherId === publisher.id}
-                    onChange={() => setSelectedPublisherId(publisher.id)}
-                  />
-                  <span className="assign-option-avatar" aria-hidden="true">
-                    {publisher.name.charAt(0).toUpperCase()}
-                  </span>
-                  <span className="assign-option-name">{publisher.name}</span>
-                </label>
-              ))}
-            </div>
-            <div className="dialog-actions">
-              <button type="button" onClick={() => setPanelTarget(null)}>
-                Fechar
-              </button>
-              {openAssignment !== undefined && (
-                <button type="button" disabled={isActionPending} onClick={() => void complete()}>
-                  {isActionPending ? 'Atualizando…' : 'Marcar como concluído'}
-                </button>
-              )}
-              <button
-                type="button"
-                className="button-primary"
-                disabled={selectedPublisherId === null || isActionPending}
-                onClick={() => void designate()}
-              >
-                {isActionPending ? 'Atualizando…' : 'Designar'}
               </button>
             </div>
           </Dialog>

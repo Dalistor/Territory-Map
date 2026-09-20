@@ -14,6 +14,8 @@ import { ApiErrorException, NetworkException } from '../shared/api-errors'
 import type {
   AdminSession,
   Assignment,
+  AssignmentHistoryPage,
+  AssignmentHistoryQuery,
   AssignmentWithTerritory,
   Block,
   BlockStatusOverride,
@@ -87,8 +89,8 @@ export interface ApiClient {
 
   /** The territory's whole assignment history, most recent first. */
   listAssignments(territoryId: string): Promise<Assignment[]>
-  /** The congregation's whole assignment history, most recent first. */
-  listAllAssignments(): Promise<AssignmentWithTerritory[]>
+  /** One filtered page of the congregation's assignment history, most recent first. */
+  listAllAssignments(query?: AssignmentHistoryQuery): Promise<AssignmentHistoryPage>
   /** Opens a new assignment; the server closes whatever was open before. */
   designate(territoryId: string, userId: string): Promise<Assignment>
   /** Closes the open assignment, freeing the territory for someone else. */
@@ -276,6 +278,60 @@ function parseAssignmentWithTerritory(json: Record<string, unknown>): Assignment
   }
 }
 
+function parseAssignmentHistoryPage(
+  json: unknown,
+  query: AssignmentHistoryQuery = {}
+): AssignmentHistoryPage {
+  if (Array.isArray(json)) {
+    const page = query.page ?? 1
+    const pageSize = query.pageSize ?? 50
+    const filtered = json
+      .map((entry) => parseAssignmentWithTerritory(entry as Record<string, unknown>))
+      .filter((assignment) => {
+        if (query.publisherId !== undefined && assignment.publisher.id !== query.publisherId) {
+          return false
+        }
+        if (query.territoryId !== undefined && assignment.territory.id !== query.territoryId) {
+          return false
+        }
+        if (query.fromInstant !== undefined) {
+          const completedAt = assignment.completedAt
+          if (completedAt !== undefined && completedAt < query.fromInstant) return false
+        }
+        if (query.toInstant !== undefined && assignment.startedAt >= query.toInstant) return false
+        return true
+      })
+    const first = (page - 1) * pageSize
+    return {
+      items: filtered.slice(first, first + pageSize),
+      total: filtered.length,
+      page,
+      pageSize
+    }
+  }
+
+  const page = json as Record<string, unknown>
+  return {
+    items: (page.items as Record<string, unknown>[]).map(parseAssignmentWithTerritory),
+    total: page.total as number,
+    page: page.page as number,
+    pageSize: page.page_size as number
+  }
+}
+
+function assignmentHistoryPath(query: AssignmentHistoryQuery): string {
+  const parameters = new URLSearchParams()
+  if (query.fromInstant !== undefined) parameters.set('from', query.fromInstant.toISOString())
+  if (query.toInstant !== undefined) parameters.set('to', query.toInstant.toISOString())
+  if (query.publisherId !== undefined) parameters.set('publisher_id', query.publisherId)
+  if (query.territoryId !== undefined) parameters.set('territory_id', query.territoryId)
+  if (query.page !== undefined) parameters.set('page', String(query.page))
+  if (query.pageSize !== undefined) parameters.set('page_size', String(query.pageSize))
+
+  const encodedParameters = parameters.toString()
+  return encodedParameters === '' ? '/admin/assignments' : `/admin/assignments?${encodedParameters}`
+}
+
 function parseWorkLog(json: Record<string, unknown>): WorkLog {
   return {
     id: json.id as string,
@@ -406,7 +462,10 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
     listAssignments: (territoryId) =>
       list(`/admin/territories/${territoryId}/assignments`, parseAssignment),
 
-    listAllAssignments: () => list('/admin/assignments', parseAssignmentWithTerritory),
+    async listAllAssignments(query = {}) {
+      const json = await request('GET', assignmentHistoryPath(query))
+      return parseAssignmentHistoryPage(json, query)
+    },
 
     async designate(territoryId, userId) {
       const json = await request('POST', `/admin/territories/${territoryId}/assignments`, {

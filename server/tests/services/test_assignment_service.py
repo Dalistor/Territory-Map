@@ -446,6 +446,50 @@ def test_list_all_does_not_show_the_assignment_of_another_congregation(
     assert [a.id for a in service.list_all(ours.id)] == [mine.id]
 
 
+def test_list_page_passes_the_congregation_filters_and_offset_to_the_repository() -> None:
+    class RecordingAssignments:
+        def __init__(self) -> None:
+            self.arguments = None
+
+        def list_page_by_congregation(self, congregation_id, **kwargs):
+            self.arguments = (congregation_id, kwargs)
+            return [], 9
+
+    repository = RecordingAssignments()
+    service = AssignmentService(
+        assignments=repository,  # type: ignore[arg-type]
+        territories=None,  # type: ignore[arg-type]
+        users=None,  # type: ignore[arg-type]
+        now_provider=lambda: NOW,
+    )
+    congregation_id = uuid4()
+    publisher_id = uuid4()
+    territory_id = uuid4()
+
+    items, total = service.list_page(
+        congregation_id,
+        publisher_id=publisher_id,
+        territory_id=territory_id,
+        from_instant=EARLIER,
+        to_instant=NOW,
+        page=3,
+        page_size=4,
+    )
+
+    assert (items, total) == ([], 9)
+    assert repository.arguments == (
+        congregation_id,
+        {
+            "publisher_id": publisher_id,
+            "territory_id": territory_id,
+            "from_instant": EARLIER,
+            "to_instant": NOW,
+            "limit": 4,
+            "offset": 8,
+        },
+    )
+
+
 def test_designate_stores_the_publishers_name_on_the_assignment(
     service: AssignmentService,
     make_congregation,

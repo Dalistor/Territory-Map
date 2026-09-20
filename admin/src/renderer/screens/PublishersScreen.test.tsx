@@ -11,7 +11,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Publisher } from '../../shared/models'
+import type { AssignmentHistoryPage, AssignmentWithTerritory, Publisher } from '../../shared/models'
 import type { IpcApi } from '../../shared/ipc-contract'
 import { PublishersScreen } from './PublishersScreen'
 
@@ -119,10 +119,65 @@ class FakePublishersApi implements PublishersApi {
   }
 }
 
+class FakeAssignmentHistoryApi {
+  pages: AssignmentHistoryPage[] = []
+  listCalls: Array<Parameters<IpcApi['assignments']['listAll']>[0]> = []
+  failure: unknown = null
+
+  async listAll(
+    query?: Parameters<IpcApi['assignments']['listAll']>[0]
+  ): Promise<AssignmentHistoryPage> {
+    this.listCalls.push(query)
+    if (this.failure) throw this.failure
+    return this.pages.shift() ?? { items: [], total: 0, page: 1, pageSize: 50 }
+  }
+}
+
 function installFakeApi(): FakePublishersApi {
   const fake = new FakePublishersApi()
-  ;(window as unknown as { api: Pick<IpcApi, 'publishers'> }).api = { publishers: fake }
+  ;(window as unknown as { api: Pick<IpcApi, 'publishers' | 'assignments'> }).api = {
+    publishers: fake,
+    assignments: {
+      listFor: vi.fn(),
+      listAll: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 50 }),
+      designate: vi.fn(),
+      complete: vi.fn(),
+      delete: vi.fn()
+    }
+  }
   return fake
+}
+
+function installFakeApiWithHistory(): {
+  publishers: FakePublishersApi
+  history: FakeAssignmentHistoryApi
+} {
+  const publishers = new FakePublishersApi()
+  const history = new FakeAssignmentHistoryApi()
+  ;(window as unknown as { api: Pick<IpcApi, 'publishers' | 'assignments'> }).api = {
+    publishers,
+    assignments: {
+      listFor: vi.fn(),
+      listAll: history.listAll.bind(history),
+      designate: vi.fn(),
+      complete: vi.fn(),
+      delete: vi.fn()
+    }
+  }
+  return { publishers, history }
+}
+
+function assignmentHistory(
+  overrides: Partial<AssignmentWithTerritory> = {}
+): AssignmentWithTerritory {
+  return {
+    id: 'assignment-1',
+    publisher: { id: 'p4', name: 'Daniel no momento da retirada' },
+    territory: { id: 'territory-1', name: 'Centro - N5' },
+    startedAt: new Date(2026, 0, 4),
+    completedAt: new Date(2026, 1, 12),
+    ...overrides
+  }
 }
 
 /** The status line of one person's row, told apart from everyone else's. */
@@ -261,6 +316,19 @@ describe('PublishersScreen', () => {
     render(<PublishersScreen now={now} />)
 
     expect(await screen.findByText('Nenhum publicador cadastrado.')).toBeInTheDocument()
+  })
+
+  it('keeps the publisher register in an accessible internal scrolling region', async () => {
+    const fake = installFakeApi()
+    fake.publishers = [onDevice, awaitingCode]
+
+    render(<PublishersScreen now={now} />)
+
+    const register = await screen.findByRole('region', { name: 'Lista de publicadores' })
+    expect(register).toHaveAttribute('tabindex', '0')
+    expect(within(register).getByTestId('publisher-row-Daniel')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cadastrar' })).toBeVisible()
+    expect(screen.getByLabelText('Buscar publicador')).toBeVisible()
   })
 
   it('while the list is on its way, registering is still offered', async () => {
@@ -740,5 +808,196 @@ describe('PublishersScreen', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('O servidor não respondeu.')
     expect(fake.listCalls).toBe(1)
+  })
+
+  it('opens a territory-assignment history for the selected publisher without showing block work logs', async () => {
+    const user = userEvent.setup()
+    const { publishers, history } = installFakeApiWithHistory()
+    publishers.publishers = [onDevice]
+    history.pages = [{ items: [assignmentHistory()], total: 1, page: 1, pageSize: 50 }]
+
+    render(<PublishersScreen now={now} />)
+    await screen.findByTestId('publisher-row-Daniel')
+
+    await user.click(screen.getByRole('button', { name: 'Daniel' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Histórico de territórios' })
+    ).toBeInTheDocument()
+    expect(history.listCalls).toEqual([{ publisherId: onDevice.id, page: 1 }])
+    expect(screen.getByText('Centro - N5')).toBeInTheDocument()
+    expect(screen.getByText('Retirada')).toBeInTheDocument()
+    expect(screen.getByText('Devolução')).toBeInTheDocument()
+    expect(screen.getByText('Situação')).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Publicador' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/saída de campo/i)).not.toBeInTheDocument()
+  })
+
+  it('distinguishes a publisher with no assignment history from an unloaded detail', async () => {
+    const user = userEvent.setup()
+    const { publishers, history } = installFakeApiWithHistory()
+    publishers.publishers = [onDevice]
+    history.pages = [{ items: [], total: 0, page: 1, pageSize: 50 }]
+
+    render(<PublishersScreen now={now} />)
+    await screen.findByTestId('publisher-row-Daniel')
+
+    await user.click(screen.getByRole('button', { name: 'Daniel' }))
+
+    expect(
+      await screen.findByText('Nenhum território registrado para esta pessoa.')
+    ).toBeInTheDocument()
+  })
+
+  it('loads the next history page without replacing the assignments already shown', async () => {
+    const user = userEvent.setup()
+    const { publishers, history } = installFakeApiWithHistory()
+    publishers.publishers = [onDevice]
+    history.pages = [
+      { items: [assignmentHistory()], total: 2, page: 1, pageSize: 1 },
+      {
+        items: [
+          assignmentHistory({
+            id: 'assignment-2',
+            territory: { id: 'territory-2', name: 'Jardim - N6' }
+          })
+        ],
+        total: 2,
+        page: 2,
+        pageSize: 1
+      }
+    ]
+
+    render(<PublishersScreen now={now} />)
+    await screen.findByTestId('publisher-row-Daniel')
+    await user.click(screen.getByRole('button', { name: 'Daniel' }))
+    await screen.findByText('Centro - N5')
+
+    await user.click(screen.getByRole('button', { name: 'Carregar mais' }))
+
+    expect(await screen.findByText('Jardim - N6')).toBeInTheDocument()
+    expect(screen.getByText('Centro - N5')).toBeInTheDocument()
+    expect(history.listCalls).toEqual([
+      { publisherId: onDevice.id, page: 1 },
+      { publisherId: onDevice.id, page: 2 }
+    ])
+  })
+
+  it('keeps the selected person and the local search after a rename reloads the list', async () => {
+    const user = userEvent.setup()
+    const { publishers, history } = installFakeApiWithHistory()
+    publishers.publishers = [onDevice, awaitingCode]
+    history.pages = [{ items: [assignmentHistory()], total: 1, page: 1, pageSize: 50 }]
+
+    render(<PublishersScreen now={now} />)
+    await screen.findByTestId('publisher-row-Daniel')
+    await user.type(screen.getByLabelText('Buscar publicador'), 'dan')
+    await user.click(screen.getByRole('button', { name: 'Daniel' }))
+    await screen.findByText('Centro - N5')
+
+    await openMenu(user, 'Daniel')
+    await user.click(screen.getByRole('button', { name: 'Renomear' }))
+    await user.clear(screen.getByLabelText('Novo nome de Daniel'))
+    await user.type(screen.getByLabelText('Novo nome de Daniel'), 'Daniel Souza')
+    await user.click(screen.getByRole('button', { name: 'Salvar' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Histórico de territórios' })
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Daniel Souza' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+    expect(screen.getByLabelText('Buscar publicador')).toHaveValue('dan')
+  })
+
+  it('keeps the selected person after changing that person’s active state', async () => {
+    const user = userEvent.setup()
+    const { publishers, history } = installFakeApiWithHistory()
+    publishers.publishers = [onDevice]
+    history.pages = [{ items: [assignmentHistory()], total: 1, page: 1, pageSize: 50 }]
+
+    render(<PublishersScreen now={now} />)
+    await screen.findByTestId('publisher-row-Daniel')
+    await user.click(screen.getByRole('button', { name: 'Daniel' }))
+    await screen.findByText('Centro - N5')
+
+    await openMenu(user, 'Daniel')
+    await user.click(screen.getByRole('button', { name: 'Desativar' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Histórico de territórios' })
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Daniel' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('keeps the selected detail visible when its history fails and retries that same publisher', async () => {
+    const user = userEvent.setup()
+    const { publishers, history } = installFakeApiWithHistory()
+    publishers.publishers = [onDevice]
+    history.failure = new Error('Não foi possível buscar o histórico.')
+    history.pages = [{ items: [assignmentHistory()], total: 1, page: 1, pageSize: 50 }]
+
+    render(<PublishersScreen now={now} />)
+    await screen.findByTestId('publisher-row-Daniel')
+    await user.click(screen.getByRole('button', { name: 'Daniel' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Não foi possível buscar o histórico.'
+    )
+
+    history.failure = null
+    await user.click(screen.getByRole('button', { name: 'Tentar novamente' }))
+
+    expect(await screen.findByText('Centro - N5')).toBeInTheDocument()
+    expect(history.listCalls).toEqual([
+      { publisherId: onDevice.id, page: 1 },
+      { publisherId: onDevice.id, page: 1 }
+    ])
+  })
+
+  it('closes the detail and returns focus to its publisher after the close action', async () => {
+    const user = userEvent.setup()
+    const { publishers, history } = installFakeApiWithHistory()
+    publishers.publishers = [onDevice]
+    history.pages = [{ items: [], total: 0, page: 1, pageSize: 50 }]
+
+    render(<PublishersScreen now={now} />)
+    await screen.findByTestId('publisher-row-Daniel')
+    const trigger = screen.getByRole('button', { name: 'Daniel' })
+    await user.click(trigger)
+    await screen.findByRole('heading', { name: 'Histórico de territórios' })
+
+    await user.click(screen.getByRole('button', { name: 'Fechar histórico de territórios' }))
+
+    expect(
+      screen.queryByRole('heading', { name: 'Histórico de territórios' })
+    ).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+  })
+
+  it('closes the selected history when deleting that publisher', async () => {
+    const user = userEvent.setup()
+    const { publishers, history } = installFakeApiWithHistory()
+    publishers.publishers = [onDevice]
+    history.pages = [{ items: [assignmentHistory()], total: 1, page: 1, pageSize: 50 }]
+    publishers.delete = async (publisherId: string) => {
+      publishers.deleted.push(publisherId)
+      publishers.publishers = publishers.publishers.filter(
+        (publisher) => publisher.id !== publisherId
+      )
+    }
+
+    render(<PublishersScreen now={now} />)
+    await screen.findByTestId('publisher-row-Daniel')
+    await user.click(screen.getByRole('button', { name: 'Daniel' }))
+    await screen.findByText('Centro - N5')
+
+    await openMenu(user, 'Daniel')
+    await user.click(screen.getByRole('button', { name: 'Apagar Daniel' }))
+
+    await screen.findByText('Nenhum publicador cadastrado.')
+    expect(
+      screen.queryByRole('heading', { name: 'Histórico de territórios' })
+    ).not.toBeInTheDocument()
   })
 })

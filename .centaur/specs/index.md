@@ -17,7 +17,8 @@ Planejamentos de implementações complexas, decompostos em tasks para subagente
 | [0011](0011/README.md) | Apagar publicador, com o nome preservado no histórico | 2026-08-20 | Concluída | 8 tasks |
 | [0012](0012/README.md) | App admin Android: designação de territórios e marcação de quadra | 2026-08-23 | Concluída | 14 tasks |
 | [0013](0013/README.md) | App admin: logo, quadras no mapa e painel combinado | 2026-08-23 | Concluída | 8 tasks |
-| [0014](0014/README.md) | Melhorias de UI nos admins e último trabalho do território | 2026-09-05 | Em andamento | 13 tasks |
+| [0014](0014/README.md) | Melhorias de UI nos admins e último trabalho do território | 2026-09-05 | Concluída | 13 tasks |
+| [0015](0015/README.md) | Consultas administrativas e redesign dos admins | 2026-09-19 | Em andamento | 21 tasks |
 
 ---
 

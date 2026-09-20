@@ -26,6 +26,7 @@ function fakeApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     listTerritoriesWithBlocks: jest.fn(),
     listPublishers: jest.fn(),
     listAssignments: jest.fn(),
+    listAllAssignments: jest.fn(),
     designate: jest.fn(),
     completeAssignment: jest.fn(),
     deleteAssignment: jest.fn(),

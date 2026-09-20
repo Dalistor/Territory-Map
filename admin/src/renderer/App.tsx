@@ -19,7 +19,8 @@
 //
 // Once authenticated, `AuthenticatedApp` below owns the in-app navigation:
 // a permanent sidebar (spec 0006) with the four sections -- Mapa (Home),
-// Designações, Histórico (spec 0008), Publicadores -- plus sign-out in its
+// Territórios (the existing Designações workspace), Publicadores and
+// Histórico completo -- plus sign-out in its
 // footer, and a content
 // area beside it where the current route renders. The editors and the block
 // history are still pushed screens ("← Voltar") opened from Home, rendered
@@ -148,12 +149,12 @@ type Route =
   | { readonly kind: 'block-history'; readonly territory: Territory; readonly block: Block }
 
 /** The four sidebar sections. Pushed screens (editors, block history) open from Home, so they keep "Mapa" lit. */
-type Section = 'home' | 'designations' | 'history' | 'publishers'
+type Section = 'home' | 'territories' | 'publishers' | 'history'
 
 function sectionOf(route: Route): Section {
   switch (route.kind) {
     case 'designations':
-      return 'designations'
+      return 'territories'
     case 'history':
       return 'history'
     case 'publishers':
@@ -220,12 +221,19 @@ function AuthenticatedApp({ congregation, onSignedOut }: AuthenticatedAppProps):
   }
 
   const section = sectionOf(route)
-  const sectionButton = (target: Section, label: string): React.JSX.Element => (
+  const sectionButton = (
+    target: Section,
+    label: string,
+    destination: Extract<
+      Route,
+      { kind: 'home' | 'designations' | 'history' | 'publishers' }
+    >['kind']
+  ): React.JSX.Element => (
     <button
       type="button"
       className={section === target ? 'is-active' : undefined}
       aria-current={section === target ? 'page' : undefined}
-      onClick={() => setRoute({ kind: target })}
+      onClick={() => setRoute({ kind: destination })}
     >
       {label}
     </button>
@@ -240,6 +248,7 @@ function AuthenticatedApp({ congregation, onSignedOut }: AuthenticatedAppProps):
               screen reader. */}
           <img src={iconPin} alt="" />
           <div className="sidebar-header-text">
+            <span className="sidebar-product">Gestão de território</span>
             {congregation !== null ? (
               <>
                 <strong>{congregation.name}</strong>
@@ -251,10 +260,10 @@ function AuthenticatedApp({ congregation, onSignedOut }: AuthenticatedAppProps):
           </div>
         </div>
         <div className="sidebar-nav">
-          {sectionButton('home', 'Mapa')}
-          {sectionButton('designations', 'Designações')}
-          {sectionButton('history', 'Histórico')}
-          {sectionButton('publishers', 'Publicadores')}
+          {sectionButton('home', 'Mapa', 'home')}
+          {sectionButton('territories', 'Territórios', 'designations')}
+          {sectionButton('publishers', 'Publicadores', 'publishers')}
+          {sectionButton('history', 'Histórico completo', 'history')}
         </div>
         <div className="sidebar-footer">
           <button type="button" onClick={() => void signOut()}>

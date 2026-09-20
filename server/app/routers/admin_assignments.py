@@ -25,7 +25,7 @@ this module resolves the session, names the clock and turns models into DTOs.
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_session
@@ -37,6 +37,8 @@ from app.routers.auth import utc_now
 from app.routers.history_dto import with_user
 from app.schemas.assignment import (
     AssignmentCreateIn,
+    AssignmentHistoryPageOut,
+    AssignmentHistoryQuery,
     AssignmentOut,
     AssignmentWithTerritoryOut,
 )
@@ -143,16 +145,31 @@ def delete_assignment(
 def list_all_assignments(
     congregation: AdminCongregation,
     assignments: Assignments,
-) -> list[AssignmentWithTerritoryOut]:
-    """Every assignment of the congregation, most recent first.
+    query: Annotated[AssignmentHistoryQuery, Query()],
+) -> AssignmentHistoryPageOut:
+    """One filtered, paginated page of the congregation's assignment history.
 
-    This is the admin's History page: the whole set at once, open and completed
-    alike, so the page can group it by publisher or by territory without asking for
-    one card at a time. Each row names its territory -- `AssignmentWithTerritoryOut`
-    -- because unlike the per-territory listing there is no territory in the URL to
-    read it from, and the delete route needs that id to address the record.
+    ``from`` and ``to`` are timezone-bearing ISO-8601 instants forming a half-open
+    interval. A row is returned when its stint overlaps that interval, alongside any
+    optional publisher or territory filter. The response keeps the selected page,
+    its size, and the unpaginated total so both admin clients can render stable
+    pagination controls.
     """
-    return [
-        AssignmentWithTerritoryOut.model_validate(with_user(assignment))
-        for assignment in assignments.list_all(congregation.id)
-    ]
+    records, total = assignments.list_page(
+        congregation.id,
+        publisher_id=query.publisher_id,
+        territory_id=query.territory_id,
+        from_instant=query.from_instant,
+        to_instant=query.to_instant,
+        page=query.page,
+        page_size=query.page_size,
+    )
+    return AssignmentHistoryPageOut(
+        items=[
+            AssignmentWithTerritoryOut.model_validate(with_user(assignment))
+            for assignment in records
+        ],
+        total=total,
+        page=query.page,
+        page_size=query.page_size,
+    )
