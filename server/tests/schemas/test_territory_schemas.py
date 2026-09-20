@@ -91,6 +91,7 @@ def test_territory_out_carries_the_boundary_and_the_blocks_inside_it():
         "blocks",
         "assigned_user",
         "rotation_days",
+        "last_work",
     }
     assert dto.blocks[0].number == 1
 
@@ -152,6 +153,20 @@ def test_territory_out_serialises_a_territory_that_uses_the_default_rotation():
 
     assert dto.rotation_days is None
     assert dto.model_dump()["rotation_days"] is None
+
+
+def test_territory_out_carries_the_last_work_summary_or_null():
+    dto = TerritoryOut(
+        id=uuid4(),
+        name="Centro",
+        boundary=SQUARE,
+        last_work={"user": {"id": uuid4(), "name": "Maria"}, "worked_at": "2026-09-05T10:00:00Z"},
+    )
+
+    assert dto.last_work is not None
+    assert dto.last_work.user.name == "Maria"
+    assert dto.last_work.worked_at.isoformat() == "2026-09-05T10:00:00+00:00"
+    assert TerritoryOut(id=uuid4(), name="Norte", boundary=SQUARE).last_work is None
 
 
 def test_territory_out_carries_the_rotation_the_admin_configured():

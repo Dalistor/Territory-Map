@@ -1,6 +1,6 @@
 // The per-territory settings page (spec 0009, Task 09): the name, the
 // rotation, a read-only summary and the delete action.
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useMemo, useRef, useState } from 'react'
 import type { Territory } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
 import type { BlockColorCategory } from '../map/blockColor'
@@ -122,6 +122,8 @@ export function TerritorySettingsScreen({
   const [openBlockId, setOpenBlockId] = useState<string | null>(null)
 
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const deleteInFlight = useRef(false)
   const [error, setError] = useState<string | null>(null)
 
   /**
@@ -171,12 +173,18 @@ export function TerritorySettingsScreen({
 
   async function handleDelete(): Promise<void> {
     if (!window.confirm(deleteTerritoryConfirmMessage(current))) return
+    if (deleteInFlight.current) return
+    deleteInFlight.current = true
+    setDeleting(true)
     setError(null)
     try {
       await window.api.territories.delete(territory.id)
       onDeleted?.()
     } catch (thrown) {
       setError(parseIpcError(thrown, 'Não foi possível apagar o território.').message)
+    } finally {
+      deleteInFlight.current = false
+      setDeleting(false)
     }
   }
 
@@ -313,8 +321,13 @@ export function TerritorySettingsScreen({
         </section>
 
         <section className="settings-danger">
-          <button type="button" className="block-action-danger" onClick={() => void handleDelete()}>
-            Apagar território
+          <button
+            type="button"
+            className="block-action-danger"
+            disabled={deleting}
+            onClick={() => void handleDelete()}
+          >
+            {deleting ? 'Apagando…' : 'Apagar território'}
           </button>
         </section>
       </main>

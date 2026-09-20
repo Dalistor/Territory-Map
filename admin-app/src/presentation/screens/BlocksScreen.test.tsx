@@ -310,6 +310,41 @@ describe('BlocksScreen', () => {
     expect(screen.getByTestId('mark-worked').props.accessibilityState.disabled).toBe(false);
   });
 
+  it('filtra os publicadores do trabalho sem diferenciar maiúsculas e mantém a seleção até confirmar', async () => {
+    const api = makeApi({
+      listPublishers: jest.fn(async () => [makePublisher('p1', 'Ana'), makePublisher('p2', 'Bruno')]),
+    });
+    const territory = makeTerritory([makeBlock({ id: 'a', number: 1 })]);
+
+    await render(
+      <BlocksScreen territory={territory} session={makeSession()} api={api} now={NOW} />,
+    );
+    await press(screen.getByTestId('block-row-a'));
+    await screen.findByTestId('publisher-p2');
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByTestId('publisher-search'), 'BRU');
+    });
+    expect(screen.queryByTestId('publisher-p1')).toBeNull();
+    expect(screen.getByTestId('publisher-p2')).toBeTruthy();
+    await press(screen.getByTestId('publisher-p2'));
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByTestId('publisher-search'), 'inexistente');
+    });
+
+    expect(screen.getByText('Nenhum publicador encontrado.')).toBeTruthy();
+    expect(screen.getByText('Bruno')).toBeTruthy();
+    expect(screen.getByTestId('publisher-p2').props.accessibilityState.selected).toBe(true);
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByTestId('publisher-search'), 'bru');
+    });
+    await press(screen.getByTestId('mark-worked'));
+
+    expect(api.markWorked).toHaveBeenCalledWith('a', 'p2', NOW);
+  });
+
   it('começa a data em hoje', async () => {
     const territory = makeTerritory([makeBlock({ id: 'a', number: 1 })]);
 

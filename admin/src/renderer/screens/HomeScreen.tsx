@@ -6,16 +6,21 @@
 // (the IPC bridge) and the `TerritoryMap` component; the screens it pushes
 // (territory editor, block editor, history) are reached through callback
 // props instead of an import, so this file does not need to know they exist.
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { LatLngTuple } from 'leaflet'
 import { compareTerritoriesByNumber } from '../../shared/models'
 import type { Block, Congregation, Territory } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
 import { TerritoryMap } from '../map/TerritoryMap'
+import { Dialog } from '../components/Dialog'
 import { deleteBlockConfirmMessage, deleteTerritoryConfirmMessage } from './confirmMessages'
 import { MarkWorkedForm } from './MarkWorkedForm'
 
 const GENERIC_ERROR_MESSAGE = 'Não foi possível completar a operação.'
+
+function formatDate(date: Date): string {
+  return date.toLocaleDateString()
+}
 
 export interface HomeScreenProps {
   /**
@@ -80,6 +85,8 @@ export function HomeScreen({
     [territories]
   )
   const [isLoading, setIsLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const refreshInFlight = useRef(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [activeBlock, setActiveBlock] = useState<{ territory: Territory; block: Block } | null>(
@@ -87,8 +94,12 @@ export function HomeScreen({
   )
   const [openTerritoryMenuId, setOpenTerritoryMenuId] = useState<string | null>(null)
   const [isMarkingWorked, setIsMarkingWorked] = useState(false)
+  const [isSubmittingMark, setIsSubmittingMark] = useState(false)
 
   const load = useCallback(async () => {
+    if (refreshInFlight.current) return
+    refreshInFlight.current = true
+    setIsRefreshing(true)
     setIsLoading(true)
     setLoadError(null)
     try {
@@ -98,6 +109,8 @@ export function HomeScreen({
       setLoadError(errorMessage(error))
     } finally {
       setIsLoading(false)
+      refreshInFlight.current = false
+      setIsRefreshing(false)
     }
   }, [])
 
@@ -125,6 +138,31 @@ export function HomeScreen({
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    if (openTerritoryMenuId === null) return
+    document
+      .querySelector<HTMLElement>(`[data-territory-menu="${openTerritoryMenuId}"] [role="menuitem"]`)
+      ?.focus()
+  }, [openTerritoryMenuId])
+
+  function moveInMenu(event: React.KeyboardEvent<HTMLUListElement>): void {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End', 'Escape'].includes(event.key)) return
+    event.preventDefault()
+    if (event.key === 'Escape') {
+      setOpenTerritoryMenuId(null)
+      document.querySelector<HTMLElement>('[aria-expanded="true"]')?.focus()
+      return
+    }
+    const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]'))
+    const current = items.indexOf(document.activeElement as HTMLElement)
+    const next = event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? items.length - 1
+        : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
+    items[next]?.focus()
+  }
 
   /**
    * The shape every write against `window.api` shares: turn a rejection into
@@ -190,12 +228,17 @@ export function HomeScreen({
       if (activeBlock === null) return Promise.resolve()
       const blockId = activeBlock.block.id
       return runAction(async () => {
-        await window.api.workLogs.markWorked(blockId, publisherId, workedAt)
-        closeMarkWorked()
-        setActiveBlock(null)
-        // The block's colour is derived from `lastWorkedAt`, which the server
-        // just recomputed -- reloading is what makes the map catch up.
-        await load()
+        setIsSubmittingMark(true)
+        try {
+          await window.api.workLogs.markWorked(blockId, publisherId, workedAt)
+          closeMarkWorked()
+          setActiveBlock(null)
+          // The block's colour is derived from `lastWorkedAt`, which the server
+          // just recomputed -- reloading is what makes the map catch up.
+          await load()
+        } finally {
+          setIsSubmittingMark(false)
+        }
       })
     },
     [activeBlock, closeMarkWorked, load, runAction]
@@ -207,7 +250,9 @@ export function HomeScreen({
     <div>
       <header>
         <h1>{title}</h1>
-        <button onClick={() => void load()}>Recarregar</button>
+        <button disabled={isLoading || isRefreshing} onClick={() => void load()}>
+          {isLoading || isRefreshing ? 'Atualizando…' : 'Recarregar'}
+        </button>
       </header>
       <main>
         {actionError !== null && <p role="alert">{actionError}</p>}
@@ -235,6 +280,11 @@ export function HomeScreen({
                             Designado a {territory.assignedUser.name}
                           </span>
                         )}
+                        <span className="territory-last-work">
+                          {territory.lastWork === undefined || territory.lastWork === null
+                            ? 'Nunca trabalhado'
+                            : `Último trabalho: ${territory.lastWork.publisher.name} — ${formatDate(territory.lastWork.workedAt)}`}
+                        </span>
                         <button
                           type="button"
                           className="icon-button"
@@ -249,7 +299,12 @@ export function HomeScreen({
                           ⋮
                         </button>
                         {openTerritoryMenuId === territory.id && (
-                          <ul role="menu" aria-label={`Opções de ${territory.name}`}>
+                          <ul
+                            role="menu"
+                            aria-label={`Opções de ${territory.name}`}
+                            data-territory-menu={territory.id}
+                            onKeyDown={moveInMenu}
+                          >
                             <li>
                               <button
                                 role="menuitem"
@@ -297,6 +352,14 @@ export function HomeScreen({
                             </li>
                           </ul>
                         )}
+                        <div className="territory-quick-actions" aria-label={`Ações rápidas de ${territory.name}`}>
+                          <button type="button" onClick={() => onAddBlock?.(territory)}>
+                            Quadras
+                          </button>
+                          <button type="button" onClick={() => onOpenSettings?.(territory)}>
+                            Configurações
+                          </button>
+                        </div>
                       </li>
                     ))}
                   </ul>
@@ -316,15 +379,12 @@ export function HomeScreen({
           </div>
         )}
         {activeBlock !== null && (
-          <div
-            role="menu"
+          <Dialog
             className="block-actions-modal"
-            aria-label={`Quadra ${activeBlock.block.number} — ${activeBlock.territory.name}`}
+            title={`Quadra ${activeBlock.block.number} — ${activeBlock.territory.name}`}
+            onClose={() => setActiveBlock(null)}
           >
             <div className="block-actions-modal-header">
-              <p>
-                Quadra {activeBlock.block.number} — {activeBlock.territory.name}
-              </p>
               <button
                 type="button"
                 className="icon-button"
@@ -335,7 +395,6 @@ export function HomeScreen({
               </button>
             </div>
             <button
-              role="menuitem"
               className="block-action"
               onClick={() => {
                 onShowHistory?.(activeBlock.territory, activeBlock.block)
@@ -345,7 +404,6 @@ export function HomeScreen({
               Ver histórico
             </button>
             <button
-              role="menuitem"
               className="block-action"
               onClick={() => {
                 onEditBlock?.(activeBlock.territory, activeBlock.block)
@@ -355,7 +413,7 @@ export function HomeScreen({
               Editar contorno ou número
             </button>
             {!isMarkingWorked && (
-              <button role="menuitem" className="block-action" onClick={openMarkWorked}>
+              <button className="block-action" onClick={openMarkWorked}>
                 Marcar como trabalhada
               </button>
             )}
@@ -366,18 +424,18 @@ export function HomeScreen({
                 // so it comes pre-selected -- but the admin can still record
                 // someone else's work.
                 preselectedPublisherId={activeBlock.territory.assignedUser?.id}
+                isSubmitting={isSubmittingMark}
                 onConfirm={(publisherId, workedAt) => void confirmMarkWorked(publisherId, workedAt)}
                 onCancel={closeMarkWorked}
               />
             )}
             <button
-              role="menuitem"
               className="block-action block-action-danger"
               onClick={() => void handleDeleteBlock(activeBlock.territory, activeBlock.block)}
             >
               Apagar quadra
             </button>
-          </div>
+          </Dialog>
         )}
       </main>
     </div>

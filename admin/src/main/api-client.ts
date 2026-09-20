@@ -18,6 +18,7 @@ import type {
   Block,
   BlockStatusOverride,
   Congregation,
+  LastWorkSummary,
   Publisher,
   PublisherBrief,
   Territory,
@@ -209,6 +210,13 @@ function parsePublisherBrief(json: Record<string, unknown>): PublisherBrief {
   return { id: json.id as string, name: json.name as string }
 }
 
+function parseLastWork(json: Record<string, unknown>): LastWorkSummary {
+  return {
+    publisher: parsePublisherBrief(json.user as Record<string, unknown>),
+    workedAt: new Date(json.worked_at as string)
+  }
+}
+
 function parseBlock(json: Record<string, unknown>): Block {
   return {
     id: json.id as string,
@@ -225,6 +233,7 @@ function parseBlock(json: Record<string, unknown>): Block {
 function parseTerritory(json: Record<string, unknown>): Territory {
   const blocks = (json.blocks as Record<string, unknown>[] | undefined) ?? []
   const assignedUserJson = json.assigned_user as Record<string, unknown> | null | undefined
+  const lastWorkJson = json.last_work as Record<string, unknown> | null | undefined
   return {
     id: json.id as string,
     name: json.name as string,
@@ -234,7 +243,8 @@ function parseTerritory(json: Record<string, unknown>): Territory {
     // Absent and explicitly `null` mean the same thing -- the territory uses
     // the clients' default rotation -- so both collapse to `undefined`, the
     // same treatment `parseBlock` gives `last_worked_at`.
-    rotationDays: (json.rotation_days as number | null | undefined) ?? undefined
+    rotationDays: (json.rotation_days as number | null | undefined) ?? undefined,
+    lastWork: lastWorkJson ? parseLastWork(lastWorkJson) : undefined
   }
 }
 

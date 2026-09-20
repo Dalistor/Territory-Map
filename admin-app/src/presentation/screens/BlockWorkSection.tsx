@@ -10,7 +10,7 @@
 // as props (`api` and `session`), which is also what lets every test drive it
 // with fakes instead of a network.
 import DateTimePicker from '@react-native-community/datetimepicker';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -21,23 +21,33 @@ import {
 } from 'react-native';
 
 import type { Block, Publisher, WorkLog } from '../../domain/models';
+import { colors } from '../theme';
+import { PublisherPicker } from './PublisherPicker';
 
 /** `dd/mm/yyyy` in local time -- how the desktop admin reads a visit too. */
 export function formatDate(moment: Date): string {
   const two = (value: number): string => value.toString().padStart(2, '0');
-  return `${two(moment.getDate())}/${two(moment.getMonth() + 1)}/${moment.getFullYear()}`;
+  return `${two(moment.getDate())}/${two(
+    moment.getMonth() + 1,
+  )}/${moment.getFullYear()}`;
 }
 
 /** `dd/mm/yyyy hh:mm`: a history row needs the time to tell two visits of one day apart. */
 export function formatDateTime(moment: Date): string {
   const two = (value: number): string => value.toString().padStart(2, '0');
-  return `${formatDate(moment)} ${two(moment.getHours())}:${two(moment.getMinutes())}`;
+  return `${formatDate(moment)} ${two(moment.getHours())}:${two(
+    moment.getMinutes(),
+  )}`;
 }
 
-export const HISTORY_ERROR_MESSAGE = 'Não foi possível carregar o histórico desta quadra.';
-export const PUBLISHERS_ERROR_MESSAGE = 'Não foi possível carregar os publicadores.';
-export const MARK_ERROR_MESSAGE = 'Não foi possível registrar o trabalho desta quadra.';
-export const DELETE_LOG_ERROR_MESSAGE = 'Não foi possível apagar o registro de trabalho.';
+export const HISTORY_ERROR_MESSAGE =
+  'Não foi possível carregar o histórico desta quadra.';
+export const PUBLISHERS_ERROR_MESSAGE =
+  'Não foi possível carregar os publicadores.';
+export const MARK_ERROR_MESSAGE =
+  'Não foi possível registrar o trabalho desta quadra.';
+export const DELETE_LOG_ERROR_MESSAGE =
+  'Não foi possível apagar o registro de trabalho.';
 export const RELOAD_ERROR_MESSAGE =
   'O registro foi gravado, mas não foi possível recarregar a quadra.';
 
@@ -61,7 +71,9 @@ export const FUTURE_DATE_MESSAGE =
  */
 function deleteLogConfirmMessage(log: WorkLog): string {
   return (
-    `Apagar o registro de ${log.publisher.name} em ${formatDateTime(log.workedAt)}?\n\n` +
+    `Apagar o registro de ${log.publisher.name} em ${formatDateTime(
+      log.workedAt,
+    )}?\n\n` +
     'O registro sai do histórico da quadra e a última visita é recalculada a partir do que ' +
     'sobrar. Não há como desfazer.'
   );
@@ -69,7 +81,11 @@ function deleteLogConfirmMessage(log: WorkLog): string {
 
 /** Midnight of the day `moment` falls on, so two dates compare by day alone. */
 function startOfDay(moment: Date): number {
-  return new Date(moment.getFullYear(), moment.getMonth(), moment.getDate()).getTime();
+  return new Date(
+    moment.getFullYear(),
+    moment.getMonth(),
+    moment.getDate(),
+  ).getTime();
 }
 
 /**
@@ -84,14 +100,20 @@ function isInTheFuture(workedAt: Date, now: Date): boolean {
 
 /** What an unknown rejection reads as: the server's own words when it gave any. */
 function errorMessage(thrown: unknown, fallback: string): string {
-  return thrown instanceof Error && thrown.message !== '' ? thrown.message : fallback;
+  return thrown instanceof Error && thrown.message !== ''
+    ? thrown.message
+    : fallback;
 }
 
 /** The slice of the API client this section needs; a test hands it a fake. */
 export interface BlockWorkSectionApi {
   listWorkLogs(blockId: string): Promise<WorkLog[]>;
   listPublishers(): Promise<Publisher[]>;
-  markWorked(blockId: string, publisherId: string, workedAt: Date): Promise<WorkLog>;
+  markWorked(
+    blockId: string,
+    publisherId: string,
+    workedAt: Date,
+  ): Promise<WorkLog>;
 }
 
 /** The slice of the session this section needs -- it never sees a token. */
@@ -149,6 +171,8 @@ export function BlockWorkSection({
   const [workedAt, setWorkedAt] = useState<Date>(now);
   const [isPickingDate, setIsPickingDate] = useState(false);
   const [isMarking, setIsMarking] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const deleteInFlight = useRef(false);
 
   const dateIsInTheFuture = isInTheFuture(workedAt, now);
   // `isMarking` belongs in the same flag rather than in a second guard inside
@@ -163,7 +187,9 @@ export function BlockWorkSection({
       // Sorted here, not trusted from the API: the panel promises "most recent
       // first", and that promise has to hold whatever order the response
       // arrives in.
-      setLogs([...loaded].sort((a, b) => b.workedAt.getTime() - a.workedAt.getTime()));
+      setLogs(
+        [...loaded].sort((a, b) => b.workedAt.getTime() - a.workedAt.getTime()),
+      );
     } catch (thrown) {
       setError(errorMessage(thrown, HISTORY_ERROR_MESSAGE));
     } finally {
@@ -185,7 +211,8 @@ export function BlockWorkSection({
         if (!cancelled) setPublishers(loaded);
       })
       .catch((thrown: unknown) => {
-        if (!cancelled) setError(errorMessage(thrown, PUBLISHERS_ERROR_MESSAGE));
+        if (!cancelled)
+          setError(errorMessage(thrown, PUBLISHERS_ERROR_MESSAGE));
       });
     return () => {
       cancelled = true;
@@ -225,6 +252,9 @@ export function BlockWorkSection({
   const deleteLog = useCallback(
     async (log: WorkLog): Promise<void> => {
       if (onDeleteLog === undefined) return;
+      if (deleteInFlight.current) return;
+      deleteInFlight.current = true;
+      setIsDeleting(true);
       setError(null);
       try {
         await onDeleteLog(log);
@@ -232,6 +262,9 @@ export function BlockWorkSection({
         await onChanged();
       } catch (thrown) {
         setError(errorMessage(thrown, DELETE_LOG_ERROR_MESSAGE));
+      } finally {
+        deleteInFlight.current = false;
+        setIsDeleting(false);
       }
     },
     [loadLogs, onChanged, onDeleteLog],
@@ -255,9 +288,16 @@ export function BlockWorkSection({
   );
 
   return (
-    <View style={styles.panel} accessibilityLabel={`Trabalho da quadra ${block.number}`}>
+    <View
+      style={styles.panel}
+      accessibilityLabel={`Trabalho da quadra ${block.number}`}
+    >
       {error !== null && (
-        <Text accessibilityRole="alert" testID="block-work-error" style={styles.error}>
+        <Text
+          accessibilityRole="alert"
+          testID="block-work-error"
+          style={styles.error}
+        >
           {error}
         </Text>
       )}
@@ -269,16 +309,25 @@ export function BlockWorkSection({
         <Text style={styles.note}>Esta quadra nunca foi trabalhada.</Text>
       ) : (
         logs.map(log => (
-          <View key={log.id} testID={`work-log-${log.id}`} style={styles.logRow}>
+          <View
+            key={log.id}
+            testID={`work-log-${log.id}`}
+            style={styles.logRow}
+          >
             <Text style={styles.logName}>{log.publisher.name}</Text>
             <Text style={styles.logDate}>{formatDateTime(log.workedAt)}</Text>
             {onDeleteLog !== undefined && (
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`Apagar registro de ${log.publisher.name}`}
+                accessibilityState={{ disabled: isDeleting, busy: isDeleting }}
+                disabled={isDeleting}
                 style={styles.deleteButton}
-                onPress={() => requestDeleteLog(log)}>
-                <Text style={styles.deleteButtonText}>Apagar</Text>
+                onPress={() => requestDeleteLog(log)}
+              >
+                <Text style={styles.deleteButtonText}>
+                  {isDeleting ? 'Apagando…' : 'Apagar'}
+                </Text>
               </Pressable>
             )}
           </View>
@@ -286,18 +335,12 @@ export function BlockWorkSection({
       )}
 
       <Text style={styles.sectionTitle}>Publicador</Text>
-      {publishers.map(publisher => (
-        <Pressable
-          key={publisher.id}
-          testID={`publisher-${publisher.id}`}
-          accessibilityRole="radio"
-          accessibilityLabel={publisher.name}
-          accessibilityState={{ selected: publisherId === publisher.id }}
-          style={[styles.publisherRow, publisherId === publisher.id && styles.publisherRowSelected]}
-          onPress={() => setPublisherId(publisher.id)}>
-          <Text>{publisher.name}</Text>
-        </Pressable>
-      ))}
+      <PublisherPicker
+        publishers={publishers}
+        selectedPublisherId={publisherId}
+        onSelect={setPublisherId}
+        optionTestIdPrefix="publisher-"
+      />
       <Text style={styles.note}>{ANY_PUBLISHER_NOTE}</Text>
 
       <Pressable
@@ -305,7 +348,8 @@ export function BlockWorkSection({
         accessibilityRole="button"
         accessibilityLabel="Escolher a data"
         style={styles.dateButton}
-        onPress={() => setIsPickingDate(true)}>
+        onPress={() => setIsPickingDate(true)}
+      >
         <Text>Data: {formatDate(workedAt)}</Text>
       </Pressable>
       {isPickingDate && (
@@ -321,7 +365,9 @@ export function BlockWorkSection({
           }}
         />
       )}
-      {dateIsInTheFuture && <Text style={styles.error}>{FUTURE_DATE_MESSAGE}</Text>}
+      {dateIsInTheFuture && (
+        <Text style={styles.error}>{FUTURE_DATE_MESSAGE}</Text>
+      )}
 
       <Pressable
         testID="mark-worked"
@@ -330,7 +376,8 @@ export function BlockWorkSection({
         accessibilityState={{ disabled: !canMark, busy: isMarking }}
         disabled={!canMark}
         style={[styles.markButton, !canMark && styles.markButtonDisabled]}
-        onPress={handleMarkPress}>
+        onPress={handleMarkPress}
+      >
         <Text style={styles.markButtonText}>
           {isMarking ? 'Registrando…' : 'Marcar como trabalhada'}
         </Text>
@@ -351,6 +398,7 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   deleteButton: {
+    backgroundColor: colors.dangerSurface,
     borderColor: '#fecaca',
     borderRadius: 8,
     borderWidth: 1,
@@ -408,17 +456,6 @@ const styles = StyleSheet.create({
     borderTopColor: '#e2e8f0',
     borderTopWidth: 1,
     padding: 16,
-  },
-  publisherRow: {
-    borderColor: '#e2e8f0',
-    borderRadius: 8,
-    borderWidth: 1,
-    marginTop: 6,
-    padding: 12,
-  },
-  publisherRowSelected: {
-    backgroundColor: '#e3f2fd',
-    borderColor: '#1565c0',
   },
   sectionTitle: {
     color: '#0f172a',

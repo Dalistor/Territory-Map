@@ -1,6 +1,13 @@
 import React from 'react';
 import { Alert } from 'react-native';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react-native';
 import type { Assignment, Publisher, Territory } from '../../domain/models';
 import { AssignmentPanel } from './AssignmentPanel';
 import type { AssignmentPanelSession } from './AssignmentPanel';
@@ -82,7 +89,10 @@ interface AlertButtonLike {
 function lastAlert(): { message: string; buttons: AlertButtonLike[] } {
   const calls = (Alert.alert as jest.Mock).mock.calls;
   const call = calls[calls.length - 1];
-  return { message: String(call[1]), buttons: (call[2] ?? []) as AlertButtonLike[] };
+  return {
+    message: String(call[1]),
+    buttons: (call[2] ?? []) as AlertButtonLike[],
+  };
 }
 
 /** The button that is not the "Cancelar" one -- pressing it means "yes". */
@@ -107,10 +117,16 @@ describe('AssignmentPanel', () => {
     const api = makeApi();
 
     await render(
-      <AssignmentPanel territory={makeTerritory()} session={makeSession()} api={api} />,
+      <AssignmentPanel
+        territory={makeTerritory()}
+        session={makeSession()}
+        api={api}
+      />,
     );
 
-    await waitFor(() => expect(screen.getByText('Sem designação')).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByText('Sem designação')).toBeTruthy(),
+    );
     expect(screen.getByText('Designar a…')).toBeTruthy();
     expect(screen.queryByText('Marcar como concluído')).toBeNull();
   });
@@ -119,12 +135,19 @@ describe('AssignmentPanel', () => {
     const startedAt = new Date('2026-02-03T09:00:00Z');
     const api = makeApi({
       listAssignments: jest.fn(async () => [
-        makeAssignment({ publisher: { id: 'pub-9', name: 'Bruno' }, startedAt }),
+        makeAssignment({
+          publisher: { id: 'pub-9', name: 'Bruno' },
+          startedAt,
+        }),
       ]),
     });
 
     await render(
-      <AssignmentPanel territory={makeTerritory()} session={makeSession()} api={api} />,
+      <AssignmentPanel
+        territory={makeTerritory()}
+        session={makeSession()}
+        api={api}
+      />,
     );
 
     await waitFor(() =>
@@ -156,13 +179,21 @@ describe('AssignmentPanel', () => {
       completedAt: null,
     });
     // Deliberately out of order: the panel, not the server, decides the order.
-    const api = makeApi({ listAssignments: jest.fn(async () => [older, open, newer]) });
+    const api = makeApi({
+      listAssignments: jest.fn(async () => [older, open, newer]),
+    });
 
     await render(
-      <AssignmentPanel territory={makeTerritory()} session={makeSession()} api={api} />,
+      <AssignmentPanel
+        territory={makeTerritory()}
+        session={makeSession()}
+        api={api}
+      />,
     );
 
-    await waitFor(() => expect(screen.getAllByTestId('assignment-history-row')).toHaveLength(2));
+    await waitFor(() =>
+      expect(screen.getAllByTestId('assignment-history-row')).toHaveLength(2),
+    );
     const rows = screen.getAllByTestId('assignment-history-row');
     expect(
       within(rows[0]).getByText(
@@ -198,7 +229,9 @@ describe('AssignmentPanel', () => {
     await fireEvent.press(screen.getByText('Bruno'));
     await fireEvent.press(screen.getByText('Designar'));
 
-    await waitFor(() => expect(api.designate).toHaveBeenCalledWith('terr-7', 'pub-9'));
+    await waitFor(() =>
+      expect(api.designate).toHaveBeenCalledWith('terr-7', 'pub-9'),
+    );
     expect(api.designate).toHaveBeenCalledTimes(1);
     // Reloaded: once on mount, once after the write.
     expect(api.listAssignments).toHaveBeenCalledTimes(2);
@@ -217,7 +250,11 @@ describe('AssignmentPanel', () => {
     });
 
     await render(
-      <AssignmentPanel territory={makeTerritory()} session={makeSession()} api={api} />,
+      <AssignmentPanel
+        territory={makeTerritory()}
+        session={makeSession()}
+        api={api}
+      />,
     );
 
     await waitFor(() => expect(screen.getByText('Bruno')).toBeTruthy());
@@ -258,7 +295,9 @@ describe('AssignmentPanel', () => {
     await fireEvent.press(screen.getByText('Designar'));
     await confirmLastAlert();
 
-    await waitFor(() => expect(api.designate).toHaveBeenCalledWith('terr-3', 'pub-9'));
+    await waitFor(() =>
+      expect(api.designate).toHaveBeenCalledWith('terr-3', 'pub-9'),
+    );
     expect(api.listAssignments).toHaveBeenCalledTimes(2);
     expect(onChanged).toHaveBeenCalledTimes(1);
   });
@@ -280,16 +319,22 @@ describe('AssignmentPanel', () => {
       />,
     );
 
-    await waitFor(() => expect(screen.getByText('Marcar como concluído')).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByText('Marcar como concluído')).toBeTruthy(),
+    );
     await fireEvent.press(screen.getByText('Marcar como concluído'));
 
     expect(Alert.alert).toHaveBeenCalledTimes(1);
-    expect(lastAlert().message).toContain('perde na hora o acesso para marcar quadras');
+    expect(lastAlert().message).toContain(
+      'perde na hora o acesso para marcar quadras',
+    );
     expect(api.completeAssignment).not.toHaveBeenCalled();
 
     await confirmLastAlert();
 
-    await waitFor(() => expect(api.completeAssignment).toHaveBeenCalledWith('terr-5'));
+    await waitFor(() =>
+      expect(api.completeAssignment).toHaveBeenCalledWith('terr-5'),
+    );
     expect(api.completeAssignment).toHaveBeenCalledTimes(1);
     expect(api.listAssignments).toHaveBeenCalledTimes(2);
     expect(onChanged).toHaveBeenCalledTimes(1);
@@ -323,7 +368,9 @@ describe('AssignmentPanel', () => {
       />,
     );
 
-    await waitFor(() => expect(screen.getByLabelText('Apagar designação de Ana')).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByLabelText('Apagar designação de Ana')).toBeTruthy(),
+    );
     await fireEvent.press(screen.getByLabelText('Apagar designação de Ana'));
 
     expect(Alert.alert).toHaveBeenCalledTimes(1);
@@ -334,7 +381,9 @@ describe('AssignmentPanel', () => {
 
     await confirmLastAlert();
 
-    await waitFor(() => expect(api.deleteAssignment).toHaveBeenCalledWith('terr-2', 'asg-old'));
+    await waitFor(() =>
+      expect(api.deleteAssignment).toHaveBeenCalledWith('terr-2', 'asg-old'),
+    );
     expect(api.deleteAssignment).toHaveBeenCalledTimes(1);
     expect(api.listAssignments).toHaveBeenCalledTimes(2);
     expect(onChanged).toHaveBeenCalledTimes(1);
@@ -342,7 +391,9 @@ describe('AssignmentPanel', () => {
 
   it('mostra o erro de designar numa região acessível, sem fechar o painel', async () => {
     const api = makeApi({
-      listPublishers: jest.fn(async () => [makePublisher({ id: 'pub-9', name: 'Bruno' })]),
+      listPublishers: jest.fn(async () => [
+        makePublisher({ id: 'pub-9', name: 'Bruno' }),
+      ]),
       designate: jest.fn(async () => {
         throw new Error('Publicador não encontrado nesta congregação.');
       }),
@@ -384,15 +435,23 @@ describe('AssignmentPanel', () => {
     });
 
     await render(
-      <AssignmentPanel territory={makeTerritory()} session={makeSession()} api={api} />,
+      <AssignmentPanel
+        territory={makeTerritory()}
+        session={makeSession()}
+        api={api}
+      />,
     );
 
-    await waitFor(() => expect(screen.getByText('Marcar como concluído')).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByText('Marcar como concluído')).toBeTruthy(),
+    );
     await fireEvent.press(screen.getByText('Marcar como concluído'));
     await confirmLastAlert();
 
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent('Nenhuma designação aberta.'),
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Nenhuma designação aberta.',
+      ),
     );
     expect(screen.getByText('Designações de Centro')).toBeTruthy();
   });
@@ -413,15 +472,23 @@ describe('AssignmentPanel', () => {
     });
 
     await render(
-      <AssignmentPanel territory={makeTerritory()} session={makeSession()} api={api} />,
+      <AssignmentPanel
+        territory={makeTerritory()}
+        session={makeSession()}
+        api={api}
+      />,
     );
 
-    await waitFor(() => expect(screen.getByLabelText('Apagar designação de Ana')).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByLabelText('Apagar designação de Ana')).toBeTruthy(),
+    );
     await fireEvent.press(screen.getByLabelText('Apagar designação de Ana'));
     await confirmLastAlert();
 
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent('Registro não encontrado.'),
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Registro não encontrado.',
+      ),
     );
     expect(screen.getByText('Designações de Centro')).toBeTruthy();
     // The row is still there -- nothing was deleted.
@@ -436,11 +503,17 @@ describe('AssignmentPanel', () => {
     });
 
     await render(
-      <AssignmentPanel territory={makeTerritory()} session={makeSession()} api={api} />,
+      <AssignmentPanel
+        territory={makeTerritory()}
+        session={makeSession()}
+        api={api}
+      />,
     );
 
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent('Sem conexão com o servidor.'),
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Sem conexão com o servidor.',
+      ),
     );
     // A failed load must not read as "this territory has nobody assigned".
     expect(screen.queryByText('Sem designação')).toBeNull();
@@ -448,11 +521,17 @@ describe('AssignmentPanel', () => {
 
   it('só designa depois de escolher um publicador', async () => {
     const api = makeApi({
-      listPublishers: jest.fn(async () => [makePublisher({ id: 'pub-9', name: 'Bruno' })]),
+      listPublishers: jest.fn(async () => [
+        makePublisher({ id: 'pub-9', name: 'Bruno' }),
+      ]),
     });
 
     await render(
-      <AssignmentPanel territory={makeTerritory()} session={makeSession()} api={api} />,
+      <AssignmentPanel
+        territory={makeTerritory()}
+        session={makeSession()}
+        api={api}
+      />,
     );
 
     await waitFor(() => expect(screen.getByText('Bruno')).toBeTruthy());
@@ -460,6 +539,91 @@ describe('AssignmentPanel', () => {
 
     expect(api.designate).not.toHaveBeenCalled();
     expect(screen.getByText('Designar')).toBeDisabled();
+  });
+
+  it('filtra publicadores sem diferenciar maiúsculas e mantém a seleção até confirmar', async () => {
+    const api = makeApi({
+      listPublishers: jest.fn(async () => [
+        makePublisher({ id: 'pub-1', name: 'Ana' }),
+        makePublisher({ id: 'pub-9', name: 'Bruno' }),
+      ]),
+    });
+
+    await render(
+      <AssignmentPanel
+        territory={makeTerritory()}
+        session={makeSession()}
+        api={api}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId('designate-pub-9')).toBeTruthy(),
+    );
+    await act(async () => {
+      fireEvent.changeText(screen.getByTestId('publisher-search'), 'BRU');
+    });
+
+    expect(screen.queryByTestId('designate-pub-1')).toBeNull();
+    expect(screen.getByTestId('designate-pub-9')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('designate-pub-9'));
+
+    await act(async () => {
+      fireEvent.changeText(
+        screen.getByTestId('publisher-search'),
+        'inexistente',
+      );
+    });
+
+    expect(screen.getByText('Nenhum publicador encontrado.')).toBeTruthy();
+    expect(screen.getByText('Bruno')).toBeTruthy();
+    expect(
+      screen.getByTestId('designate-pub-9').props.accessibilityState.selected,
+    ).toBe(true);
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByTestId('publisher-search'), 'bru');
+    });
+    await fireEvent.press(screen.getByText('Designar'));
+
+    await waitFor(() =>
+      expect(api.designate).toHaveBeenCalledWith('terr-1', 'pub-9'),
+    );
+  });
+
+  it('desabilita Designar e ignora o segundo toque enquanto a escrita está pendente', async () => {
+    let resolveDesignate: () => void = () => {};
+    const designate = jest.fn(
+      () =>
+        new Promise<void>(resolve => {
+          resolveDesignate = resolve;
+        }),
+    );
+    const api = makeApi({
+      listPublishers: jest.fn(async () => [
+        makePublisher({ id: 'pub-9', name: 'Bruno' }),
+      ]),
+      designate,
+    });
+
+    await render(
+      <AssignmentPanel
+        territory={makeTerritory()}
+        session={makeSession()}
+        api={api}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText('Bruno')).toBeTruthy());
+    await fireEvent.press(screen.getByText('Bruno'));
+    await fireEvent.press(screen.getByText('Designar'));
+
+    const designateButton = screen.getByText('Atualizando…');
+    expect(designateButton).toBeDisabled();
+    await fireEvent.press(designateButton);
+    expect(designate).toHaveBeenCalledTimes(1);
+
+    resolveDesignate();
+    await waitFor(() => expect(screen.getByText('Designar')).toBeEnabled());
   });
 
   it('não oferece publicador desativado como opção de designação', async () => {
@@ -471,7 +635,11 @@ describe('AssignmentPanel', () => {
     });
 
     await render(
-      <AssignmentPanel territory={makeTerritory()} session={makeSession()} api={api} />,
+      <AssignmentPanel
+        territory={makeTerritory()}
+        session={makeSession()}
+        api={api}
+      />,
     );
 
     await waitFor(() => expect(screen.getByText('Bruno')).toBeTruthy());
@@ -480,7 +648,9 @@ describe('AssignmentPanel', () => {
 
   it('mostra um texto genérico quando a falha não traz mensagem nenhuma', async () => {
     const api = makeApi({
-      listPublishers: jest.fn(async () => [makePublisher({ id: 'pub-9', name: 'Bruno' })]),
+      listPublishers: jest.fn(async () => [
+        makePublisher({ id: 'pub-9', name: 'Bruno' }),
+      ]),
       // Not an Error, and nothing readable in it -- the panel still has to say
       // something instead of printing "[object Object]".
       designate: jest.fn(async () => {
@@ -489,7 +659,11 @@ describe('AssignmentPanel', () => {
     });
 
     await render(
-      <AssignmentPanel territory={makeTerritory()} session={makeSession()} api={api} />,
+      <AssignmentPanel
+        territory={makeTerritory()}
+        session={makeSession()}
+        api={api}
+      />,
     );
 
     await waitFor(() => expect(screen.getByText('Bruno')).toBeTruthy());

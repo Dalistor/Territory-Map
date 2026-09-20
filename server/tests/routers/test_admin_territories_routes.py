@@ -10,9 +10,11 @@ The other half is the boundary between congregations. No route here takes a
 already confirm that the id names a real area.
 """
 
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
+from app.models.block_work_log import BlockWorkLog
 
 pytestmark = pytest.mark.anyio
 
@@ -66,6 +68,77 @@ async def test_drawing_a_territory_returns_it_with_the_points_in_order(client, m
     assert body["name"] == "Centro"
     assert body["boundary"] == boundary
     assert body["blocks"] == []
+    assert body["last_work"] is None
+
+
+async def test_listing_and_detail_return_the_same_last_work_summary(
+    client, make_admin, session
+):
+    _, token = make_admin()
+    territory = (await draw(client, token)).json()
+    block = (
+        await client.post(
+            f"/admin/territories/{territory['id']}/blocks",
+            json={"number": 1, "polygon": square(0.1, 0.1, size=0.2)},
+            headers=bearer(token),
+        )
+    ).json()
+    worked_at = datetime(2026, 9, 5, 10, tzinfo=UTC)
+    session.add(
+        BlockWorkLog(
+            id=uuid4(),
+            block_id=block["id"],
+            user_id=uuid4(),
+            user_name="Nome preservado",
+            worked_at=worked_at,
+        )
+    )
+    session.flush()
+
+    listing = await client.get("/admin/territories", headers=bearer(token))
+    detail = await client.get(f"/admin/territories/{territory['id']}", headers=bearer(token))
+
+    expected = {
+        "user": {
+            "id": listing.json()[0]["last_work"]["user"]["id"],
+            "name": "Nome preservado",
+        },
+        "worked_at": "2026-09-05T10:00:00Z",
+    }
+    assert listing.json()[0]["last_work"] == expected
+    assert detail.json()["last_work"] == expected
+
+
+async def test_listing_does_not_expose_work_from_another_congregation(
+    client, make_admin, session
+):
+    _, token = make_admin(name="Central", city="Uberlândia")
+    _, other_token = make_admin(name="Norte", city="Contagem")
+    own_territory = (await draw(client, token, name="Centro")).json()
+    other_territory = (await draw(client, other_token, name="Centro")).json()
+    other_block = (
+        await client.post(
+            f"/admin/territories/{other_territory['id']}/blocks",
+            json={"number": 1, "polygon": square(0.1, 0.1, size=0.2)},
+            headers=bearer(other_token),
+        )
+    ).json()
+    session.add(
+        BlockWorkLog(
+            id=uuid4(),
+            block_id=other_block["id"],
+            user_id=uuid4(),
+            user_name="Outra congregação",
+            worked_at=datetime(2026, 9, 5, 10, tzinfo=UTC),
+        )
+    )
+    session.flush()
+
+    response = await client.get("/admin/territories", headers=bearer(token))
+
+    assert len(response.json()) == 1
+    assert response.json()[0]["id"] == own_territory["id"]
+    assert response.json()[0]["last_work"] is None
 
 
 async def test_a_self_intersecting_drawing_is_422_and_says_which_rule_broke(client, make_admin):

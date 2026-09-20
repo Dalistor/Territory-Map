@@ -20,6 +20,7 @@ from app.core.exceptions import (
 from app.core.geo import LatLng, points_to_wkt, validate_polygon, wkt_to_points
 from app.models.territory import Territory
 from app.repositories.block import BlockRepository
+from app.repositories.block_work_log import BlockWorkLogRepository
 from app.repositories.territory import TerritoryRepository
 
 
@@ -65,10 +66,12 @@ class TerritoryService:
         self,
         territories: TerritoryRepository,
         blocks: BlockRepository,
+        work_logs: BlockWorkLogRepository,
         now_provider: Callable[[], datetime],
     ) -> None:
         self._territories = territories
         self._blocks = blocks
+        self._work_logs = work_logs
         # Held, not yet read: `created_at` is stamped by the database. It is part of
         # the constructor so every service is built the same way by the routers, and
         # so any future rule that needs the time reads an injected clock rather than
@@ -99,6 +102,16 @@ class TerritoryService:
     def list(self, congregation_id: UUID) -> list[Territory]:
         """Every territory of this congregation, in the order the admin reads them."""
         return self._territories.list_by_congregation(congregation_id)
+
+    def latest_work_by_territory(
+        self, congregation_id: UUID
+    ) -> dict[UUID, tuple[UUID, str, datetime]]:
+        """The latest recorded work for each territory in the congregation."""
+        latest_work = self._work_logs.list_latest_work_by_territory(congregation_id)
+        return {
+            territory_id: (user_id, user_name, worked_at)
+            for territory_id, user_id, user_name, worked_at in latest_work
+        }
 
     def update(
         self,

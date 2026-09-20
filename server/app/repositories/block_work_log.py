@@ -107,6 +107,48 @@ class BlockWorkLogRepository:
         )
         return [(row[0], row[1], row[2]) for row in self.session.execute(statement)]
 
+    def list_latest_work_by_territory(
+        self,
+        congregation_id: UUID,
+    ) -> list[tuple[UUID, UUID, str, datetime]]:
+        """The latest work log for every territory in a congregation.
+
+        The log id is the final ordering key so equal visit times still select one
+        reproducible row, including the name preserved in that selected log.
+        """
+        latest_logs = (
+            select(
+                Territory.id.label("territory_id"),
+                BlockWorkLog.user_id,
+                BlockWorkLog.user_name,
+                BlockWorkLog.worked_at,
+                func.row_number()
+                .over(
+                    partition_by=Territory.id,
+                    order_by=(BlockWorkLog.worked_at.desc(), BlockWorkLog.id.desc()),
+                )
+                .label("territory_rank"),
+            )
+            .join(Block, Block.id == BlockWorkLog.block_id)
+            .join(Territory, Territory.id == Block.territory_id)
+            .where(Territory.congregation_id == congregation_id)
+            .subquery()
+        )
+        statement = (
+            select(
+                latest_logs.c.territory_id,
+                latest_logs.c.user_id,
+                latest_logs.c.user_name,
+                latest_logs.c.worked_at,
+            )
+            .where(latest_logs.c.territory_rank == 1)
+            .order_by(latest_logs.c.worked_at.desc())
+        )
+        return [
+            (row[0], row[1], row[2], row[3])
+            for row in self.session.execute(statement)
+        ]
+
     def list_by_user_with_details(self, user_id: UUID) -> list[tuple[BlockWorkLog, int, UUID, str]]:
         """Every block this publisher worked, most recent visit first.
 

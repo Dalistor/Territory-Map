@@ -83,6 +83,7 @@ describe('createApiClient', () => {
             ],
             assigned_user: null,
             rotation_days: null,
+            last_work: null,
           },
         ]),
       );
@@ -112,6 +113,44 @@ describe('createApiClient', () => {
       expect(territory.assignedPublisher).toBeNull();
       expect(territory.rotationDays).toBeNull();
       expect(territory.blocks).toEqual([]);
+    });
+
+    it('parses last_work independently from the territory leader', async () => {
+      const { client } = makeClient(
+        jsonResponse(200, [
+          {
+            id: 'terr-1',
+            name: 'Setor 1',
+            boundary: [],
+            assigned_user: { id: 'leader-1', name: 'Dirigente' },
+            last_work: {
+              user: { id: 'worker-1', name: 'Visitante' },
+              worked_at: '2026-08-15T10:30:00Z',
+            },
+            rotation_days: null,
+          },
+        ]),
+      );
+
+      const [territory] = await client.listTerritories();
+
+      expect(territory.assignedPublisher).toEqual({ id: 'leader-1', name: 'Dirigente' });
+      expect(territory.lastWork).toEqual({
+        publisher: { id: 'worker-1', name: 'Visitante' },
+        workedAt: new Date('2026-08-15T10:30:00Z'),
+      });
+    });
+
+    it('keeps last_work null when the territory has no recorded work', async () => {
+      const { client } = makeClient(
+        jsonResponse(200, [
+          { id: 'terr-1', name: 'Setor 1', boundary: [], assigned_user: null, last_work: null },
+        ]),
+      );
+
+      const [territory] = await client.listTerritories();
+
+      expect(territory.lastWork).toBeNull();
     });
 
     it('reads a payload with no ring at all as an empty ring, rather than crashing on it', async () => {

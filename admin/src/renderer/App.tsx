@@ -233,7 +233,7 @@ function AuthenticatedApp({ congregation, onSignedOut }: AuthenticatedAppProps):
 
   return (
     <div className="app-shell">
-      <nav className="app-sidebar">
+      <nav className="app-sidebar" aria-label="Navegação principal">
         <div className="sidebar-header">
           {/* Decorative (alt="") — the text beside it already names the app
               or the congregation; a repeated alt would just be noise to a

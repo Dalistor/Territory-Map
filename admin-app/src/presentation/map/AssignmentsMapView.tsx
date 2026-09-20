@@ -59,6 +59,7 @@ import {
   territoriesBounds,
   territoryMapFeatures,
 } from '../../domain/territoryMap';
+import { MapStatusLegend } from './MapStatusLegend';
 
 const OSM_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 const OSM_ATTRIBUTION = '© OpenStreetMap contributors';
@@ -350,6 +351,7 @@ export function AssignmentsMapView({
           </Marker>
         ))}
       </MapLibreMap>
+      <MapStatusLegend />
       {/* The other half of the OSM tile usage policy: visible on-screen
           attribution, not just the native attribution sheet. */}
       <View style={styles.attribution} pointerEvents="none">

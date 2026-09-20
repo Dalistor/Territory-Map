@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Assignment, AssignmentWithTerritory } from '../../shared/models'
 import { assignmentIsOpen, compareTerritoriesByNumber } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
@@ -111,12 +111,19 @@ function entryLabel(entry: AssignmentWithTerritory, view: View): string {
 export function HistoryScreen(): React.JSX.Element {
   const [entries, setEntries] = useState<AssignmentWithTerritory[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const refreshInFlight = useRef(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [view, setView] = useState<View>('leader')
   const [search, setSearch] = useState('')
   const [actionError, setActionError] = useState<string | null>(null)
+  const [isActionPending, setIsActionPending] = useState(false)
+  const actionInFlight = useRef(false)
 
   const load = useCallback(async () => {
+    if (refreshInFlight.current) return
+    refreshInFlight.current = true
+    setIsRefreshing(true)
     setIsLoading(true)
     setLoadError(null)
     try {
@@ -125,6 +132,8 @@ export function HistoryScreen(): React.JSX.Element {
       setLoadError(errorMessage(error))
     } finally {
       setIsLoading(false)
+      refreshInFlight.current = false
+      setIsRefreshing(false)
     }
   }, [])
 
@@ -137,12 +146,18 @@ export function HistoryScreen(): React.JSX.Element {
   const deleteEntry = useCallback(
     async (entry: AssignmentWithTerritory) => {
       if (!window.confirm(deleteConfirmMessage(entry))) return
+      if (actionInFlight.current) return
+      actionInFlight.current = true
+      setIsActionPending(true)
       setActionError(null)
       try {
         await window.api.assignments.delete(entry.territory.id, entry.id)
         await load()
       } catch (error) {
         setActionError(errorMessage(error))
+      } finally {
+        actionInFlight.current = false
+        setIsActionPending(false)
       }
     },
     [load]
@@ -195,8 +210,12 @@ export function HistoryScreen(): React.JSX.Element {
             Por território
           </button>
         </div>
-        <button type="button" onClick={() => void load()}>
-          Recarregar
+        <button
+          type="button"
+          disabled={isLoading || isRefreshing || isActionPending}
+          onClick={() => void load()}
+        >
+          {isLoading || isRefreshing ? 'Atualizando…' : 'Recarregar'}
         </button>
       </header>
       <main>
@@ -238,6 +257,7 @@ export function HistoryScreen(): React.JSX.Element {
                     <button
                       type="button"
                       aria-label={`Apagar designação de ${entry.publisher.name} em ${entry.territory.name}`}
+                      disabled={isActionPending}
                       onClick={() => void deleteEntry(entry)}
                     >
                       Apagar

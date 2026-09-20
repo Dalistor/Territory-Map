@@ -255,7 +255,9 @@ describe('createApiClient', () => {
           ],
           last_worked_at: '2026-07-01T09:00:00Z'
         }
-      ]
+      ],
+      assigned_user: { id: 'leader-1', name: 'Dirigente' },
+      last_work: { user: { id: 'worker-1', name: 'Visitante' }, worked_at: '2026-08-15T10:30:00Z' }
     }
     const PARSED_TERRITORY = {
       id: 'terr-1',
@@ -276,7 +278,12 @@ describe('createApiClient', () => {
           ],
           lastWorkedAt: new Date('2026-07-01T09:00:00Z')
         }
-      ]
+      ],
+      assignedUser: { id: 'leader-1', name: 'Dirigente' },
+      lastWork: {
+        publisher: { id: 'worker-1', name: 'Visitante' },
+        workedAt: new Date('2026-08-15T10:30:00Z')
+      }
     }
 
     it('listTerritories GETs /admin/territories and returns the parsed list', async () => {
@@ -296,6 +303,26 @@ describe('createApiClient', () => {
       const [territory] = await client.listTerritories()
 
       expect(territory.blocks).toEqual([])
+    })
+
+    it('parses last_work independently from the territory leader', async () => {
+      const { client } = makeClient(jsonResponse(200, [TERRITORY_JSON]))
+
+      const [territory] = await client.listTerritories()
+
+      expect(territory.assignedUser).toEqual({ id: 'leader-1', name: 'Dirigente' })
+      expect(territory.lastWork).toEqual({
+        publisher: { id: 'worker-1', name: 'Visitante' },
+        workedAt: new Date('2026-08-15T10:30:00Z')
+      })
+    })
+
+    it('keeps last_work absent as undefined', async () => {
+      const { client } = makeClient(jsonResponse(200, [{ ...TERRITORY_JSON, last_work: null }]))
+
+      const [territory] = await client.listTerritories()
+
+      expect(territory.lastWork).toBeUndefined()
     })
 
     it('getTerritory GETs /admin/territories/{id} and returns the parsed territory, blocks included', async () => {
@@ -407,7 +434,9 @@ describe('createApiClient', () => {
     })
 
     it('listTerritories parses a territory whose assigned_user is absent as undefined', async () => {
-      const { client } = makeClient(jsonResponse(200, [TERRITORY_JSON]))
+      const { client } = makeClient(
+        jsonResponse(200, [{ ...TERRITORY_JSON, assigned_user: undefined }])
+      )
 
       const [territory] = await client.listTerritories()
 

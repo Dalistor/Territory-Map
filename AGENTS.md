@@ -488,10 +488,11 @@ Duas consequências foram aceitas de propósito:
 - **Dois homônimos ficam indistinguíveis** no histórico depois que um dos dois é apagado. Enquanto
   ambos existirem, o `user_id` sem FK ainda os separa.
 
-A migration (`e7b34c1d5a80`) **faz backfill** a partir de `users` antes de derrubar as FKs, e por
-isso é exata — o projeto ainda não está em produção, então não há linha órfã a tratar. É o oposto
-do que as migrations de `d3ab774c1b2f` e `a1c7e4f92b83` fizeram, e pela razão contrária: lá o dado
-correto não existia para ser copiado; aqui ele existe.
+A migration (`e7b34c1d5a80`) **faz backfill** a partir de `users` antes de derrubar as FKs. A aplicação
+está em uso com dados reais; registros novos preservam o nome no momento da escrita, e os registros
+existentes foram preenchidos antes da remoção das constraints. É o oposto do que as migrations de
+`d3ab774c1b2f` e `a1c7e4f92b83` fizeram, e pela razão contrária: lá o dado correto não existia para
+ser copiado; aqui ele existia.
 
 ### Divergências em relação ao brief inicial (e o porquê)
 
@@ -1314,4 +1315,4 @@ specs planejadas.
 
 ---
 
-_Documentação centaur — schema `1.5.0`, gerada em `2026-09-05`. Atualize com `/centaur-driven-update`._
+_Documentação centaur — schema `1.5.0`, atualizada em `2026-09-05`. Atualize com `/centaur-driven-update`._

@@ -13,6 +13,7 @@ the publisher's row decides which map they see, so there is no path or body here
 which a client could name someone else's data.
 """
 
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -32,7 +33,7 @@ from app.routers.auth import utc_now
 from app.routers.history_dto import with_user
 from app.schemas.block import BlockOut
 from app.schemas.geo import LatLngOut
-from app.schemas.territory import TerritoryOut
+from app.schemas.territory import LastWorkOut, TerritoryOut
 from app.schemas.user import UserBriefOut
 from app.schemas.work_log import (
     PublisherWorkHistoryItemOut,
@@ -50,7 +51,12 @@ DbSession = Annotated[Session, Depends(get_session)]
 
 
 def get_territory_service(session: DbSession) -> TerritoryService:
-    return TerritoryService(TerritoryRepository(session), BlockRepository(session), utc_now)
+    return TerritoryService(
+        TerritoryRepository(session),
+        BlockRepository(session),
+        BlockWorkLogRepository(session),
+        utc_now,
+    )
 
 
 def get_block_service(session: DbSession) -> BlockService:
@@ -99,6 +105,7 @@ def _territory_out(
     congregation_id: UUID,
     territories: TerritoryService,
     blocks: BlockService,
+    last_work: tuple[UUID, str, datetime] | None = None,
 ) -> TerritoryOut:
     """One territory with the blocks drawn inside it, ready to be cached offline.
 
@@ -118,6 +125,14 @@ def _territory_out(
         if territory.assigned_user
         else None,
         rotation_days=territory.rotation_days,
+        last_work=(
+            LastWorkOut(
+                user=UserBriefOut(id=last_work[0], name=last_work[1]),
+                worked_at=last_work[2],
+            )
+            if last_work
+            else None
+        ),
     )
 
 
@@ -134,8 +149,15 @@ def list_territories(
     rides along on every block: it is the number that decides where the congregation
     goes today, and the phone must be able to show it offline.
     """
+    latest_work = territories.latest_work_by_territory(user.congregation_id)
     return [
-        _territory_out(territory, user.congregation_id, territories, blocks)
+        _territory_out(
+            territory,
+            user.congregation_id,
+            territories,
+            blocks,
+            last_work=latest_work.get(territory.id),
+        )
         for territory in territories.list(user.congregation_id)
     ]
 

@@ -9,14 +9,32 @@
  * about it is only what this screen hands it and what it hands back.
  */
 import React from 'react';
-import { Alert } from 'react-native';
-import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
+import { Alert, BackHandler } from 'react-native';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react-native';
 
-import { DesignationsScreen, NO_TERRITORIES_MESSAGE } from './DesignationsScreen';
-import type { DesignationsScreenApi, DesignationsScreenSession } from './DesignationsScreen';
+import {
+  DesignationsScreen,
+  NO_TERRITORIES_MESSAGE,
+} from './DesignationsScreen';
+import type {
+  DesignationsScreenApi,
+  DesignationsScreenSession,
+} from './DesignationsScreen';
 import { TERRITORY_SCOPE_NOTE } from './BlockPanel';
 import type { AssignmentsMapViewProps } from '../map/AssignmentsMapView';
-import type { Assignment, Block, Publisher, Territory } from '../../domain/models';
+import type {
+  Assignment,
+  Block,
+  Publisher,
+  Territory,
+} from '../../domain/models';
 
 // The combined panel opens the date picker, which is a native module.
 jest.mock('@react-native-community/datetimepicker', () => {
@@ -27,7 +45,10 @@ jest.mock('@react-native-community/datetimepicker', () => {
   return {
     __esModule: true,
     default: function MockDateTimePicker(props: { value: Date }) {
-      return ReactModule.createElement(View, { testID: 'date-picker', value: props.value });
+      return ReactModule.createElement(View, {
+        testID: 'date-picker',
+        value: props.value,
+      });
     },
   };
 });
@@ -175,7 +196,9 @@ function makeApi(overrides: Partial<FakeApi> = {}): FakeApi {
  * `act`. A bare `fireEvent.press` opens a panel and returns before its fetch
  * resolves, so the state update would land outside `act` and React would warn.
  */
-async function press(element: Parameters<typeof fireEvent.press>[0]): Promise<void> {
+async function press(
+  element: Parameters<typeof fireEvent.press>[0],
+): Promise<void> {
   await act(async () => {
     fireEvent.press(element);
   });
@@ -211,7 +234,10 @@ const NO_LEADER_LABEL_TEXT = 'Sem dirigente';
 function lastAlert(): { message: string; buttons: AlertButtonLike[] } {
   const calls = (Alert.alert as jest.Mock).mock.calls;
   const call = calls[calls.length - 1];
-  return { message: String(call[1]), buttons: (call[2] ?? []) as AlertButtonLike[] };
+  return {
+    message: String(call[1]),
+    buttons: (call[2] ?? []) as AlertButtonLike[],
+  };
 }
 
 /** The button that is not "Cancelar" -- pressing it means "yes". */
@@ -239,13 +265,17 @@ describe('DesignationsScreen', () => {
     // Held open on purpose: this is the moment an empty list would read as
     // "this congregation has no territories", which is a different fact.
     const api = makeApi({
-      listTerritoriesWithBlocks: jest.fn(() => new Promise<Territory[]>(() => {})),
+      listTerritoriesWithBlocks: jest.fn(
+        () => new Promise<Territory[]>(() => {}),
+      ),
     });
 
     await renderScreen(api);
 
     expect(screen.getByLabelText('Carregando')).toBeOnTheScreen();
-    expect(screen.queryByTestId('territory-row-territory-1')).not.toBeOnTheScreen();
+    expect(
+      screen.queryByTestId('territory-row-territory-1'),
+    ).not.toBeOnTheScreen();
   });
 
   it('lists every territory with its name and the publisher holding it', async () => {
@@ -256,7 +286,11 @@ describe('DesignationsScreen', () => {
           name: 'Centro',
           assignedPublisher: { id: 'publisher-1', name: 'Ana' },
         }),
-        makeTerritory({ id: 'territory-2', name: 'Vila Nova', assignedPublisher: null }),
+        makeTerritory({
+          id: 'territory-2',
+          name: 'Vila Nova',
+          assignedPublisher: null,
+        }),
       ]),
     });
 
@@ -273,11 +307,53 @@ describe('DesignationsScreen', () => {
     expect(within(free).getByText('Sem dirigente')).toBeOnTheScreen();
   });
 
+  it('shows the last work separately from the current leader', async () => {
+    const api = makeApi({
+      listTerritoriesWithBlocks: jest.fn(async () => [
+        makeTerritory({
+          assignedPublisher: { id: 'leader-1', name: 'Dirigente' },
+          lastWork: {
+            publisher: { id: 'worker-1', name: 'Visitante' },
+            workedAt: new Date(2026, 8, 5),
+          },
+        }),
+      ]),
+    });
+
+    await renderScreen(api);
+
+    const row = await screen.findByTestId('territory-row-territory-1');
+    expect(within(row).getByText('Dirigente')).toBeOnTheScreen();
+    expect(
+      within(row).getByText('Último trabalho: Visitante — 05/09/2026'),
+    ).toBeOnTheScreen();
+  });
+
+  it('shows that a territory was never worked when there is no last work', async () => {
+    const api = makeApi({
+      listTerritoriesWithBlocks: jest.fn(async () => [
+        makeTerritory({ lastWork: null }),
+      ]),
+    });
+
+    await renderScreen(api);
+
+    const row = await screen.findByTestId('territory-row-territory-1');
+    expect(within(row).getByText('Nunca trabalhado')).toBeOnTheScreen();
+  });
+
   it('summarises how many of the territories have a publisher on them', async () => {
     const api = makeApi({
       listTerritoriesWithBlocks: jest.fn(async () => [
-        makeTerritory({ id: 'territory-1', assignedPublisher: { id: 'p1', name: 'Ana' } }),
-        makeTerritory({ id: 'territory-2', name: 'Vila Nova', assignedPublisher: null }),
+        makeTerritory({
+          id: 'territory-1',
+          assignedPublisher: { id: 'p1', name: 'Ana' },
+        }),
+        makeTerritory({
+          id: 'territory-2',
+          name: 'Vila Nova',
+          assignedPublisher: null,
+        }),
         makeTerritory({
           id: 'territory-3',
           name: 'Jardim',
@@ -288,7 +364,9 @@ describe('DesignationsScreen', () => {
 
     await renderScreen(api);
 
-    expect(await screen.findByText('2 de 3 territórios designados')).toBeOnTheScreen();
+    expect(
+      await screen.findByText('2 de 3 territórios designados'),
+    ).toBeOnTheScreen();
   });
 
   it('explains where territories come from instead of showing a bare empty list', async () => {
@@ -312,15 +390,21 @@ describe('DesignationsScreen', () => {
 
     // The server's own words, in a region a screen reader announces -- a
     // silent empty list would read as "there is nothing here".
-    expect(await screen.findByRole('alert')).toHaveTextContent('Sem conexão com o servidor.');
-    expect(screen.getByRole('button', { name: 'Recarregar' })).toBeOnTheScreen();
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Sem conexão com o servidor.',
+    );
+    expect(
+      screen.getByRole('button', { name: 'Recarregar' }),
+    ).toBeOnTheScreen();
   });
 
   it('asks the API again when "Recarregar" is tapped, and clears the failure it succeeded past', async () => {
     const listTerritoriesWithBlocks = jest
       .fn<Promise<Territory[]>, []>()
       .mockRejectedValueOnce(new Error('Sem conexão com o servidor.'))
-      .mockResolvedValueOnce([makeTerritory({ id: 'territory-1', name: 'Centro' })]);
+      .mockResolvedValueOnce([
+        makeTerritory({ id: 'territory-1', name: 'Centro' }),
+      ]);
     const api = makeApi({ listTerritoriesWithBlocks });
 
     await renderScreen(api);
@@ -328,8 +412,59 @@ describe('DesignationsScreen', () => {
     await press(screen.getByRole('button', { name: 'Recarregar' }));
 
     expect(listTerritoriesWithBlocks).toHaveBeenCalledTimes(2);
-    expect(await screen.findByTestId('territory-row-territory-1')).toBeOnTheScreen();
+    expect(
+      await screen.findByTestId('territory-row-territory-1'),
+    ).toBeOnTheScreen();
     expect(screen.queryByRole('alert')).not.toBeOnTheScreen();
+  });
+
+  it('disables reload and ignores a second tap while the refresh is pending', async () => {
+    let resolveReload: (territories: Territory[]) => void = () => {};
+    const listTerritoriesWithBlocks = jest
+      .fn<Promise<Territory[]>, []>()
+      .mockResolvedValueOnce([])
+      .mockImplementationOnce(
+        () =>
+          new Promise<Territory[]>(resolve => {
+            resolveReload = resolve;
+          }),
+      );
+    const api = makeApi({ listTerritoriesWithBlocks });
+
+    await renderScreen(api);
+    const reload = screen.getByRole('button', { name: 'Recarregar' });
+    await press(reload);
+
+    expect(reload).toBeDisabled();
+    expect(reload).toHaveTextContent('Atualizando…');
+    await press(reload);
+    expect(listTerritoriesWithBlocks).toHaveBeenCalledTimes(2);
+
+    resolveReload([]);
+    await act(async () => {});
+    expect(screen.getByRole('button', { name: 'Recarregar' })).toBeEnabled();
+  });
+
+  it('restores reload after a failed refresh', async () => {
+    let rejectReload: (error: unknown) => void = () => {};
+    const listTerritoriesWithBlocks = jest
+      .fn<Promise<Territory[]>, []>()
+      .mockResolvedValueOnce([])
+      .mockImplementationOnce(
+        () =>
+          new Promise<Territory[]>((_resolve, reject) => {
+            rejectReload = reject;
+          }),
+      );
+    const api = makeApi({ listTerritoriesWithBlocks });
+
+    await renderScreen(api);
+    await press(screen.getByRole('button', { name: 'Recarregar' }));
+    rejectReload(new Error('Falha ao recarregar.'));
+
+    await act(async () => {});
+    expect(screen.getByRole('button', { name: 'Recarregar' })).toBeEnabled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Falha ao recarregar.');
   });
 
   it('opens the S-13 panel of the territory that was tapped, and not of another', async () => {
@@ -339,13 +474,18 @@ describe('DesignationsScreen', () => {
         makeTerritory({ id: 'territory-2', name: 'Vila Nova' }),
       ]),
       listAssignments: jest.fn(async () => [
-        makeAssignment({ territoryId: 'territory-2', publisher: { id: 'p2', name: 'Bruno' } }),
+        makeAssignment({
+          territoryId: 'territory-2',
+          publisher: { id: 'p2', name: 'Bruno' },
+        }),
       ]),
     });
 
     await renderScreen(api);
     await screen.findByTestId('territory-row-territory-2');
-    await press(screen.getByRole('button', { name: 'Ver designações de Vila Nova' }));
+    await press(
+      screen.getByRole('button', { name: 'Ver designações de Vila Nova' }),
+    );
 
     expect(screen.getByText('Designações de Vila Nova')).toBeOnTheScreen();
     expect(screen.queryByText('Designações de Centro')).not.toBeOnTheScreen();
@@ -354,8 +494,15 @@ describe('DesignationsScreen', () => {
   });
 
   it('shows the new leader in the list as soon as the panel designates one', async () => {
-    const free = makeTerritory({ id: 'territory-1', name: 'Centro', assignedPublisher: null });
-    const taken = { ...free, assignedPublisher: { id: 'publisher-1', name: 'Ana' } };
+    const free = makeTerritory({
+      id: 'territory-1',
+      name: 'Centro',
+      assignedPublisher: null,
+    });
+    const taken = {
+      ...free,
+      assignedPublisher: { id: 'publisher-1', name: 'Ana' },
+    };
     const listTerritoriesWithBlocks = jest
       .fn<Promise<Territory[]>, []>()
       .mockResolvedValueOnce([free])
@@ -367,12 +514,16 @@ describe('DesignationsScreen', () => {
     const api = makeApi({
       listTerritoriesWithBlocks,
       listAssignments,
-      listPublishers: jest.fn(async () => [makePublisher('publisher-1', 'Ana')]),
+      listPublishers: jest.fn(async () => [
+        makePublisher('publisher-1', 'Ana'),
+      ]),
     });
 
     await renderScreen(api);
     await screen.findByTestId('territory-row-territory-1');
-    await press(screen.getByRole('button', { name: 'Ver designações de Centro' }));
+    await press(
+      screen.getByRole('button', { name: 'Ver designações de Centro' }),
+    );
     await press(screen.getByRole('radio', { name: 'Ana' }));
     await press(screen.getByRole('button', { name: 'Designar' }));
 
@@ -392,20 +543,26 @@ describe('DesignationsScreen', () => {
         makeTerritory({
           id: 'territory-2',
           name: 'Vila Nova',
-          blocks: [makeBlock({ id: 'block-9', territoryId: 'territory-2', number: 9 })],
+          blocks: [
+            makeBlock({ id: 'block-9', territoryId: 'territory-2', number: 9 }),
+          ],
         }),
       ]),
     });
 
     await renderScreen(api);
     await screen.findByTestId('assignments-map');
-    await press(screen.getByRole('button', { name: 'Território Vila Nova no mapa' }));
+    await press(
+      screen.getByRole('button', { name: 'Território Vila Nova no mapa' }),
+    );
 
     // Tapping the territory itself -- not a block -- opens the blocks/work
     // history screen, not the S-13 card: on the map the admin is already
     // looking at the blocks, and the next question is what has been worked.
     expect(screen.getByLabelText('Quadra 9')).toBeOnTheScreen();
-    expect(screen.queryByText('Designações de Vila Nova')).not.toBeOnTheScreen();
+    expect(
+      screen.queryByText('Designações de Vila Nova'),
+    ).not.toBeOnTheScreen();
   });
 
   it('opens the blocks of a territory from its own row', async () => {
@@ -447,11 +604,75 @@ describe('DesignationsScreen', () => {
 
     await renderScreen(api);
     await screen.findByTestId('territory-row-territory-1');
-    await press(screen.getByRole('button', { name: 'Ver designações de Centro' }));
+    await press(
+      screen.getByRole('button', { name: 'Ver designações de Centro' }),
+    );
     await press(screen.getByRole('button', { name: 'Voltar para a lista' }));
 
     expect(screen.queryByText('Designações de Centro')).not.toBeOnTheScreen();
-    expect(screen.getByRole('button', { name: 'Ver designações de Centro' })).toBeOnTheScreen();
+    expect(
+      screen.getByRole('button', { name: 'Ver designações de Centro' }),
+    ).toBeOnTheScreen();
+  });
+
+  it('closes an open detail when Android back is pressed', async () => {
+    const api = makeApi({
+      listTerritoriesWithBlocks: jest.fn(async () => [
+        makeTerritory({ id: 'territory-1', name: 'Centro' }),
+      ]),
+    });
+    let handleBack:
+      | ((...args: never[]) => boolean | null | undefined)
+      | undefined;
+    jest
+      .spyOn(BackHandler, 'addEventListener')
+      .mockImplementation((_event, listener) => {
+        handleBack = listener;
+        return { remove: jest.fn() };
+      });
+
+    await renderScreen(api);
+    await screen.findByTestId('territory-row-territory-1');
+    await press(
+      screen.getByRole('button', { name: 'Ver designações de Centro' }),
+    );
+
+    await act(async () => {
+      expect(handleBack?.()).toBe(true);
+    });
+
+    expect(screen.queryByText('Designações de Centro')).not.toBeOnTheScreen();
+    expect(
+      screen.getByRole('button', { name: 'Ver designações de Centro' }),
+    ).toBeOnTheScreen();
+  });
+
+  it('keeps the default Android back behavior when no detail is open', async () => {
+    const api = makeApi({
+      listTerritoriesWithBlocks: jest.fn(async () => [
+        makeTerritory({ id: 'territory-1', name: 'Centro' }),
+      ]),
+    });
+    let handleBack:
+      | ((...args: never[]) => boolean | null | undefined)
+      | undefined;
+    jest
+      .spyOn(BackHandler, 'addEventListener')
+      .mockImplementation((_event, listener) => {
+        handleBack = listener;
+        return { remove: jest.fn() };
+      });
+
+    await renderScreen(api);
+    await screen.findByTestId('territory-row-territory-1');
+
+    await act(async () => {
+      expect(handleBack?.()).toBe(false);
+    });
+
+    expect(
+      screen.getByRole('button', { name: 'Ver designações de Centro' }),
+    ).toBeOnTheScreen();
   });
 
   it('opens the panel of the block tapped on the map, with the territory that owns it', async () => {
@@ -465,7 +686,9 @@ describe('DesignationsScreen', () => {
         makeTerritory({
           id: 'territory-2',
           name: 'Vila Nova',
-          blocks: [makeBlock({ id: 'block-3', territoryId: 'territory-2', number: 3 })],
+          blocks: [
+            makeBlock({ id: 'block-3', territoryId: 'territory-2', number: 3 }),
+          ],
         }),
       ]),
     });
@@ -485,13 +708,19 @@ describe('DesignationsScreen', () => {
   it('opens the blocks screen, not the S-13 card nor the combined block panel, when the territory itself is tapped', async () => {
     const api = makeApi({
       listTerritoriesWithBlocks: jest.fn(async () => [
-        makeTerritory({ id: 'territory-1', name: 'Centro', blocks: [makeBlock()] }),
+        makeTerritory({
+          id: 'territory-1',
+          name: 'Centro',
+          blocks: [makeBlock()],
+        }),
       ]),
     });
 
     await renderScreen(api);
     await screen.findByTestId('assignments-map');
-    await press(screen.getByRole('button', { name: 'Território Centro no mapa' }));
+    await press(
+      screen.getByRole('button', { name: 'Território Centro no mapa' }),
+    );
 
     expect(screen.getByLabelText('Quadra 7')).toBeOnTheScreen();
     expect(screen.queryByText('Designações de Centro')).not.toBeOnTheScreen();
@@ -503,7 +732,11 @@ describe('DesignationsScreen', () => {
   it('comes back to the map and the list from a block panel that was open', async () => {
     const api = makeApi({
       listTerritoriesWithBlocks: jest.fn(async () => [
-        makeTerritory({ id: 'territory-1', name: 'Centro', blocks: [makeBlock()] }),
+        makeTerritory({
+          id: 'territory-1',
+          name: 'Centro',
+          blocks: [makeBlock()],
+        }),
       ]),
     });
 
@@ -532,7 +765,9 @@ describe('DesignationsScreen', () => {
       ]);
     const api = makeApi({
       listTerritoriesWithBlocks,
-      listPublishers: jest.fn(async () => [makePublisher('publisher-1', 'Ana')]),
+      listPublishers: jest.fn(async () => [
+        makePublisher('publisher-1', 'Ana'),
+      ]),
     });
 
     await renderScreen(api);
@@ -561,7 +796,9 @@ describe('DesignationsScreen', () => {
       .mockRejectedValue(new Error('Sem conexão com o servidor.'));
     const api = makeApi({
       listTerritoriesWithBlocks,
-      listPublishers: jest.fn(async () => [makePublisher('publisher-1', 'Ana')]),
+      listPublishers: jest.fn(async () => [
+        makePublisher('publisher-1', 'Ana'),
+      ]),
     });
 
     await renderScreen(api);
@@ -572,7 +809,9 @@ describe('DesignationsScreen', () => {
 
     // The write landed; only the refresh failed. Closing the panel would hide
     // that from the admin and throw away where he was.
-    expect(await screen.findByRole('alert')).toHaveTextContent('Sem conexão com o servidor.');
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Sem conexão com o servidor.',
+    );
     expect(screen.getByText('Quadra 7')).toBeOnTheScreen();
   });
 
@@ -593,7 +832,9 @@ describe('DesignationsScreen', () => {
     // map than a panel describing a block that is not there any more.
     expect(screen.queryByText(TERRITORY_SCOPE_NOTE)).not.toBeOnTheScreen();
     // Not an empty overlay with a way out of it: the overlay itself is gone.
-    expect(screen.queryByRole('button', { name: 'Voltar para a lista' })).not.toBeOnTheScreen();
+    expect(
+      screen.queryByRole('button', { name: 'Voltar para a lista' }),
+    ).not.toBeOnTheScreen();
     expect(screen.getByTestId('territory-row-territory-1')).toBeOnTheScreen();
   });
 
@@ -616,13 +857,17 @@ describe('DesignationsScreen', () => {
   it('closes the detail of a territory that is no longer in the reloaded list', async () => {
     const listTerritoriesWithBlocks = jest
       .fn<Promise<Territory[]>, []>()
-      .mockResolvedValueOnce([makeTerritory({ id: 'territory-1', name: 'Centro' })])
+      .mockResolvedValueOnce([
+        makeTerritory({ id: 'territory-1', name: 'Centro' }),
+      ])
       .mockResolvedValue([]);
     const api = makeApi({ listTerritoriesWithBlocks });
 
     await renderScreen(api);
     await screen.findByTestId('territory-row-territory-1');
-    await press(screen.getByRole('button', { name: 'Ver designações de Centro' }));
+    await press(
+      screen.getByRole('button', { name: 'Ver designações de Centro' }),
+    );
     await press(screen.getByRole('button', { name: 'Recarregar' }));
 
     // Better an honest empty list than a card describing something that is not
@@ -649,8 +894,14 @@ describe('DesignationsScreen', () => {
     await screen.findByTestId('territory-row-t1');
 
     // A ordem real das linhas, pelo id que `makeTerritory` deu a cada uma.
-    const order = screen.getAllByTestId(/^territory-row-/).map(row => row.props.testID);
-    expect(order).toEqual(['territory-row-t2', 'territory-row-t3', 'territory-row-t1']);
+    const order = screen
+      .getAllByTestId(/^territory-row-/)
+      .map(row => row.props.testID);
+    expect(order).toEqual([
+      'territory-row-t2',
+      'territory-row-t3',
+      'territory-row-t1',
+    ]);
   });
 
   // --- Quantidade de quadras e concluir direto na linha ---------------------
@@ -661,9 +912,16 @@ describe('DesignationsScreen', () => {
         makeTerritory({
           id: 'territory-1',
           name: 'Centro',
-          blocks: [makeBlock({ id: 'b1', number: 1 }), makeBlock({ id: 'b2', number: 2 })],
+          blocks: [
+            makeBlock({ id: 'b1', number: 1 }),
+            makeBlock({ id: 'b2', number: 2 }),
+          ],
         }),
-        makeTerritory({ id: 'territory-2', name: 'Jardim', blocks: [makeBlock({ id: 'b3' })] }),
+        makeTerritory({
+          id: 'territory-2',
+          name: 'Jardim',
+          blocks: [makeBlock({ id: 'b3' })],
+        }),
         makeTerritory({ id: 'territory-3', name: 'Vila', blocks: [] }),
       ]),
     });
@@ -674,13 +932,19 @@ describe('DesignationsScreen', () => {
     // Plural, singular e nenhuma: as três formas são lidas por quem percorre a
     // lista, e "1 quadras" seria ruído no meio delas.
     expect(
-      within(screen.getByTestId('territory-row-territory-1')).getByText('2 quadras'),
+      within(screen.getByTestId('territory-row-territory-1')).getByText(
+        '2 quadras',
+      ),
     ).toBeOnTheScreen();
     expect(
-      within(screen.getByTestId('territory-row-territory-2')).getByText('1 quadra'),
+      within(screen.getByTestId('territory-row-territory-2')).getByText(
+        '1 quadra',
+      ),
     ).toBeOnTheScreen();
     expect(
-      within(screen.getByTestId('territory-row-territory-3')).getByText('Sem quadras'),
+      within(screen.getByTestId('territory-row-territory-3')).getByText(
+        'Sem quadras',
+      ),
     ).toBeOnTheScreen();
   });
 
@@ -692,17 +956,25 @@ describe('DesignationsScreen', () => {
           name: 'Centro',
           assignedPublisher: { id: 'pub-1', name: 'Ana' },
         }),
-        makeTerritory({ id: 'territory-2', name: 'Jardim', assignedPublisher: null }),
+        makeTerritory({
+          id: 'territory-2',
+          name: 'Jardim',
+          assignedPublisher: null,
+        }),
       ]),
     });
 
     await renderScreen(api);
     await screen.findByTestId('territory-row-territory-1');
 
-    expect(screen.getByLabelText('Marcar Centro como concluído')).toBeOnTheScreen();
+    expect(
+      screen.getByLabelText('Marcar Centro como concluído'),
+    ).toBeOnTheScreen();
     // Território sem ninguém não tem designação a encerrar: o botão nem aparece,
     // em vez de aparecer e não fazer nada.
-    expect(screen.queryByLabelText('Marcar Jardim como concluído')).not.toBeOnTheScreen();
+    expect(
+      screen.queryByLabelText('Marcar Jardim como concluído'),
+    ).not.toBeOnTheScreen();
   });
 
   it('confirmar na linha encerra a designação e recarrega a lista', async () => {
@@ -711,7 +983,11 @@ describe('DesignationsScreen', () => {
       name: 'Centro',
       assignedPublisher: { id: 'pub-1', name: 'Ana' },
     });
-    const freed = makeTerritory({ id: 'territory-1', name: 'Centro', assignedPublisher: null });
+    const freed = makeTerritory({
+      id: 'territory-1',
+      name: 'Centro',
+      assignedPublisher: null,
+    });
     const listTerritoriesWithBlocks = jest
       .fn<Promise<Territory[]>, []>()
       .mockResolvedValueOnce([assigned])
@@ -723,13 +999,55 @@ describe('DesignationsScreen', () => {
 
     // O texto tem de dizer a consequência, não só a ação -- é a mesma frase que
     // o cartão S-13 mostra para o mesmo evento.
-    expect(lastAlert().message).toContain('perde na hora o acesso para marcar quadras nele');
+    expect(lastAlert().message).toContain(
+      'perde na hora o acesso para marcar quadras nele',
+    );
 
     await confirmLastAlert();
 
     expect(api.completeAssignment).toHaveBeenCalledWith('territory-1');
     expect(listTerritoriesWithBlocks).toHaveBeenCalledTimes(2);
     expect(await screen.findByText(NO_LEADER_LABEL_TEXT)).toBeOnTheScreen();
+  });
+
+  it('desabilita concluir e ignora o segundo toque enquanto a escrita está pendente', async () => {
+    let resolveComplete: () => void = () => {};
+    const completeAssignment = jest.fn(
+      () =>
+        new Promise<void>(resolve => {
+          resolveComplete = resolve;
+        }),
+    );
+    const api = makeApi({
+      listTerritoriesWithBlocks: jest.fn(async () => [
+        makeTerritory({ assignedPublisher: { id: 'pub-1', name: 'Ana' } }),
+      ]),
+      completeAssignment,
+    });
+
+    await renderScreen(api);
+    await press(await screen.findByLabelText('Marcar Centro como concluído'));
+    const confirm = lastAlert().buttons.find(
+      button => button.style !== 'cancel',
+    );
+    await act(async () => {
+      confirm?.onPress?.();
+    });
+
+    const completeButton = screen.getByLabelText(
+      'Marcar Centro como concluído',
+    );
+    expect(completeButton).toBeDisabled();
+    expect(screen.getByText('Atualizando…')).toBeOnTheScreen();
+    await press(completeButton);
+    expect(completeAssignment).toHaveBeenCalledTimes(1);
+
+    resolveComplete();
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText('Marcar Centro como concluído'),
+      ).toBeEnabled(),
+    );
   });
 
   it('cancelar na linha não chama a API', async () => {
@@ -741,7 +1059,9 @@ describe('DesignationsScreen', () => {
 
     await renderScreen(api);
     await press(await screen.findByLabelText('Marcar Centro como concluído'));
-    const cancel = lastAlert().buttons.find(button => button.style === 'cancel');
+    const cancel = lastAlert().buttons.find(
+      button => button.style === 'cancel',
+    );
 
     expect(cancel).toBeDefined();
     await act(async () => {
@@ -766,7 +1086,9 @@ describe('DesignationsScreen', () => {
     await press(await screen.findByLabelText('Marcar Centro como concluído'));
     await confirmLastAlert();
 
-    expect(screen.getByRole('alert')).toHaveTextContent('Designação já encerrada.');
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Designação já encerrada.',
+    );
     // Uma escrita recusada não mudou nada no servidor: recarregar só apagaria o
     // aviso da tela antes de o admin lê-lo.
     expect(listTerritoriesWithBlocks).toHaveBeenCalledTimes(1);

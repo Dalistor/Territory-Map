@@ -41,6 +41,12 @@ export interface PublisherBrief {
   readonly name: string;
 }
 
+/** The most recent work recorded on any block in a territory. */
+export interface LastWorkSummary {
+  readonly publisher: PublisherBrief;
+  readonly workedAt: Date;
+}
+
 /**
  * A publisher as the admin sees them. `accessCode` is a live credential and is
  * only present while the code has not been redeemed or expired -- it must
@@ -101,6 +107,8 @@ export interface Territory {
    * existed.
    */
   readonly rotationDays: number | null;
+  /** `null` means no block in the territory has been worked. */
+  readonly lastWork?: LastWorkSummary | null;
   /** Empty on the listing endpoint, populated on the detail one. */
   readonly blocks: Block[];
 }
@@ -205,4 +213,3 @@ export function compareTerritoriesByNumber(a: string, b: string): number {
   }
   return a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true });
 }
-

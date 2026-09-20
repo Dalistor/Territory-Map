@@ -207,6 +207,58 @@ describe('HomeScreen loading and header', () => {
 
     expect(await screen.findByText(/nenhum território/i)).toBeInTheDocument()
   })
+
+  it('shows the latest work separately from the current assignment', async () => {
+    const workedAt = new Date(2026, 8, 5)
+    const api = makeApi({
+      territories: {
+        listWithBlocks: vi.fn().mockResolvedValue([
+          makeTerritory({
+            assignedUser: { id: 'assigned-user', name: 'Maria' },
+            lastWork: {
+              publisher: { id: 'worker', name: 'João' },
+              workedAt
+            }
+          })
+        ]),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn()
+      }
+    })
+    vi.stubGlobal('api', api)
+
+    render(<HomeScreen />)
+
+    const row = await screen.findByText('Centro')
+    const territoryRow = row.closest('li')
+    expect(territoryRow).not.toBeNull()
+    expect(within(territoryRow as HTMLElement).getByText('Designado a Maria')).toBeInTheDocument()
+    expect(
+      within(territoryRow as HTMLElement).getByText(
+        `Último trabalho: João — ${workedAt.toLocaleDateString()}`
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('shows that a territory was never worked when it has no latest work', async () => {
+    const api = makeApi({
+      territories: {
+        listWithBlocks: vi.fn().mockResolvedValue([makeTerritory()]),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn()
+      }
+    })
+    vi.stubGlobal('api', api)
+
+    render(<HomeScreen />)
+
+    const row = await screen.findByText('Centro')
+    expect(
+      within(row.closest('li') as HTMLElement).getByText('Nunca trabalhado')
+    ).toBeInTheDocument()
+  })
 })
 
 /** Opens a territory row's "⋮" options menu -- its three actions only render once it is open. */
@@ -220,6 +272,57 @@ async function openTerritoryMenu(
 }
 
 describe('HomeScreen territory actions', () => {
+  it('keeps Quadras and Configurações visible as quick actions alongside the options menu', async () => {
+    const territory = makeTerritory({ name: 'Bairro Sul' })
+    const api = makeApi({
+      territories: {
+        listWithBlocks: vi.fn().mockResolvedValue([territory]),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn()
+      }
+    })
+    const onAddBlock = vi.fn()
+    const onOpenSettings = vi.fn()
+    vi.stubGlobal('api', api)
+    const user = userEvent.setup()
+
+    render(<HomeScreen onAddBlock={onAddBlock} onOpenSettings={onOpenSettings} />)
+
+    await user.click(await screen.findByRole('button', { name: 'Quadras' }))
+    await user.click(screen.getByRole('button', { name: 'Configurações' }))
+
+    expect(onAddBlock).toHaveBeenCalledWith(territory)
+    expect(onOpenSettings).toHaveBeenCalledWith(territory)
+    await openTerritoryMenu(user, 'Bairro Sul')
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+  })
+
+  it('moves through the territory menu with arrows and returns focus to its trigger on Escape', async () => {
+    const territory = makeTerritory({ name: 'Bairro Sul' })
+    const api = makeApi({
+      territories: {
+        listWithBlocks: vi.fn().mockResolvedValue([territory]),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn()
+      }
+    })
+    vi.stubGlobal('api', api)
+    const user = userEvent.setup()
+
+    render(<HomeScreen />)
+    const trigger = await screen.findByRole('button', { name: 'Opções de Bairro Sul' })
+    await user.click(trigger)
+    const firstItem = screen.getByRole('menuitem', { name: /adicionar quadra/i })
+    expect(firstItem).toHaveFocus()
+    await user.keyboard('{ArrowDown}')
+    expect(screen.getByRole('menuitem', { name: /editar demarcação/i })).toHaveFocus()
+    await user.keyboard('{Escape}')
+    expect(trigger).toHaveFocus()
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
   it('the "⋮" menu offers exactly four actions: add block, edit boundary, settings and delete territory', async () => {
     const territory = makeTerritory({ name: 'Bairro Sul' })
     const api = makeApi({
@@ -683,6 +786,64 @@ describe('HomeScreen reloading', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Falha ao recarregar.')
   })
+
+  it('disables reload and prevents a second fetch while the refresh is pending', async () => {
+    let resolveReload: (territories: Territory[]) => void = () => {}
+    const listWithBlocks = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockImplementationOnce(
+        () =>
+          new Promise<Territory[]>((resolve) => {
+            resolveReload = resolve
+          })
+      )
+    const api = makeApi({
+      territories: { listWithBlocks, create: vi.fn(), update: vi.fn(), delete: vi.fn() }
+    })
+    vi.stubGlobal('api', api)
+    const user = userEvent.setup()
+
+    render(<HomeScreen />)
+    await waitFor(() => expect(listWithBlocks).toHaveBeenCalledTimes(1))
+
+    const reload = screen.getByRole('button', { name: /recarregar/i })
+    await user.click(reload)
+    expect(reload).toBeDisabled()
+    expect(reload).toHaveTextContent('Atualizando…')
+
+    await user.click(reload)
+    expect(listWithBlocks).toHaveBeenCalledTimes(2)
+
+    resolveReload([])
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Recarregar' })).toBeEnabled())
+  })
+
+  it('restores reload after a failed refresh', async () => {
+    let rejectReload: (error: unknown) => void = () => {}
+    const listWithBlocks = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockImplementationOnce(
+        () =>
+          new Promise<Territory[]>((_resolve, reject) => {
+            rejectReload = reject
+          })
+      )
+    const api = makeApi({
+      territories: { listWithBlocks, create: vi.fn(), update: vi.fn(), delete: vi.fn() }
+    })
+    vi.stubGlobal('api', api)
+    const user = userEvent.setup()
+
+    render(<HomeScreen />)
+    await waitFor(() => expect(listWithBlocks).toHaveBeenCalledTimes(1))
+    await user.click(screen.getByRole('button', { name: /recarregar/i }))
+    rejectReload(new Error('Falha ao recarregar.'))
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Recarregar' })).toBeEnabled())
+    expect(screen.getByRole('alert')).toHaveTextContent('Falha ao recarregar.')
+  })
 })
 
 describe('HomeScreen header after the sidebar shell', () => {
@@ -719,16 +880,16 @@ describe('HomeScreen tapping a block on the map', () => {
   it('opens a menu offering "Ver histórico", "Editar contorno ou número" and "Apagar quadra"', async () => {
     await renderWithOneBlock()
 
-    expect(screen.getByRole('menuitem', { name: 'Ver histórico' })).toBeInTheDocument()
-    expect(screen.getByRole('menuitem', { name: 'Editar contorno ou número' })).toBeInTheDocument()
-    expect(screen.getByRole('menuitem', { name: 'Apagar quadra' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Ver histórico' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Editar contorno ou número' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Apagar quadra' })).toBeInTheDocument()
   })
 
   it('"Ver histórico" signals the territory and the block', async () => {
     const onShowHistory = vi.fn()
     const { territory, block, user } = await renderWithOneBlock({ onShowHistory })
 
-    await user.click(screen.getByRole('menuitem', { name: 'Ver histórico' }))
+    await user.click(screen.getByRole('button', { name: 'Ver histórico' }))
 
     expect(onShowHistory).toHaveBeenCalledWith(territory, block)
   })
@@ -737,7 +898,7 @@ describe('HomeScreen tapping a block on the map', () => {
     const onEditBlock = vi.fn()
     const { territory, block, user } = await renderWithOneBlock({ onEditBlock })
 
-    await user.click(screen.getByRole('menuitem', { name: 'Editar contorno ou número' }))
+    await user.click(screen.getByRole('button', { name: 'Editar contorno ou número' }))
 
     expect(onEditBlock).toHaveBeenCalledWith(territory, block)
   })
@@ -748,7 +909,7 @@ describe('HomeScreen tapping a block on the map', () => {
     api.blocks.delete = deleteBlock
     const { block, user } = await renderWithOneBlock({}, api)
 
-    await user.click(screen.getByRole('menuitem', { name: 'Apagar quadra' }))
+    await user.click(screen.getByRole('button', { name: 'Apagar quadra' }))
 
     const message = confirmSpy.mock.calls[0]?.[0] as string
     expect(message).toMatch(/histórico/i)
@@ -762,7 +923,7 @@ describe('HomeScreen tapping a block on the map', () => {
     api.blocks.delete = deleteBlock
     const { user } = await renderWithOneBlock({}, api)
 
-    await user.click(screen.getByRole('menuitem', { name: 'Apagar quadra' }))
+    await user.click(screen.getByRole('button', { name: 'Apagar quadra' }))
 
     expect(deleteBlock).not.toHaveBeenCalled()
   })
@@ -772,7 +933,7 @@ describe('HomeScreen tapping a block on the map', () => {
     api.blocks.delete = vi.fn().mockRejectedValue(new Error('A quadra tem um registro pendente.'))
     const { user } = await renderWithOneBlock({}, api)
 
-    await user.click(screen.getByRole('menuitem', { name: 'Apagar quadra' }))
+    await user.click(screen.getByRole('button', { name: 'Apagar quadra' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('A quadra tem um registro pendente.')
   })
@@ -784,7 +945,7 @@ describe('HomeScreen tapping a block on the map', () => {
 
     await user.click(screen.getByRole('button', { name: 'Fechar' }))
 
-    expect(screen.queryByRole('menuitem', { name: 'Ver histórico' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Ver histórico' })).not.toBeInTheDocument()
     expect(onShowHistory).not.toHaveBeenCalled()
     expect(onEditBlock).not.toHaveBeenCalled()
   })
@@ -809,7 +970,7 @@ describe('HomeScreen marking a block as worked', () => {
 
     render(<HomeScreen now={TODAY} />)
     await user.click(await screen.findByRole('button', { name: 'Quadra 7' }))
-    await user.click(screen.getByRole('menuitem', { name: 'Marcar como trabalhada' }))
+    await user.click(screen.getByRole('button', { name: 'Marcar como trabalhada' }))
 
     return { block, user }
   }
@@ -825,7 +986,7 @@ describe('HomeScreen marking a block as worked', () => {
     render(<HomeScreen now={TODAY} />)
     await user.click(await screen.findByRole('button', { name: 'Quadra 7' }))
 
-    expect(screen.getByRole('menuitem', { name: 'Marcar como trabalhada' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Marcar como trabalhada' })).toBeInTheDocument()
   })
 
   it('lists the congregation publishers in the form it opens', async () => {

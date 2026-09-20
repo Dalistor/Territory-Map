@@ -23,6 +23,7 @@ from app.core.exceptions import (
 from app.core.geo import LatLng, points_to_wkt
 from app.models.block import Block
 from app.repositories.block import BlockRepository
+from app.repositories.block_work_log import BlockWorkLogRepository
 from app.repositories.territory import TerritoryRepository
 from app.services.territory import TerritoryService
 from sqlalchemy.orm import Session
@@ -45,6 +46,7 @@ def service(session: Session) -> TerritoryService:
     return TerritoryService(
         territories=TerritoryRepository(session),
         blocks=BlockRepository(session),
+        work_logs=BlockWorkLogRepository(session),
         now_provider=lambda: NOW,
     )
 

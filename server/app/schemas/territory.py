@@ -1,5 +1,6 @@
 """DTOs of the territory -- the demarcated area, and the blocks drawn inside it."""
 
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -35,6 +36,13 @@ class TerritoryPatchIn(BaseModel):
     rotation_days: int | None = Field(default=None, ge=1, le=3650)
 
 
+class LastWorkOut(BaseModel):
+    """The most recent block work recorded anywhere in a territory."""
+
+    user: UserBriefOut
+    worked_at: datetime
+
+
 class TerritoryOut(OutSchema):
     """A territory as both clients read it.
 
@@ -58,6 +66,7 @@ class TerritoryOut(OutSchema):
     blocks: list[BlockOut] = []
     assigned_user: UserBriefOut | None = None
     rotation_days: int | None = None
+    last_work: LastWorkOut | None = None
 
 
 class TerritoryBriefOut(OutSchema):

@@ -8,11 +8,12 @@
 // `onChanged` whenever something that changes the block's colour happens --
 // knowing that the page above needs to reload is the caller's business, the
 // same split `BlockHistorySheet` already makes with `onWorkLogDeleted`.
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Block, BlockStatusOverride, Territory, WorkLog } from '../../shared/models'
 import { workLogWasSyncedLate } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
 import { MarkWorkedForm } from './MarkWorkedForm'
+import { Dialog } from '../components/Dialog'
 
 const GENERIC_ERROR_MESSAGE = 'Não foi possível completar a operação.'
 
@@ -64,6 +65,8 @@ export function BlockWorkPanel({
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const [isAdding, setIsAdding] = useState(false)
   const [status, setStatus] = useState<StatusChoice>(block.statusOverride ?? 'auto')
+  const [isActionPending, setIsActionPending] = useState(false)
+  const actionInFlight = useRef(false)
 
   const load = useCallback(async () => {
     setIsLoading(true)
@@ -90,6 +93,9 @@ export function BlockWorkPanel({
   const pendingLog = logs.find((log) => log.id === pendingDeleteId) ?? null
 
   async function addWorkLog(publisherId: string, workedAt: Date): Promise<void> {
+    if (actionInFlight.current) return
+    actionInFlight.current = true
+    setIsActionPending(true)
     setError(null)
     try {
       await window.api.workLogs.markWorked(block.id, publisherId, workedAt)
@@ -98,10 +104,16 @@ export function BlockWorkPanel({
       onChanged?.()
     } catch (err) {
       setError(errorMessage(err, GENERIC_ERROR_MESSAGE))
+    } finally {
+      actionInFlight.current = false
+      setIsActionPending(false)
     }
   }
 
   async function confirmDelete(log: WorkLog): Promise<void> {
+    if (actionInFlight.current) return
+    actionInFlight.current = true
+    setIsActionPending(true)
     setPendingDeleteId(null)
     setError(null)
     try {
@@ -110,10 +122,16 @@ export function BlockWorkPanel({
       onChanged?.()
     } catch (err) {
       setError(errorMessage(err, 'Não foi possível remover o registro.'))
+    } finally {
+      actionInFlight.current = false
+      setIsActionPending(false)
     }
   }
 
   async function changeStatus(choice: StatusChoice): Promise<void> {
+    if (actionInFlight.current) return
+    actionInFlight.current = true
+    setIsActionPending(true)
     const previous = status
     setStatus(choice)
     setError(null)
@@ -128,6 +146,9 @@ export function BlockWorkPanel({
       // have.
       setStatus(previous)
       setError(errorMessage(err, 'Não foi possível alterar o status da quadra.'))
+    } finally {
+      actionInFlight.current = false
+      setIsActionPending(false)
     }
   }
 
@@ -140,6 +161,7 @@ export function BlockWorkPanel({
           <span>Status da quadra</span>
           <select
             value={status}
+            disabled={isActionPending}
             onChange={(event) => void changeStatus(event.target.value as StatusChoice)}
           >
             {STATUS_OPTIONS.map((option) => (
@@ -171,6 +193,7 @@ export function BlockWorkPanel({
                 )}
                 <button
                   type="button"
+                  disabled={isActionPending}
                   aria-label={`Remover registro de ${log.publisher.name} em ${formatDateTime(log.workedAt)}`}
                   onClick={() => setPendingDeleteId(log.id)}
                 >
@@ -189,16 +212,17 @@ export function BlockWorkPanel({
           // but the admin can still record someone else's work.
           preselectedPublisherId={territory.assignedUser?.id}
           onConfirm={(publisherId, workedAt) => void addWorkLog(publisherId, workedAt)}
+          isSubmitting={isActionPending}
           onCancel={() => setIsAdding(false)}
         />
       ) : (
-        <button type="button" onClick={() => setIsAdding(true)}>
-          Adicionar registro
+        <button type="button" disabled={isActionPending} onClick={() => setIsAdding(true)}>
+          {isActionPending ? 'Atualizando…' : 'Adicionar registro'}
         </button>
       )}
 
       {pendingLog && (
-        <div role="dialog" aria-label="Remover registro?">
+        <Dialog title="Remover registro?" onClose={() => setPendingDeleteId(null)}>
           <p>
             A marcação de {pendingLog.publisher.name} em {formatDateTime(pendingLog.workedAt)} será
             apagada, e a data da última visita da quadra será recalculada.
@@ -207,11 +231,15 @@ export function BlockWorkPanel({
             <button type="button" onClick={() => setPendingDeleteId(null)}>
               Cancelar
             </button>
-            <button type="button" onClick={() => void confirmDelete(pendingLog)}>
-              Remover
+            <button
+              type="button"
+              disabled={isActionPending}
+              onClick={() => void confirmDelete(pendingLog)}
+            >
+              {isActionPending ? 'Atualizando…' : 'Remover'}
             </button>
           </div>
-        </div>
+        </Dialog>
       )}
     </div>
   )

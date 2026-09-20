@@ -488,6 +488,7 @@ describe('AuthenticatedApp sidebar shell', () => {
     render(<App />)
 
     const nav = await screen.findByRole('navigation')
+    expect(nav).toHaveAccessibleName('Navegação principal')
     expect(within(nav).getByText('Congregação Central')).toBeInTheDocument()
     expect(within(nav).getByText('São Paulo')).toBeInTheDocument()
     const mapButton = within(nav).getByRole('button', { name: 'Mapa' })
@@ -808,7 +809,7 @@ describe('AuthenticatedApp navigation', () => {
     )
 
     await user.click(await screen.findByRole('button', { name: `Quadra ${block.number}` }))
-    await user.click(screen.getByRole('menuitem', { name: 'Ver histórico' }))
+    await user.click(screen.getByRole('button', { name: 'Ver histórico' }))
 
     expect(
       await screen.findByRole('heading', { name: `Quadra ${block.number} — ${territory.name}` })

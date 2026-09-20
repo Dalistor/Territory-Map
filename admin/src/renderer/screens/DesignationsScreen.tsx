@@ -9,13 +9,14 @@
 // record). Before spec 0007 this was a one-shot "pick a publisher" dialog;
 // designation is a historical record now, so the panel has to show the past,
 // not just overwrite the present.
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { LatLngTuple } from 'leaflet'
 import type { S13TImportPreview } from '../../shared/ipc-contract'
 import type { Assignment, Publisher, Territory } from '../../shared/models'
 import { assignmentIsOpen, getServiceYear } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
 import { AssignmentsMap } from '../map/AssignmentsMap'
+import { Dialog } from '../components/Dialog'
 
 const GENERIC_ERROR_MESSAGE = 'Não foi possível completar a operação.'
 
@@ -75,9 +76,13 @@ export interface DesignationsScreenProps {
 export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps): React.JSX.Element {
   const [territories, setTerritories] = useState<Territory[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const refreshInFlight = useRef(false)
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const [actionError, setActionError] = useState<string | null>(null)
+  const [isActionPending, setIsActionPending] = useState(false)
+  const actionInFlight = useRef(false)
   const [exportPath, setExportPath] = useState<string | null>(null)
 
   // `panelTarget` doubles as "is the panel open" -- non-null means it is, for
@@ -93,6 +98,9 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
   // action) -- the mount fetch below skips the synchronous reset, same
   // rationale as HomeScreen's.
   const load = useCallback(async () => {
+    if (refreshInFlight.current) return
+    refreshInFlight.current = true
+    setIsRefreshing(true)
     setIsLoading(true)
     setLoadError(null)
     try {
@@ -102,6 +110,8 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
       setLoadError(errorMessage(error))
     } finally {
       setIsLoading(false)
+      refreshInFlight.current = false
+      setIsRefreshing(false)
     }
   }, [])
 
@@ -127,11 +137,17 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
 
   /** Turns a rejected write into a visible `role="alert"`, never an unhandled rejection. */
   const runAction = useCallback(async (action: () => Promise<void>) => {
+    if (actionInFlight.current) return
+    actionInFlight.current = true
+    setIsActionPending(true)
     setActionError(null)
     try {
       await action()
     } catch (error) {
       setActionError(errorMessage(error))
+    } finally {
+      actionInFlight.current = false
+      setIsActionPending(false)
     }
   }, [])
 
@@ -327,17 +343,26 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
           )}
         </div>
         <div className="header-actions">
-          <button type="button" className="button-primary" onClick={() => setShowExportModal(true)}>
+          <button
+            type="button"
+            className="button-primary"
+            disabled={isActionPending}
+            onClick={() => setShowExportModal(true)}
+          >
             📋 Exportar S-13-T
           </button>
-          <button type="button" onClick={() => void importS13T()}>
-            📥 Importar S-13-T
+          <button type="button" disabled={isActionPending} onClick={() => void importS13T()}>
+            {isActionPending ? 'Atualizando…' : '📥 Importar S-13-T'}
           </button>
-          <button type="button" onClick={() => void exportToExcel()}>
-            Exportar para Excel
+          <button type="button" disabled={isActionPending} onClick={() => void exportToExcel()}>
+            {isActionPending ? 'Atualizando…' : 'Exportar para Excel'}
           </button>
-          <button type="button" onClick={() => void load()}>
-            Recarregar
+          <button
+            type="button"
+            disabled={isLoading || isRefreshing || isActionPending}
+            onClick={() => void load()}
+          >
+            {isLoading || isRefreshing ? 'Atualizando…' : 'Recarregar'}
           </button>
         </div>
       </header>
@@ -384,8 +409,11 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
 
         {/* S-13-T Export Modal */}
         {showExportModal && (
-          <div className="export-modal" role="dialog" aria-label="Exportar Formulário S-13-T">
-            <h2>Exportar Registro de Designação (S-13-T)</h2>
+          <Dialog
+            className="export-modal"
+            title="Exportar Registro de Designação (S-13-T)"
+            onClose={() => setShowExportModal(false)}
+          >
             <p className="dialog-subtitle">
               Gera o documento oficial de Registro de Designação de Território preenchido e
               formatado.
@@ -426,17 +454,25 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
               <button type="button" onClick={() => setShowExportModal(false)}>
                 Cancelar
               </button>
-              <button type="button" className="button-primary" onClick={() => void exportS13T()}>
-                Gerar S-13-T ({exportFormat.toUpperCase()})
+              <button
+                type="button"
+                className="button-primary"
+                disabled={isActionPending}
+                onClick={() => void exportS13T()}
+              >
+                {isActionPending ? 'Gerando…' : `Gerar S-13-T (${exportFormat.toUpperCase()})`}
               </button>
             </div>
-          </div>
+          </Dialog>
         )}
 
         {/* S-13-T Import Preview Modal */}
         {importPreview !== null && (
-          <div className="import-modal" role="dialog" aria-label="Prévia da Importação S-13-T">
-            <h2>Importar Registros S-13-T</h2>
+          <Dialog
+            className="import-modal"
+            title="Importar Registros S-13-T"
+            onClose={() => setImportPreview(null)}
+          >
             <p className="dialog-subtitle">
               Arquivo: <strong>{importPreview.fileName}</strong>
               {importPreview.serviceYear ? ` • Ano de Serviço ${importPreview.serviceYear}` : ''}
@@ -494,23 +530,21 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
               <button
                 type="button"
                 className="button-primary"
-                disabled={importPreview.totalAssignmentsCount === 0}
+                disabled={importPreview.totalAssignmentsCount === 0 || isActionPending}
                 onClick={() => void executeImport(importPreview)}
               >
-                Confirmar e Importar
+                {isActionPending ? 'Importando…' : 'Confirmar e Importar'}
               </button>
             </div>
-          </div>
+          </Dialog>
         )}
 
         {panelTarget !== null && (
-          <div
+          <Dialog
             className="assignment-panel"
-            role="dialog"
-            aria-label={`Designações de ${panelTarget.name}`}
+            title={`Designações de ${panelTarget.name}`}
+            onClose={() => setPanelTarget(null)}
           >
-            <h2>Designações de {panelTarget.name}</h2>
-
             <h3>Designação atual</h3>
             {openAssignment === undefined ? (
               <p className="dialog-subtitle">Sem dirigente</p>
@@ -533,6 +567,7 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
                     </span>
                     <button
                       type="button"
+                      disabled={isActionPending}
                       aria-label={`Apagar designação de ${assignment.publisher.name}`}
                       onClick={() => void deleteAssignment(assignment)}
                     >
@@ -568,20 +603,20 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
                 Fechar
               </button>
               {openAssignment !== undefined && (
-                <button type="button" onClick={() => void complete()}>
-                  Marcar como concluído
+                <button type="button" disabled={isActionPending} onClick={() => void complete()}>
+                  {isActionPending ? 'Atualizando…' : 'Marcar como concluído'}
                 </button>
               )}
               <button
                 type="button"
                 className="button-primary"
-                disabled={selectedPublisherId === null}
+                disabled={selectedPublisherId === null || isActionPending}
                 onClick={() => void designate()}
               >
-                Designar
+                {isActionPending ? 'Atualizando…' : 'Designar'}
               </button>
             </div>
-          </div>
+          </Dialog>
         )}
       </main>
     </div>

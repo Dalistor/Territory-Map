@@ -7,10 +7,11 @@
 // never put in a URL. Regenerating one is the answer to a lost phone, a
 // reinstall or an expired code -- and it invalidates whatever the person had
 // before.
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Publisher } from '../../shared/models'
 import { publisherHasLiveCode, publisherIsPending } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
+import { Dialog } from '../components/Dialog'
 
 const GENERIC_ERROR_MESSAGE = 'Não foi possível completar a operação.'
 
@@ -117,6 +118,8 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [isWriting, setIsWriting] = useState(false)
+  const writeInFlight = useRef(false)
 
   const [search, setSearch] = useState('')
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
@@ -126,12 +129,41 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
 
+  useEffect(() => {
+    if (openMenuId === null) return
+    document.querySelector<HTMLElement>(`[data-publisher-menu="${openMenuId}"] button`)?.focus()
+  }, [openMenuId])
+
+  function moveInMenu(event: React.KeyboardEvent<HTMLUListElement>): void {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End', 'Escape'].includes(event.key)) return
+    event.preventDefault()
+    if (event.key === 'Escape') {
+      setOpenMenuId(null)
+      document.querySelector<HTMLElement>('[aria-expanded="true"]')?.focus()
+      return
+    }
+    const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button'))
+    const current = items.indexOf(document.activeElement as HTMLElement)
+    const next = event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? items.length - 1
+        : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
+    items[next]?.focus()
+  }
+
   /** Runs a write against `window.api.publishers`, surfacing any failure as a toast instead of letting it escape. */
   async function runWrite(action: () => Promise<void>): Promise<void> {
+    if (writeInFlight.current) return
+    writeInFlight.current = true
+    setIsWriting(true)
     try {
       await action()
     } catch (error) {
       setToast(errorMessage(error))
+    } finally {
+      writeInFlight.current = false
+      setIsWriting(false)
     }
   }
 
@@ -280,7 +312,12 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
         </div>
       )}
 
-      <button type="button" className="button-primary" onClick={openCreateForm}>
+      <button
+        type="button"
+        className="button-primary"
+        disabled={isWriting}
+        onClick={openCreateForm}
+      >
         Cadastrar
       </button>
 
@@ -339,7 +376,9 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
                         if (event.key === 'Escape') cancelRename()
                       }}
                     />
-                    <button type="submit">Salvar</button>
+                    <button type="submit" disabled={isWriting}>
+                      {isWriting ? 'Salvando…' : 'Salvar'}
+                    </button>
                     <button type="button" onClick={cancelRename}>
                       Cancelar
                     </button>
@@ -364,7 +403,12 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
                 ⋮
               </button>
               {openMenuId === publisher.id && (
-                <ul role="menu" aria-label={`Ações de ${publisher.name}`}>
+                <ul
+                  role="menu"
+                  aria-label={`Ações de ${publisher.name}`}
+                  data-publisher-menu={publisher.id}
+                  onKeyDown={moveInMenu}
+                >
                   {publisherHasLiveCode(publisher, today) && (
                     <li>
                       <button type="button" onClick={() => showExistingCode(publisher)}>
@@ -378,12 +422,20 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
                     </button>
                   </li>
                   <li>
-                    <button type="button" onClick={() => regenerate(publisher)}>
+                    <button
+                      type="button"
+                      disabled={isWriting}
+                      onClick={() => regenerate(publisher)}
+                    >
                       Gerar novo código
                     </button>
                   </li>
                   <li>
-                    <button type="button" onClick={() => toggleActive(publisher)}>
+                    <button
+                      type="button"
+                      disabled={isWriting}
+                      onClick={() => toggleActive(publisher)}
+                    >
                       {publisher.isActive ? 'Desativar' : 'Reativar'}
                     </button>
                   </li>
@@ -392,6 +444,7 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
                       type="button"
                       className="block-action-danger"
                       aria-label={`Apagar ${publisher.name}`}
+                      disabled={isWriting}
                       onClick={() => void deletePublisher(publisher)}
                     >
                       Apagar
@@ -405,8 +458,7 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
       )}
 
       {showCreateForm && (
-        <div role="dialog" aria-label="Cadastrar publicador">
-          <h2>Cadastrar publicador</h2>
+        <Dialog title="Cadastrar publicador" onClose={closeCreateForm}>
           <div className="field">
             <label htmlFor="publisher-name">Nome da pessoa</label>
             <input
@@ -432,12 +484,14 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
               Gerar código
             </button>
           </div>
-        </div>
+        </Dialog>
       )}
 
       {codeDialog && (
-        <div role="dialog" aria-label={`Código de ${codeDialog.publisherName}`}>
-          <h2>Código de {codeDialog.publisherName}</h2>
+        <Dialog
+          title={`Código de ${codeDialog.publisherName}`}
+          onClose={() => setCodeDialog(null)}
+        >
           <p className="access-code-display" data-testid="access-code">
             {codeDialog.code}
           </p>
@@ -457,7 +511,7 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
               Copiar
             </button>
           </div>
-        </div>
+        </Dialog>
       )}
     </div>
   )

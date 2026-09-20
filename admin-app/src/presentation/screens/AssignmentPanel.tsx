@@ -6,7 +6,7 @@
 // of every confirmation -- those texts say the *consequence* ("será encerrada
 // com a data de hoje", "perde na hora o acesso", "não há como desfazer"), not
 // just the action, because that is the part the admin cannot get back.
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -23,6 +23,7 @@ import {
 } from '../../domain/assignment';
 import type { Assignment, Publisher, Territory } from '../../domain/models';
 import { colors, radius, spacing } from '../theme';
+import { PublisherPicker } from './PublisherPicker';
 
 /** Only the API surface this panel needs -- the real `ApiClient` satisfies it. */
 export interface AssignmentPanelApi {
@@ -93,7 +94,10 @@ function replaceConfirmMessage(
   );
 }
 
-function completeConfirmMessage(territoryName: string, leaderName: string): string {
+function completeConfirmMessage(
+  territoryName: string,
+  leaderName: string,
+): string {
   return (
     `Marcar a designação de ${leaderName} em "${territoryName}" como concluída?\n\n` +
     'O território fica livre para outro publicador, e ' +
@@ -129,9 +133,13 @@ export function AssignmentPanel({
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [publishers, setPublishers] = useState<Publisher[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedPublisherId, setSelectedPublisherId] = useState<string | null>(null);
+  const [selectedPublisherId, setSelectedPublisherId] = useState<string | null>(
+    null,
+  );
   const [actionError, setActionError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isWriting, setIsWriting] = useState(false);
+  const writeInFlight = useRef(false);
 
   /** Re-reads just this territory's card -- what every write invalidates. */
   const reloadAssignments = useCallback(async () => {
@@ -148,7 +156,9 @@ export function AssignmentPanel({
       reloadAssignments(),
       session
         .run(() => api.listPublishers())
-        .then(people => setPublishers(people.filter(publisher => publisher.isActive))),
+        .then(people =>
+          setPublishers(people.filter(publisher => publisher.isActive)),
+        ),
     ]);
   }, [api, reloadAssignments, session]);
 
@@ -195,7 +205,12 @@ export function AssignmentPanel({
    * desktop's `window.confirm`, and the message is the whole point of it.
    */
   const confirmThen = useCallback(
-    (title: string, message: string, confirmLabel: string, action: () => Promise<void>) => {
+    (
+      title: string,
+      message: string,
+      confirmLabel: string,
+      action: () => Promise<void>,
+    ) => {
       Alert.alert(title, message, [
         { text: 'Cancelar', style: 'cancel' },
         { text: confirmLabel, onPress: () => runGuarded(action) },
@@ -212,9 +227,17 @@ export function AssignmentPanel({
    */
   const writeThenRefresh = useCallback(
     async (write: () => Promise<unknown>): Promise<void> => {
-      await session.run(write);
-      await reloadAssignments();
-      onChanged?.();
+      if (writeInFlight.current) return;
+      writeInFlight.current = true;
+      setIsWriting(true);
+      try {
+        await session.run(write);
+        await reloadAssignments();
+        onChanged?.();
+      } finally {
+        writeInFlight.current = false;
+        setIsWriting(false);
+      }
     },
     [onChanged, reloadAssignments, session],
   );
@@ -229,14 +252,16 @@ export function AssignmentPanel({
       return;
     }
     const publisherId = selectedPublisherId;
-    const designate = () => writeThenRefresh(() => api.designate(territory.id, publisherId));
+    const designate = () =>
+      writeThenRefresh(() => api.designate(territory.id, publisherId));
 
     if (open === null) {
       runGuarded(designate);
       return;
     }
     const nextName =
-      publishers.find(publisher => publisher.id === publisherId)?.name ?? 'este publicador';
+      publishers.find(publisher => publisher.id === publisherId)?.name ??
+      'este publicador';
     confirmThen(
       'Designar território',
       replaceConfirmMessage(territory.name, open.publisher.name, nextName),
@@ -273,7 +298,10 @@ export function AssignmentPanel({
         'Apagar designação',
         deleteConfirmMessage(assignment.publisher.name),
         'Apagar',
-        () => writeThenRefresh(() => api.deleteAssignment(territory.id, assignment.id)),
+        () =>
+          writeThenRefresh(() =>
+            api.deleteAssignment(territory.id, assignment.id),
+          ),
       );
     },
     [api, confirmThen, territory.id, writeThenRefresh],
@@ -315,19 +343,29 @@ export function AssignmentPanel({
 
           <Text style={styles.heading}>Histórico</Text>
           {history.length === 0 ? (
-            <Text style={styles.muted}>Nenhuma designação concluída ainda.</Text>
+            <Text style={styles.muted}>
+              Nenhuma designação concluída ainda.
+            </Text>
           ) : (
             history.map(assignment => (
-              <View key={assignment.id} style={styles.row} testID="assignment-history-row">
+              <View
+                key={assignment.id}
+                style={styles.row}
+                testID="assignment-history-row"
+              >
                 <Text style={styles.rowText}>
-                  {assignment.publisher.name} — {formatDate(assignment.startedAt)} a{' '}
+                  {assignment.publisher.name} —{' '}
+                  {formatDate(assignment.startedAt)} a{' '}
                   {formatDate(assignment.completedAt)}
                 </Text>
                 <Pressable
                   accessibilityLabel={`Apagar designação de ${assignment.publisher.name}`}
                   accessibilityRole="button"
+                  accessibilityState={{ disabled: isWriting, busy: isWriting }}
+                  disabled={isWriting}
                   onPress={() => requestDelete(assignment)}
-                  style={styles.deleteButton}>
+                  style={styles.deleteButton}
+                >
                   <Text style={styles.deleteButtonText}>Apagar</Text>
                 </Pressable>
               </View>
@@ -335,36 +373,39 @@ export function AssignmentPanel({
           )}
 
           <Text style={styles.heading}>Designar a…</Text>
-          {publishers.map(publisher => (
-            <Pressable
-              key={publisher.id}
-              // Named after the action, not the person: embedded in the block
-              // panel this list sits beside the *work* one, and both offer the
-              // same names for two different things.
-              testID={`designate-${publisher.id}`}
-              accessibilityRole="radio"
-              accessibilityState={{ selected: selectedPublisherId === publisher.id }}
-              onPress={() => setSelectedPublisherId(publisher.id)}
-              style={[
-                styles.option,
-                selectedPublisherId === publisher.id && styles.optionSelected,
-              ]}>
-              <Text style={styles.rowText}>{publisher.name}</Text>
-            </Pressable>
-          ))}
+          <PublisherPicker
+            publishers={publishers}
+            selectedPublisherId={selectedPublisherId}
+            onSelect={setSelectedPublisherId}
+            optionTestIdPrefix="designate-"
+          />
 
           <Pressable
             accessibilityRole="button"
-            accessibilityState={{ disabled: selectedPublisherId === null }}
-            disabled={selectedPublisherId === null}
+            accessibilityState={{
+              disabled: selectedPublisherId === null || isWriting,
+              busy: isWriting,
+            }}
+            disabled={selectedPublisherId === null || isWriting}
             onPress={requestDesignate}
-            style={styles.button}>
-            <Text style={styles.buttonText}>Designar</Text>
+            style={styles.button}
+          >
+            <Text style={styles.buttonText}>
+              {isWriting ? 'Atualizando…' : 'Designar'}
+            </Text>
           </Pressable>
 
           {open !== null && (
-            <Pressable accessibilityRole="button" onPress={requestComplete} style={styles.button}>
-              <Text style={styles.buttonText}>Marcar como concluído</Text>
+            <Pressable
+              accessibilityRole="button"
+              disabled={isWriting}
+              accessibilityState={{ disabled: isWriting, busy: isWriting }}
+              onPress={requestComplete}
+              style={styles.button}
+            >
+              <Text style={styles.buttonText}>
+                {isWriting ? 'Atualizando…' : 'Marcar como concluído'}
+              </Text>
             </Pressable>
           )}
         </>
@@ -425,18 +466,6 @@ const styles = StyleSheet.create({
     color: colors.onPrimary,
     fontWeight: '600',
   },
-  option: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 12,
-  },
-  optionSelected: {
-    backgroundColor: colors.primaryLight,
-    borderColor: colors.primary,
-  },
   error: {
     backgroundColor: colors.dangerSurface,
     borderColor: colors.dangerBorder,
@@ -446,6 +475,7 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
   },
   deleteButton: {
+    backgroundColor: colors.dangerSurface,
     borderColor: colors.dangerBorder,
     borderRadius: radius.sm,
     borderWidth: 1,

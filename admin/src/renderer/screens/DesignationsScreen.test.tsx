@@ -556,7 +556,9 @@ describe('DesignationsScreen exporting to Excel', () => {
     render(<DesignationsScreen />)
     await user.click(await screen.findByRole('button', { name: /exportar s-13-t/i }))
 
-    expect(screen.getByRole('dialog', { name: /exportar formulário s-13-t/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole('dialog', { name: /exportar registro de designação \(s-13-t\)/i })
+    ).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /gerar s-13-t \(docx\)/i }))
 
@@ -602,7 +604,7 @@ describe('DesignationsScreen exporting to Excel', () => {
 
     expect(selectMock).toHaveBeenCalledTimes(1)
     expect(
-      await screen.findByRole('dialog', { name: /prévia da importação s-13-t/i })
+      await screen.findByRole('dialog', { name: /importar registros s-13-t/i })
     ).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /confirmar e importar/i }))

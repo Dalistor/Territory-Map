@@ -206,6 +206,50 @@ main > div:has(> .leaflet-container) {
   height: 100%;
 }
 
+.map-with-status-legend {
+  height: 100%;
+  position: relative;
+  width: 100%;
+}
+
+.map-with-status-legend .leaflet-container {
+  height: 100%;
+}
+
+.map-status-legend {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(38, 50, 56, 0.18);
+  border-radius: 6px;
+  bottom: 12px;
+  color: #263238;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 6px 12px;
+  left: 12px;
+  padding: 6px 8px;
+  pointer-events: none;
+  position: absolute;
+  z-index: 1000;
+}
+
+.map-status-legend-item {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.map-status-legend-swatch {
+  border: 1px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(38, 50, 56, 0.24);
+  display: inline-block;
+  height: 10px;
+  width: 10px;
+}
+
 /* The territory <ul> scrolls inside the panel instead of growing the page. */
 .territory-list {
   flex: 1;
@@ -267,6 +311,12 @@ li > span:first-child {
   text-overflow: ellipsis;
   max-width: 140px;
   flex-shrink: 0;
+}
+
+.territory-last-work {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
 }
 
 form {
@@ -396,16 +446,20 @@ main > p[role='status'] {
   font-size: 0.9rem;
 }
 
-/* A true modal: centred in the viewport and dimmed behind, with no extra
-   backdrop element needed. `position: fixed` + `inset: 0` + `margin: auto`
-   centres the box itself (a block element sized to its content, `width`/
-   `height: fit-content`) without a flex wrapper; the oversized, blur-free
-   `box-shadow` paints the dimming layer, since a real sibling backdrop `div`
-   would mean editing every screen that renders one of these instead of
-   styling the role once. */
-[role='dialog'] {
+/* The backdrop is a real hit-target, so clicks cannot reach the page behind a
+   dialog. The dialog itself remains the semantic and focus-trapped surface. */
+.dialog-backdrop {
   position: fixed;
   inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 32, 0.45);
+  z-index: 2000;
+}
+
+[role='dialog'] {
+  position: relative;
   margin: auto;
   width: fit-content;
   height: fit-content;
@@ -417,10 +471,24 @@ main > p[role='status'] {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  box-shadow:
-    0 0 0 9999px rgba(15, 23, 32, 0.45),
-    0 24px 48px rgba(0, 0, 0, 0.25);
-  z-index: 2000;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.25);
+}
+
+button:focus-visible,
+[role='menuitem']:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.territory-quick-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.territory-quick-actions button {
+  padding: 5px 9px;
+  font-size: 0.8rem;
 }
 
 [role='menu'] {
@@ -952,8 +1020,7 @@ li > [role='menu'] {
   color: var(--color-primary-dark);
 }
 
-/* App shell with a permanent sidebar (spec 0006). Inert until App.tsx adopts
-   the layout in Task 04: no component renders these classes yet. */
+/* App shell with a permanent sidebar (spec 0006). */
 .app-shell {
   flex: 1;
   min-height: 0;
@@ -962,7 +1029,7 @@ li > [role='menu'] {
 }
 
 .app-sidebar {
-  width: 230px;
+  width: clamp(176px, 18vw, 230px);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -1499,3 +1566,34 @@ li > [role='menu'] {
   }
 }
 
+/* Once the viewport is too narrow for a useful content column beside the
+   navigation, let the shell use the full width. The labels stay visible and
+   wrap into rows instead of becoming unexplained icon-only controls. */
+@media (max-width: 760px) {
+  #root > .app-shell {
+    flex-direction: column;
+  }
+
+  .app-sidebar {
+    width: 100%;
+    flex-shrink: 0;
+  }
+
+  .sidebar-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+
+  .sidebar-nav button {
+    flex: 1 1 140px;
+  }
+
+  .sidebar-footer {
+    padding-top: 8px;
+  }
+
+  .app-content {
+    min-height: 0;
+  }
+}

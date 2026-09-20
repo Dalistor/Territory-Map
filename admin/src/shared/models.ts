@@ -31,6 +31,12 @@ export interface PublisherBrief {
   readonly name: string
 }
 
+/** The most recent work recorded on any block in a territory. */
+export interface LastWorkSummary {
+  readonly publisher: PublisherBrief
+  readonly workedAt: Date
+}
+
 /**
  * The two statuses the admin can pin a block to, overriding what its work
  * records say. There is deliberately no third value for "recent": forcing a
@@ -69,6 +75,8 @@ export interface Territory {
    * setting existed.
    */
   readonly rotationDays?: number
+  /** `undefined` (absent) means no block in the territory has been worked. */
+  readonly lastWork?: LastWorkSummary
 }
 
 export interface WorkLog {

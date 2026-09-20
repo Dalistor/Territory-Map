@@ -29,6 +29,7 @@ import type {
   BlockStatusOverride,
   Congregation,
   LatLng,
+  LastWorkSummary,
   Publisher,
   PublisherBrief,
   Territory,
@@ -201,6 +202,13 @@ function parsePublisherBrief(json: Record<string, unknown>): PublisherBrief {
   return { id: json.id as string, name: json.name as string };
 }
 
+function parseLastWork(json: Record<string, unknown>): LastWorkSummary {
+  return {
+    publisher: parsePublisherBrief(json.user as Record<string, unknown>),
+    workedAt: new Date(json.worked_at as string),
+  };
+}
+
 /**
  * `BlockOut` carries no `territory_id` -- the block is always read through the
  * territory that owns it, so the id comes from that context rather than from
@@ -265,12 +273,14 @@ function parseTerritory(json: Record<string, unknown>): Territory {
   const id = json.id as string;
   const blocks = (json.blocks as Record<string, unknown>[] | undefined) ?? [];
   const assignedUser = json.assigned_user as Record<string, unknown> | null | undefined;
+  const lastWork = json.last_work as Record<string, unknown> | null | undefined;
   return {
     id,
     name: json.name as string,
     boundary: parseRing(json.boundary),
     assignedPublisher: assignedUser ? parsePublisherBrief(assignedUser) : null,
     rotationDays: (json.rotation_days as number | null | undefined) ?? null,
+    lastWork: lastWork ? parseLastWork(lastWork) : null,
     blocks: blocks.map(block => parseBlock(block, id)),
   };
 }

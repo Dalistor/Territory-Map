@@ -20,6 +20,7 @@ imported by `app/routers/admin_blocks.py`, so a block is assembled the same way
 whether it is read inside its territory or written on its own.
 """
 
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -33,11 +34,12 @@ from app.models.block import Block
 from app.models.congregation import Congregation
 from app.models.territory import Territory
 from app.repositories.block import BlockRepository
+from app.repositories.block_work_log import BlockWorkLogRepository
 from app.repositories.territory import TerritoryRepository
 from app.routers.auth import utc_now
 from app.schemas.block import BlockOut
 from app.schemas.geo import LatLngIn, LatLngOut
-from app.schemas.territory import TerritoryCreateIn, TerritoryOut, TerritoryPatchIn
+from app.schemas.territory import LastWorkOut, TerritoryCreateIn, TerritoryOut, TerritoryPatchIn
 from app.schemas.user import UserBriefOut
 from app.services.block import BlockService
 from app.services.territory import UNSET, TerritoryService
@@ -53,6 +55,7 @@ def get_territory_service(session: DbSession) -> TerritoryService:
     return TerritoryService(
         territories=TerritoryRepository(session),
         blocks=BlockRepository(session),
+        work_logs=BlockWorkLogRepository(session),
         now_provider=utc_now,
     )
 
@@ -110,6 +113,7 @@ def territory_out(
     territories: TerritoryService,
     territory: Territory,
     blocks: list[BlockOut] | None = None,
+    last_work: tuple[UUID, str, datetime] | None = None,
 ) -> TerritoryOut:
     """A territory as the admin reads it, with its blocks only where they are asked for.
 
@@ -130,6 +134,14 @@ def territory_out(
         if territory.assigned_user
         else None,
         rotation_days=territory.rotation_days,
+        last_work=(
+            LastWorkOut(
+                user=UserBriefOut(id=last_work[0], name=last_work[1]),
+                worked_at=last_work[2],
+            )
+            if last_work
+            else None
+        ),
     )
 
 
@@ -150,7 +162,11 @@ def list_territories(
     territories: Territories,
 ) -> list[TerritoryOut]:
     """Every territory of the caller's congregation, and nobody else's."""
-    return [territory_out(territories, item) for item in territories.list(congregation.id)]
+    latest_work = territories.latest_work_by_territory(congregation.id)
+    return [
+        territory_out(territories, item, last_work=latest_work.get(item.id))
+        for item in territories.list(congregation.id)
+    ]
 
 
 @router.get("/{territory_id}")
@@ -167,7 +183,13 @@ def get_territory(
     """
     territory = territories.get(congregation.id, territory_id)
     drawn = blocks.list(congregation.id, territory_id)
-    return territory_out(territories, territory, [block_out(blocks, block) for block in drawn])
+    latest_work = territories.latest_work_by_territory(congregation.id)
+    return territory_out(
+        territories,
+        territory,
+        [block_out(blocks, block) for block in drawn],
+        last_work=latest_work.get(territory.id),
+    )
 
 
 @router.patch("/{territory_id}")
@@ -195,7 +217,8 @@ def patch_territory(
         if "rotation_days" in payload.model_fields_set
         else UNSET,
     )
-    return territory_out(territories, territory)
+    latest_work = territories.latest_work_by_territory(congregation.id)
+    return territory_out(territories, territory, last_work=latest_work.get(territory.id))
 
 
 @router.delete("/{territory_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -18,6 +18,7 @@ import 'leaflet/dist/leaflet.css'
 import type { Block, Territory } from '../../shared/models'
 import type { LatLng } from '../../shared/geo'
 import { CATEGORY_COLOR, blockColorCategory } from './blockColor'
+import { MapStatusLegend } from './MapStatusLegend'
 
 /** Brasília -- the fallback centre when there is nothing to draw yet. */
 const FALLBACK_CENTER: LatLngTuple = [-15.78, -47.93]
@@ -145,45 +146,48 @@ export function TerritoryMap({
   const zoom = initialView?.zoom ?? (territories.length === 0 ? FALLBACK_ZOOM : TERRITORY_ZOOM)
 
   return (
-    <MapContainer center={center} zoom={zoom} style={{ height: '100%', width: '100%' }}>
-      {onViewChange !== undefined && <ViewTracker onViewChange={onViewChange} />}
-      <TileLayer
-        url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-        attribution="&copy; OpenStreetMap contributors"
-      />
-      {territories.map((territory) => (
-        <Polygon
-          key={territory.id}
-          positions={toLatLngTuples(territory.boundary)}
-          pathOptions={{ color: TERRITORY_OUTLINE_COLOR, weight: 2, fill: false }}
+    <div className="map-with-status-legend">
+      <MapContainer center={center} zoom={zoom} style={{ height: '100%', width: '100%' }}>
+        {onViewChange !== undefined && <ViewTracker onViewChange={onViewChange} />}
+        <TileLayer
+          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution="&copy; OpenStreetMap contributors"
         />
-      ))}
-      {territories.map((territory) =>
-        territory.blocks.map((block) => {
-          const color = CATEGORY_COLOR[blockColorCategory(block, now, territory.rotationDays)]
-          return (
-            <Polygon
-              key={block.id}
-              positions={toLatLngTuples(block.polygon)}
-              pathOptions={{ color, weight: 1.5, fillColor: color, fillOpacity: 0.35 }}
-            />
-          )
-        })
-      )}
-      {territories.map((territory) =>
-        territory.blocks.map((block) => {
-          const color = CATEGORY_COLOR[blockColorCategory(block, now, territory.rotationDays)]
-          return (
-            <Marker
-              key={block.id}
-              position={averageCentroid(block.polygon)}
-              icon={numberIcon(block.number, color)}
-              eventHandlers={{ click: () => onBlockTap?.(territory, block) }}
-            />
-          )
-        })
-      )}
-    </MapContainer>
+        {territories.map((territory) => (
+          <Polygon
+            key={territory.id}
+            positions={toLatLngTuples(territory.boundary)}
+            pathOptions={{ color: TERRITORY_OUTLINE_COLOR, weight: 2, fill: false }}
+          />
+        ))}
+        {territories.map((territory) =>
+          territory.blocks.map((block) => {
+            const color = CATEGORY_COLOR[blockColorCategory(block, now, territory.rotationDays)]
+            return (
+              <Polygon
+                key={block.id}
+                positions={toLatLngTuples(block.polygon)}
+                pathOptions={{ color, weight: 1.5, fillColor: color, fillOpacity: 0.35 }}
+              />
+            )
+          })
+        )}
+        {territories.map((territory) =>
+          territory.blocks.map((block) => {
+            const color = CATEGORY_COLOR[blockColorCategory(block, now, territory.rotationDays)]
+            return (
+              <Marker
+                key={block.id}
+                position={averageCentroid(block.polygon)}
+                icon={numberIcon(block.number, color)}
+                eventHandlers={{ click: () => onBlockTap?.(territory, block) }}
+              />
+            )
+          })
+        )}
+      </MapContainer>
+      <MapStatusLegend />
+    </div>
   )
 }
 

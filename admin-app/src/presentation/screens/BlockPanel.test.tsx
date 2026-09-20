@@ -373,6 +373,7 @@ describe('BlockPanel', () => {
     await renderPanel();
 
     await waitFor(() => expect(screen.getByText('Sem designação')).toBeTruthy());
+    expect(screen.getByText('Ações desta quadra')).toBeTruthy();
     // The territory section says out loud that it is about the territory, not
     // about this block.
     expect(screen.getByText(/Território: Centro/)).toBeTruthy();

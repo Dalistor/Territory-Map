@@ -1,9 +1,16 @@
 // The admin app's home screen (spec 0012, Task 10): who is holding each
 // territory, on the map and in a list.
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -22,6 +29,7 @@ import BlockPanel from './BlockPanel';
 import type { BlockPanelApi } from './BlockPanel';
 import BlocksScreen from './BlocksScreen';
 import type { BlocksScreenApi } from './BlocksScreen';
+import { formatDate } from './BlockWorkSection';
 
 /** What a row says when nobody is responsible for the territory. */
 const NO_LEADER_LABEL = 'Sem dirigente';
@@ -44,7 +52,10 @@ export function blockCountLabel(count: number): string {
  * completing from the row and completing from the S-13 card are the same
  * event, so they must warn about the same consequence.
  */
-function completeConfirmMessage(territoryName: string, leaderName: string): string {
+function completeConfirmMessage(
+  territoryName: string,
+  leaderName: string,
+): string {
   return (
     `Marcar a designação de ${leaderName} em "${territoryName}" como concluída?\n\n` +
     'O território fica livre para outro publicador, e ' +
@@ -69,7 +80,9 @@ const LOAD_ERROR_MESSAGE = 'Não foi possível carregar os territórios.';
  * printing a stringified object at him.
  */
 function errorMessage(thrown: unknown): string {
-  return thrown instanceof Error && thrown.message !== '' ? thrown.message : LOAD_ERROR_MESSAGE;
+  return thrown instanceof Error && thrown.message !== ''
+    ? thrown.message
+    : LOAD_ERROR_MESSAGE;
 }
 
 /**
@@ -77,7 +90,10 @@ function errorMessage(thrown: unknown): string {
  * everything the panel it opens needs, since this screen is what hands the
  * client down. A test passes a fake; the real `ApiClient` satisfies it.
  */
-export interface DesignationsScreenApi extends AssignmentPanelApi, BlocksScreenApi, BlockPanelApi {
+export interface DesignationsScreenApi
+  extends AssignmentPanelApi,
+    BlocksScreenApi,
+    BlockPanelApi {
   listTerritoriesWithBlocks(): Promise<Territory[]>;
 }
 
@@ -117,7 +133,11 @@ export function DesignationsScreen({
 }: DesignationsScreenProps): React.JSX.Element {
   const [territories, setTerritories] = useState<Territory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const refreshInFlight = useRef(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isWriting, setIsWriting] = useState(false);
+  const writeInFlight = useRef(false);
   // Which territory has a detail open and which of the two it is, by id rather
   // than by object: the list is reloaded after every write, and holding the
   // object would leave the detail pinned to the copy fetched before the change.
@@ -129,7 +149,10 @@ export function DesignationsScreen({
   // sorts before "C" the wrong way. Same rule the desktop admin's territory
   // list already applies (`admin/src/shared/models.ts`).
   const ordered = useMemo(
-    () => [...territories].sort((a, b) => compareTerritoriesByNumber(a.name, b.name)),
+    () =>
+      [...territories].sort((a, b) =>
+        compareTerritoriesByNumber(a.name, b.name),
+      ),
     [territories],
   );
 
@@ -143,14 +166,16 @@ export function DesignationsScreen({
   const detailTerritory =
     detail === null
       ? null
-      : territories.find(territory => territory.id === detail.territoryId) ?? null;
+      : territories.find(territory => territory.id === detail.territoryId) ??
+        null;
 
   // Looked up the same way, and for the same reason: a block deleted on the
   // desktop between two loads closes its panel instead of describing something
   // that is no longer there.
   const detailBlock: Block | null =
     detail?.view === 'block' && detailTerritory !== null
-      ? detailTerritory.blocks.find(block => block.id === detail.blockId) ?? null
+      ? detailTerritory.blocks.find(block => block.id === detail.blockId) ??
+        null
       : null;
 
   /**
@@ -159,6 +184,9 @@ export function DesignationsScreen({
    * projection of the open assignment the panel just changed.
    */
   const load = useCallback(async () => {
+    if (refreshInFlight.current) return;
+    refreshInFlight.current = true;
+    setIsRefreshing(true);
     setIsLoading(true);
     setLoadError(null);
     try {
@@ -167,6 +195,8 @@ export function DesignationsScreen({
       setLoadError(errorMessage(thrown));
     } finally {
       setIsLoading(false);
+      refreshInFlight.current = false;
+      setIsRefreshing(false);
     }
   }, [api, session]);
 
@@ -186,29 +216,62 @@ export function DesignationsScreen({
       if (leader === null) {
         return;
       }
-      Alert.alert('Marcar como concluído', completeConfirmMessage(territory.name, leader.name), [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Concluir',
-          onPress: async () => {
-            setLoadError(null);
-            try {
-              await session.run(() => api.completeAssignment(territory.id));
-            } catch (thrown) {
-              setLoadError(errorMessage(thrown));
-              return;
-            }
-            await load();
+      Alert.alert(
+        'Marcar como concluído',
+        completeConfirmMessage(territory.name, leader.name),
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Concluir',
+            onPress: async () => {
+              if (writeInFlight.current) {
+                return;
+              }
+              writeInFlight.current = true;
+              setIsWriting(true);
+              setLoadError(null);
+              try {
+                await session.run(() => api.completeAssignment(territory.id));
+              } catch (thrown) {
+                setLoadError(errorMessage(thrown));
+                return;
+              } finally {
+                writeInFlight.current = false;
+                setIsWriting(false);
+              }
+              await load();
+            },
           },
-        },
-      ]);
+        ],
+      );
     },
     [api, load, session],
   );
 
   /** Whether the overlay is actually on screen, and therefore covering the list. */
   const isDetailOpen =
-    detailTerritory !== null && (detail?.view !== 'block' || detailBlock !== null);
+    detailTerritory !== null &&
+    (detail?.view !== 'block' || detailBlock !== null);
+
+  const closeDetail = useCallback(() => {
+    setDetail(null);
+  }, []);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        if (!isDetailOpen) {
+          return false;
+        }
+
+        closeDetail();
+        return true;
+      },
+    );
+
+    return () => subscription.remove();
+  }, [closeDetail, isDetailOpen]);
 
   /**
    * One alert element, rendered wherever the admin can see it. The overlay is
@@ -234,9 +297,20 @@ export function DesignationsScreen({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Recarregar"
+          accessibilityState={{
+            disabled: isLoading || isRefreshing,
+            busy: isRefreshing,
+          }}
+          disabled={isLoading || isRefreshing}
           onPress={() => load()}
-          style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}>
-          <Text style={styles.headerButtonLabel}>Recarregar</Text>
+          style={({ pressed }) => [
+            styles.headerButton,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Text style={styles.headerButtonLabel}>
+            {isLoading || isRefreshing ? 'Atualizando…' : 'Recarregar'}
+          </Text>
         </Pressable>
       </View>
 
@@ -265,36 +339,59 @@ export function DesignationsScreen({
                   setDetail({ territoryId: territory.id, view: 'blocks' })
                 }
                 onSelectBlock={(block, territory) =>
-                  setDetail({ territoryId: territory.id, view: 'block', blockId: block.id })
+                  setDetail({
+                    territoryId: territory.id,
+                    view: 'block',
+                    blockId: block.id,
+                  })
                 }
               />
             </View>
             <ScrollView contentContainerStyle={styles.list}>
               {ordered.length === 0 && (
-                <Text style={styles.emptyMessage}>{NO_TERRITORIES_MESSAGE}</Text>
+                <Text style={styles.emptyMessage}>
+                  {NO_TERRITORIES_MESSAGE}
+                </Text>
               )}
               {ordered.map(territory => (
                 <View
                   key={territory.id}
                   testID={`territory-row-${territory.id}`}
-                  style={styles.card}>
+                  style={styles.card}
+                >
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={`Ver designações de ${territory.name}`}
                     onPress={() =>
-                      setDetail({ territoryId: territory.id, view: 'assignments' })
+                      setDetail({
+                        territoryId: territory.id,
+                        view: 'assignments',
+                      })
                     }
-                    style={({ pressed }) => [styles.cardMain, pressed && styles.pressed]}>
+                    style={({ pressed }) => [
+                      styles.cardMain,
+                      pressed && styles.pressed,
+                    ]}
+                  >
                     <Text style={styles.territoryName}>{territory.name}</Text>
                     <Text
                       style={[
                         styles.leader,
-                        territory.assignedPublisher === null && styles.leaderAbsent,
-                      ]}>
+                        territory.assignedPublisher === null &&
+                          styles.leaderAbsent,
+                      ]}
+                    >
                       {territory.assignedPublisher?.name ?? NO_LEADER_LABEL}
                     </Text>
                     <Text style={styles.blockCount}>
                       {blockCountLabel(territory.blocks.length)}
+                    </Text>
+                    <Text style={styles.lastWork}>
+                      {territory.lastWork
+                        ? `Último trabalho: ${
+                            territory.lastWork.publisher.name
+                          } — ${formatDate(territory.lastWork.workedAt)}`
+                        : 'Nunca trabalhado'}
                     </Text>
                   </Pressable>
                   {/* The blocks are a second question about the same
@@ -304,8 +401,14 @@ export function DesignationsScreen({
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={`Ver quadras de ${territory.name}`}
-                    onPress={() => setDetail({ territoryId: territory.id, view: 'blocks' })}
-                    style={({ pressed }) => [styles.cardAction, pressed && styles.pressed]}>
+                    onPress={() =>
+                      setDetail({ territoryId: territory.id, view: 'blocks' })
+                    }
+                    style={({ pressed }) => [
+                      styles.cardAction,
+                      pressed && styles.pressed,
+                    ]}
+                  >
                     <Text style={styles.cardActionLabel}>Quadras</Text>
                   </Pressable>
                   {/* Only where there is an assignment to close. A territory
@@ -315,9 +418,20 @@ export function DesignationsScreen({
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={`Marcar ${territory.name} como concluído`}
+                      accessibilityState={{
+                        disabled: isWriting,
+                        busy: isWriting,
+                      }}
+                      disabled={isWriting}
                       onPress={() => requestComplete(territory)}
-                      style={({ pressed }) => [styles.cardAction, pressed && styles.pressed]}>
-                      <Text style={styles.cardActionLabel}>Marcar como concluído</Text>
+                      style={({ pressed }) => [
+                        styles.cardAction,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <Text style={styles.cardActionLabel}>
+                        {isWriting ? 'Atualizando…' : 'Marcar como concluído'}
+                      </Text>
                     </Pressable>
                   )}
                 </View>
@@ -340,8 +454,12 @@ export function DesignationsScreen({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Voltar para a lista"
-              onPress={() => setDetail(null)}
-              style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}>
+              onPress={closeDetail}
+              style={({ pressed }) => [
+                styles.headerButton,
+                pressed && styles.pressed,
+              ]}
+            >
               <Text style={styles.headerButtonLabel}>← Voltar</Text>
             </Pressable>
           </View>
@@ -479,6 +597,11 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   blockCount: {
+    color: colors.textMuted,
+    fontSize: 13,
+    marginTop: 2,
+  },
+  lastWork: {
     color: colors.textMuted,
     fontSize: 13,
     marginTop: 2,

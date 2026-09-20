@@ -7,10 +7,11 @@
 // whatever is left. That is why a successful deletion calls `onWorkLogDeleted`
 // -- it is not this screen's job to know that the map needs to recolor the
 // block, only to say that something changed.
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Block, Territory, WorkLog } from '../../shared/models'
 import { workLogWasSyncedLate } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
+import { Dialog } from '../components/Dialog'
 
 export interface BlockHistorySheetProps {
   readonly territory: Territory
@@ -42,6 +43,8 @@ export function BlockHistorySheet({
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const deleteInFlight = useRef(false)
 
   const load = useCallback(async () => {
     setIsLoading(true)
@@ -71,6 +74,9 @@ export function BlockHistorySheet({
   const pendingLog = logs.find((log) => log.id === pendingDeleteId) ?? null
 
   async function confirmDelete(log: WorkLog): Promise<void> {
+    if (deleteInFlight.current) return
+    deleteInFlight.current = true
+    setIsDeleting(true)
     setPendingDeleteId(null)
     setError(null)
     try {
@@ -79,6 +85,9 @@ export function BlockHistorySheet({
       onWorkLogDeleted?.()
     } catch (err) {
       setError(errorMessage(err, 'Não foi possível remover o registro.'))
+    } finally {
+      deleteInFlight.current = false
+      setIsDeleting(false)
     }
   }
 
@@ -110,6 +119,7 @@ export function BlockHistorySheet({
                 <button
                   type="button"
                   aria-label={`Remover registro de ${log.publisher.name} em ${formatDateTime(log.workedAt)}`}
+                  disabled={isDeleting}
                   onClick={() => setPendingDeleteId(log.id)}
                 >
                   Remover
@@ -119,7 +129,7 @@ export function BlockHistorySheet({
           </ul>
         )}
         {pendingLog && (
-          <div role="dialog" aria-label="Remover registro?">
+          <Dialog title="Remover registro?" onClose={() => setPendingDeleteId(null)}>
             <p>
               A marcação de {pendingLog.publisher.name} em {formatDateTime(pendingLog.workedAt)}{' '}
               será apagada, e a data da última visita da quadra será recalculada.
@@ -128,11 +138,11 @@ export function BlockHistorySheet({
               <button type="button" onClick={() => setPendingDeleteId(null)}>
                 Cancelar
               </button>
-              <button type="button" onClick={() => confirmDelete(pendingLog)}>
-                Remover
+              <button type="button" disabled={isDeleting} onClick={() => confirmDelete(pendingLog)}>
+                {isDeleting ? 'Removendo…' : 'Remover'}
               </button>
             </div>
-          </div>
+          </Dialog>
         )}
       </main>
     </div>

@@ -88,24 +88,31 @@ export function BlockPanel({
 
   return (
     <ScrollView style={styles.panel} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Quadra {block.number}</Text>
-        <Text style={styles.status}>
-          {blockStatusLabel(block, moment, territory.rotationDays)}
-        </Text>
+      <View style={styles.blockSection}>
+        <View style={styles.header}>
+          <Text accessibilityRole="header" style={styles.title}>
+            Quadra {block.number}
+          </Text>
+          <Text style={styles.scopeLabel}>Ações desta quadra</Text>
+          <Text style={styles.status}>
+            {blockStatusLabel(block, moment, territory.rotationDays)}
+          </Text>
+        </View>
+
+        <BlockWorkSection
+          block={block}
+          session={session}
+          api={api}
+          now={moment}
+          onChanged={handleWorkChanged}
+          onDeleteLog={handleDeleteLog}
+        />
       </View>
 
-      <BlockWorkSection
-        block={block}
-        session={session}
-        api={api}
-        now={moment}
-        onChanged={handleWorkChanged}
-        onDeleteLog={handleDeleteLog}
-      />
-
       <View style={styles.territorySection}>
-        <Text style={styles.territoryHeading}>Território: {territory.name}</Text>
+        <Text accessibilityRole="header" style={styles.territoryHeading}>
+          Território: {territory.name}
+        </Text>
         <Text style={styles.territoryNote}>{TERRITORY_SCOPE_NOTE}</Text>
         <AssignmentPanel
           territory={territory}
@@ -127,13 +134,31 @@ const styles = StyleSheet.create({
   content: {
     paddingBottom: spacing.xl,
   },
+  blockSection: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    margin: spacing.md,
+    marginBottom: 0,
+    overflow: 'hidden',
+  },
   header: {
+    backgroundColor: colors.surfaceSubtle,
+    borderBottomColor: colors.border,
+    borderBottomWidth: 1,
     padding: spacing.md,
   },
   title: {
     color: colors.textPrimary,
     fontSize: 20,
     fontWeight: '700',
+  },
+  scopeLabel: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: spacing.xs,
   },
   status: {
     color: colors.textSecondary,

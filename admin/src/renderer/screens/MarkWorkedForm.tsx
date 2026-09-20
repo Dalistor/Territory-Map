@@ -46,13 +46,15 @@ export interface MarkWorkedFormProps {
   /** The chosen pair. Writing it to the server is the caller's job, not this form's. */
   readonly onConfirm: (publisherId: string, workedAt: Date) => void
   readonly onCancel: () => void
+  readonly isSubmitting?: boolean
 }
 
 export function MarkWorkedForm({
   preselectedPublisherId,
   now,
   onConfirm,
-  onCancel
+  onCancel,
+  isSubmitting = false
 }: MarkWorkedFormProps): React.JSX.Element {
   const [publishers, setPublishers] = useState<Publisher[]>([])
   const [publisherId, setPublisherId] = useState(preselectedPublisherId ?? '')
@@ -103,10 +105,10 @@ export function MarkWorkedForm({
         <button
           type="button"
           className="button-primary"
-          disabled={publisherId === '' || workedAtValue === ''}
+          disabled={publisherId === '' || workedAtValue === '' || isSubmitting}
           onClick={() => onConfirm(publisherId, fromDateInputValue(workedAtValue))}
         >
-          Marcar
+          {isSubmitting ? 'Registrando…' : 'Marcar'}
         </button>
         <button type="button" onClick={onCancel}>
           Cancelar

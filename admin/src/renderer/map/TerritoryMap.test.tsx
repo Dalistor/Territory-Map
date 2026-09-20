@@ -54,6 +54,14 @@ function blockColor(): string | null {
 }
 
 describe('TerritoryMap block colours', () => {
+  it('shows the three block status labels in its accessible legend', () => {
+    render(<TerritoryMap territories={[]} now={NOW} />)
+
+    expect(screen.getByText('Nunca trabalhada')).toBeInTheDocument()
+    expect(screen.getByText('Vencida')).toBeInTheDocument()
+    expect(screen.getByText('Em dia')).toBeInTheDocument()
+  })
+
   it('draws a block worked 45 days ago as overdue when the territory rotates every 30 days', () => {
     render(<TerritoryMap territories={[makeTerritory(makeBlock(45), 30)]} now={NOW} />)
 
