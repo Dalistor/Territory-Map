@@ -67,9 +67,7 @@ def test_lista_paginada_inclui_designacao_iniciada_antes_e_devolvida_no_interval
     assert all("territory" in assignment.__dict__ for assignment in items)
 
 
-def test_lista_paginada_inclui_designacao_aberta_iniciada_antes_do_fim(
-    session, make_congregation
-):
+def test_lista_paginada_inclui_designacao_aberta_iniciada_antes_do_fim(session, make_congregation):
     congregation = make_congregation()
     territory = make_territory(session, congregation.id, "Centro")
     open_before_end = add_assignment(
@@ -90,9 +88,7 @@ def test_lista_paginada_inclui_designacao_aberta_iniciada_antes_do_fim(
     assert total == 1
 
 
-def test_lista_paginada_exclui_designacao_que_comeca_no_fim_exclusivo(
-    session, make_congregation
-):
+def test_lista_paginada_exclui_designacao_que_comeca_no_fim_exclusivo(session, make_congregation):
     congregation = make_congregation()
     territory = make_territory(session, congregation.id, "Centro")
     starts_at_exclusive_end = add_assignment(

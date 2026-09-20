@@ -71,9 +71,7 @@ async def test_drawing_a_territory_returns_it_with_the_points_in_order(client, m
     assert body["last_work"] is None
 
 
-async def test_listing_and_detail_return_the_same_last_work_summary(
-    client, make_admin, session
-):
+async def test_listing_and_detail_return_the_same_last_work_summary(client, make_admin, session):
     _, token = make_admin()
     territory = (await draw(client, token)).json()
     block = (
@@ -109,9 +107,7 @@ async def test_listing_and_detail_return_the_same_last_work_summary(
     assert detail.json()["last_work"] == expected
 
 
-async def test_listing_does_not_expose_work_from_another_congregation(
-    client, make_admin, session
-):
+async def test_listing_does_not_expose_work_from_another_congregation(client, make_admin, session):
     _, token = make_admin(name="Central", city="Uberlândia")
     _, other_token = make_admin(name="Norte", city="Contagem")
     own_territory = (await draw(client, token, name="Centro")).json()

@@ -380,9 +380,7 @@ async def test_the_general_listing_returns_an_intermediate_page_and_total(
             headers=bearer(token),
         )
 
-    response = await client.get(
-        "/admin/assignments?page=2&page_size=1", headers=bearer(token)
-    )
+    response = await client.get("/admin/assignments?page=2&page_size=1", headers=bearer(token))
 
     assert response.status_code == 200
     assert response.json()["total"] == 3

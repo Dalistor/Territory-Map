@@ -144,10 +144,7 @@ class BlockWorkLogRepository:
             .where(latest_logs.c.territory_rank == 1)
             .order_by(latest_logs.c.worked_at.desc())
         )
-        return [
-            (row[0], row[1], row[2], row[3])
-            for row in self.session.execute(statement)
-        ]
+        return [(row[0], row[1], row[2], row[3]) for row in self.session.execute(statement)]
 
     def list_by_user_with_details(self, user_id: UUID) -> list[tuple[BlockWorkLog, int, UUID, str]]:
         """Every block this publisher worked, most recent visit first.
