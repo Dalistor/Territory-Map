@@ -27,6 +27,7 @@ from app.routers import (
     admin_users,
     app_client,
     auth,
+    updates,
 )
 
 settings = get_settings()
@@ -133,6 +134,7 @@ app.include_router(admin_assignments.router)
 app.include_router(admin_assignments.flat_router)
 app.include_router(admin_blocks.router)
 app.include_router(app_client.router)
+app.include_router(updates.router)
 
 
 @app.get("/health", tags=["health"])

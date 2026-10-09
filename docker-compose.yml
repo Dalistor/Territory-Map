@@ -32,6 +32,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    volumes:
+      - ./releases:/app/releases
     ports:
       # Bound to the loopback on purpose: nginx terminates TLS on the host and
       # proxies to 127.0.0.1:8000. Publishing on 0.0.0.0 would keep the whole API

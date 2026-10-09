@@ -85,3 +85,13 @@ Thumbs.db
 .packages
 build/
 .coverage/
+
+# --------------------------------------------------------------------- Centaur
+.centaur/tmp/
+.centaur/backups/
+.centaur/build/
+.centaur/graphify/
+.centaur/worktrees/
+.centaur/locks/
+.centaur/ai-memory/pending/
+

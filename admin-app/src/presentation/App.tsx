@@ -25,12 +25,15 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  DeviceEventEmitter,
+  NativeModules,
   Pressable,
   StatusBar,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import Config from 'react-native-config';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -40,6 +43,12 @@ import { createApiClient } from '../data/api-client';
 import type { ApiClient } from '../data/api-client';
 import { CredentialsRejectedError, createSession, credentialsStore } from '../data/session';
 import type { Session } from '../data/session';
+import { fetchLatestRelease as fetchLatestReleaseDefault } from '../data/update-client';
+import {
+  isUpdateAvailable,
+  isUpdateMandatory,
+  type AppRelease,
+} from '../domain/appUpdate';
 import DesignationsScreen from './screens/DesignationsScreen';
 import PublishersScreen from './screens/PublishersScreen';
 import PublisherHistoryScreen from './screens/PublisherHistoryScreen';
@@ -47,6 +56,7 @@ import HistoryScreen from './screens/HistoryScreen';
 import TerritoryDetailScreen from './screens/TerritoryDetailScreen';
 import SetupScreen from './screens/SetupScreen';
 import TabIcon, { type TabIconName } from './components/TabIcon';
+import { UpdateModal } from './components/UpdateModal';
 import { colors, radius, spacing } from './theme';
 
 export interface AppProps {
@@ -68,7 +78,42 @@ export interface AppProps {
    * without standing up the real screen's collaborators.
    */
   readonly renderDesignations?: (props: DesignationsSlotProps) => React.JSX.Element;
+  readonly checkForUpdates?: () => Promise<AppRelease | null>;
+  readonly getAppVersion?: () => Promise<{ versionCode: number; versionName: string }>;
+  readonly downloadAndInstall?: (url: string, appKey: string) => Promise<boolean>;
 }
+
+const defaultCheckForUpdates = () => fetchLatestReleaseDefault('admin-app');
+const defaultGetAppVersion = async () => {
+  if (NativeModules.ApkInstaller?.getAppVersion) {
+    return NativeModules.ApkInstaller.getAppVersion();
+  }
+  return { versionCode: 1, versionName: '1.0.0' };
+};
+const defaultDownloadAndInstall = async (url: string, appKey: string) => {
+  if (NativeModules.ApkInstaller?.downloadAndInstall) {
+    return NativeModules.ApkInstaller.downloadAndInstall(url, appKey);
+  }
+  return false;
+};
+
+interface UpdateState {
+  readonly visible: boolean;
+  readonly release: AppRelease | null;
+  readonly isMandatory: boolean;
+  readonly downloading: boolean;
+  readonly downloadProgress: number;
+  readonly error: string | null;
+}
+
+const initialUpdateState: UpdateState = {
+  visible: false,
+  release: null,
+  isMandatory: false,
+  downloading: false,
+  downloadProgress: 0,
+  error: null,
+};
 
 /** What `App` hands the screen it renders once the phone is configured. */
 export interface DesignationsSlotProps {
@@ -205,12 +250,44 @@ export function withCredentialsGuard(
 export default function App(props: AppProps): React.JSX.Element {
   const { session, api } = useDefaultDependencies(props.session, props.api);
   const renderDesignations = props.renderDesignations ?? renderDesignationsScreen;
+  const checkForUpdates = props.checkForUpdates ?? defaultCheckForUpdates;
+  const getAppVersion = props.getAppVersion ?? defaultGetAppVersion;
+  const downloadAndInstall = props.downloadAndInstall ?? defaultDownloadAndInstall;
+
   const [state, setState] = useState<RootState>({ status: 'loading' });
+  const [updateState, setUpdateState] = useState<UpdateState>(initialUpdateState);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('onApkDownloadProgress', (event) => {
+      if (typeof event?.progress === 'number') {
+        setUpdateState((prev) => ({ ...prev, downloadProgress: event.progress }));
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
 
     async function boot(): Promise<void> {
+      // Background check for updates without delaying bootstrap
+      checkForUpdates()
+        .then(async (release) => {
+          if (cancelled || !release) return;
+          const localVersion = await getAppVersion();
+          if (isUpdateAvailable(localVersion.versionCode, release.versionCode)) {
+            setUpdateState((prev) => ({
+              ...prev,
+              release,
+              isMandatory: isUpdateMandatory(localVersion.versionCode, release.minVersionCode),
+              visible: true,
+            }));
+          }
+        })
+        .catch(() => {
+          // Never block user if update check fails
+        });
+
       let configured: boolean;
       try {
         configured = await session.isConfigured();
@@ -225,7 +302,24 @@ export default function App(props: AppProps): React.JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [session]);
+  }, [session, checkForUpdates, getAppVersion]);
+
+  const handleStartUpdate = async () => {
+    if (!updateState.release) return;
+    setUpdateState((prev) => ({ ...prev, downloading: true, downloadProgress: 0, error: null }));
+    try {
+      const baseUrl = (Config.API_BASE_URL ?? '').replace(/\/+$/, '');
+      const rawUrl = updateState.release.downloadUrl;
+      const fullUrl = rawUrl.startsWith('http') ? rawUrl : `${baseUrl}${rawUrl}`;
+      await downloadAndInstall(fullUrl, Config.APP_KEY ?? '');
+    } catch {
+      setUpdateState((prev) => ({
+        ...prev,
+        downloading: false,
+        error: 'Erro ao baixar ou iniciar a instalação da atualização.',
+      }));
+    }
+  };
 
   const signOut = useCallback((): void => {
     session
@@ -286,6 +380,16 @@ export default function App(props: AppProps): React.JSX.Element {
           reason={state.reason}
           onConfigured={() => setState({ status: 'main' })}
         />
+        <UpdateModal
+          visible={updateState.visible}
+          release={updateState.release}
+          isMandatory={updateState.isMandatory}
+          downloading={updateState.downloading}
+          downloadProgress={updateState.downloadProgress}
+          error={updateState.error}
+          onUpdate={handleStartUpdate}
+          onDismiss={() => setUpdateState((prev) => ({ ...prev, visible: false }))}
+        />
       </SafeAreaProvider>
     );
   }
@@ -336,6 +440,16 @@ export default function App(props: AppProps): React.JSX.Element {
           </Stack.Screen>
         </Stack.Navigator>
       </NavigationContainer>
+      <UpdateModal
+        visible={updateState.visible}
+        release={updateState.release}
+        isMandatory={updateState.isMandatory}
+        downloading={updateState.downloading}
+        downloadProgress={updateState.downloadProgress}
+        error={updateState.error}
+        onUpdate={handleStartUpdate}
+        onDismiss={() => setUpdateState((prev) => ({ ...prev, visible: false }))}
+      />
     </SafeAreaProvider>
   );
 }

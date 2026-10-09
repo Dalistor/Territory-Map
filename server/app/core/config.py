@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     # is what keeps the test suite and local development from needing the header.
     APP_SECRET: str = ""
 
+    # Diretório local ou no container onde ficam os manifestos e APKs
+    RELEASES_DIR: str = "releases"
+
     # NoDecode keeps pydantic-settings from trying to JSON-decode the raw env
     # value, so a plain comma-separated list works: CORS_ORIGINS=a,b
     CORS_ORIGINS: Annotated[list[str], NoDecode] = []

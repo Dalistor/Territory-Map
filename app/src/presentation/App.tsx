@@ -22,7 +22,15 @@
 //     makes its `listTerritories` call fall back to the last cached answer
 //     instead of failing the screen.
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, StatusBar, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  DeviceEventEmitter,
+  NativeModules,
+  StatusBar,
+  StyleSheet,
+  View,
+} from 'react-native';
+import Config from 'react-native-config';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -38,10 +46,17 @@ import {
   getCachedTerritories as getCachedTerritoriesDefault,
   saveTerritories as saveTerritoriesDefault,
 } from '../data/territory-cache';
+import { fetchLatestRelease as fetchLatestReleaseDefault } from '../data/update-client';
+import {
+  isUpdateAvailable,
+  isUpdateMandatory,
+  type AppRelease,
+} from '../domain/appUpdate';
 import type { Session, Territory } from '../domain/models';
 import ActivationScreen from './screens/ActivationScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
 import { MapScreen } from './screens/MapScreen';
+import { UpdateModal } from './components/UpdateModal';
 import { colors } from './theme';
 
 /** Every collaborator this component needs -- swappable for tests, one field at a time. */
@@ -52,6 +67,9 @@ export interface AppDependencies {
   readonly getCachedTerritories: () => Promise<Territory[] | null>;
   readonly saveTerritories: (territories: Territory[]) => Promise<void>;
   readonly clearCache: () => Promise<void>;
+  readonly checkForUpdates: () => Promise<AppRelease | null>;
+  readonly getAppVersion: () => Promise<{ versionCode: number; versionName: string }>;
+  readonly downloadAndInstall: (url: string, appKey: string) => Promise<boolean>;
 }
 
 export interface AppProps {
@@ -110,16 +128,76 @@ export default function App({ dependencies }: AppProps): React.JSX.Element {
       getCachedTerritories: dependencies?.getCachedTerritories ?? getCachedTerritoriesDefault,
       saveTerritories: dependencies?.saveTerritories ?? saveTerritoriesDefault,
       clearCache: dependencies?.clearCache ?? clearCacheDefault,
+      checkForUpdates:
+        dependencies?.checkForUpdates ?? (() => fetchLatestReleaseDefault('app')),
+      getAppVersion:
+        dependencies?.getAppVersion ??
+        (async () => {
+          if (NativeModules.ApkInstaller?.getAppVersion) {
+            return await NativeModules.ApkInstaller.getAppVersion();
+          }
+          return { versionCode: 1, versionName: '1.0.0' };
+        }),
+      downloadAndInstall:
+        dependencies?.downloadAndInstall ??
+        (async (url: string, key: string) => {
+          if (NativeModules.ApkInstaller?.downloadAndInstall) {
+            return await NativeModules.ApkInstaller.downloadAndInstall(url, key);
+          }
+          return false;
+        }),
     }),
     [dependencies],
   );
 
   const [state, setState] = useState<BootstrapState>({ status: 'loading' });
+  const [updateState, setUpdateState] = useState<{
+    release: AppRelease | null;
+    isMandatory: boolean;
+    visible: boolean;
+    downloading: boolean;
+    downloadProgress: number;
+    error: string | null;
+  }>({
+    release: null,
+    isMandatory: false,
+    visible: false,
+    downloading: false,
+    downloadProgress: 0,
+    error: null,
+  });
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('onApkDownloadProgress', (event) => {
+      if (typeof event?.progress === 'number') {
+        setUpdateState((prev) => ({ ...prev, downloadProgress: event.progress }));
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
 
     async function bootstrap(): Promise<void> {
+      // Check updates in background without blocking bootstrap
+      deps.checkForUpdates()
+        .then(async (release) => {
+          if (cancelled || !release) return;
+          const localVersion = await deps.getAppVersion();
+          if (isUpdateAvailable(localVersion.versionCode, release.versionCode)) {
+            setUpdateState((prev) => ({
+              ...prev,
+              release,
+              isMandatory: isUpdateMandatory(localVersion.versionCode, release.minVersionCode),
+              visible: true,
+            }));
+          }
+        })
+        .catch(() => {
+          // Never block user if update check fails
+        });
+
       const session = await deps.getSession();
       if (session === null) {
         if (!cancelled) setState({ status: 'activation' });
@@ -149,6 +227,23 @@ export default function App({ dependencies }: AppProps): React.JSX.Element {
       cancelled = true;
     };
   }, [deps]);
+
+  const handleStartUpdate = async () => {
+    if (!updateState.release) return;
+    setUpdateState((prev) => ({ ...prev, downloading: true, downloadProgress: 0, error: null }));
+    try {
+      const baseUrl = (Config.API_BASE_URL ?? '').replace(/\/+$/, '');
+      const rawUrl = updateState.release.downloadUrl;
+      const fullUrl = rawUrl.startsWith('http') ? rawUrl : `${baseUrl}${rawUrl}`;
+      await deps.downloadAndInstall(fullUrl, Config.APP_KEY ?? '');
+    } catch {
+      setUpdateState((prev) => ({
+        ...prev,
+        downloading: false,
+        error: 'Erro ao baixar ou iniciar a instalação da atualização.',
+      }));
+    }
+  };
 
   const offlineApiClient = useMemo(
     () => withOfflineFallback(deps.apiClient, deps.getCachedTerritories),
@@ -220,6 +315,16 @@ export default function App({ dependencies }: AppProps): React.JSX.Element {
           )}
         </Stack.Navigator>
       </NavigationContainer>
+      <UpdateModal
+        visible={updateState.visible}
+        release={updateState.release}
+        isMandatory={updateState.isMandatory}
+        downloading={updateState.downloading}
+        downloadProgress={updateState.downloadProgress}
+        error={updateState.error}
+        onUpdate={handleStartUpdate}
+        onDismiss={() => setUpdateState((prev) => ({ ...prev, visible: false }))}
+      />
     </SafeAreaProvider>
   );
 }

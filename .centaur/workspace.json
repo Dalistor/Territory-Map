@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "collaboration": "individual",
+  "backend": "files",
+  "scopes": {
+    "master": {
+      "code": ".",
+      "specs": ".centaur/specs",
+      "implements": ".centaur/implements",
+      "owner": "dalistor"
+    }
+  }
+}

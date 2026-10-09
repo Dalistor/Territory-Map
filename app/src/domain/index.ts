@@ -1,4 +1,7 @@
 // Domain layer: entities and pure functions (block color, "is my territory?", map filter).
-// No dependency on react-native, HTTP or storage. Populated starting from spec 0005, Task 17
-// onward — see AGENTS.md, "Arquitetura de Camadas".
-export {};
+// No dependency on react-native, HTTP or storage.
+export * from './models';
+export * from './blockColor';
+export * from './assignment';
+export * from './lastWorked';
+export * from './appUpdate';

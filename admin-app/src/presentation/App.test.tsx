@@ -363,6 +363,58 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: 'Carregar' })).toBeOnTheScreen();
     expect(screen.queryByLabelText('Nome da congregação')).not.toBeOnTheScreen();
   });
+
+  it('displays the update modal when a newer release is found', async () => {
+    const session = makeSession({ isConfigured: jest.fn(async () => true) });
+    const checkForUpdates = jest.fn().mockResolvedValue({
+      app: 'admin-app',
+      versionCode: 15,
+      versionName: '1.5.0',
+      minVersionCode: 1,
+      downloadUrl: '/updates/download/admin-app',
+      changelog: 'Novas funções no mapa!',
+    });
+    const getAppVersion = jest.fn().mockResolvedValue({ versionCode: 5, versionName: '1.0.0' });
+
+    await render(
+      <App
+        session={session}
+        api={makeApi()}
+        checkForUpdates={checkForUpdates}
+        getAppVersion={getAppVersion}
+      />,
+    );
+
+    expect(await screen.findByText('Nova versão disponível')).toBeOnTheScreen();
+    expect(screen.getByText('Versão 1.5.0')).toBeOnTheScreen();
+    expect(screen.getByText('Novas funções no mapa!')).toBeOnTheScreen();
+  });
+
+  it('allows dismissing an optional update', async () => {
+    const session = makeSession({ isConfigured: jest.fn(async () => true) });
+    const checkForUpdates = jest.fn().mockResolvedValue({
+      app: 'admin-app',
+      versionCode: 15,
+      versionName: '1.5.0',
+      minVersionCode: 1,
+      downloadUrl: '/updates/download/admin-app',
+    });
+    const getAppVersion = jest.fn().mockResolvedValue({ versionCode: 5, versionName: '1.0.0' });
+
+    await render(
+      <App
+        session={session}
+        api={makeApi()}
+        checkForUpdates={checkForUpdates}
+        getAppVersion={getAppVersion}
+      />,
+    );
+
+    expect(await screen.findByText('Nova versão disponível')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Depois' }));
+
+    expect(screen.queryByText('Nova versão disponível')).not.toBeOnTheScreen();
+  });
 });
 
 describe('withCredentialsGuard', () => {

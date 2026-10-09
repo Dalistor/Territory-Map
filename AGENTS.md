@@ -771,6 +771,15 @@ rotas `/admin/*` com o JWT da congregação, e nada desta seção se aplica a el
   O `id` do log continua sendo gerado no cliente e enviado na requisição, como chave de idempotência.
 - O cache local **de leitura** continua: territórios e quadras já baixados abrem sem rede.
 
+### Atualização Automática dos Aplicativos Android (In-App Auto-Update)
+Implementada na spec 0016 para ambos os apps Android (`app/` e `admin-app/`):
+
+- **Verificação ao abrir:** Ao iniciar, o app consulta `GET /updates/latest?app=app|admin-app` em segundo plano com o header `X-App-Key`. A requisição não bloqueia a interface nem atrasa a abertura caso a rede esteja instável ou offline.
+- **Detecção de nova versão:** Se o servidor reportar `version_code` estritamente superior ao do app instalado (`versionCode` do Android), um modal (`UpdateModal`) é exibido informando a versão e o `changelog`.
+- **Atualização obrigatória vs. opcional:** Se o `versionCode` local for menor que `min_version_code` informado no manifesto, a atualização é obrigatória — o modal não exibe o botão de fechar/depois e impede o uso do app até que o pacote seja instalado. Se for maior ou igual, a atualização é opcional ("Depois" fecha o modal).
+- **Download e instalação nativa via FileProvider:** O download do APK é realizado pelo módulo nativo Kotlin `ApkInstallerModule` em thread de fundo com relatório de porcentagem de progresso em tempo real (`onApkDownloadProgress`). Ao finalizar o download no cache privado do aplicativo, o instalador do Android é disparado diretamente via `Intent.ACTION_VIEW` com URI segura provida por `androidx.core.content.FileProvider`.
+- **Servidor:** O diretório de releases é montado via volume Docker (`./releases:/app/releases`). Não requer banco de dados ou infraestrutura externa pesada; novos APKs e manifestos `version.json` enviados via SCP ficam disponíveis imediatamente.
+
 ## Arquitetura e Decisões Técnicas
 
 - **Servidor é a única fonte de verdade das regras geométricas.** O admin pode dar feedback visual
@@ -1309,10 +1318,10 @@ registro de trabalho passou a existir no celular, e o app ganhou a logo e o íco
 
 ## Implementações
 
-Atualizado automaticamente pelas skills `/centaur-driven-tdd` e `/centaur-driven-implement`.
+Atualizado automaticamente pelas skills `/tdd` e `/implement`.
 Veja `.centaur/implements/status.md` para o histórico completo e `.centaur/specs/index.md` para as
 specs planejadas.
 
 ---
 
-_Documentação centaur — schema `1.5.0`, atualizada em `2026-09-05`. Atualize com `/centaur-driven-update`._
+_Documentação centaur — schema `5.2.0`, atualizada em `2026-10-09`. Atualize com `/update`._

@@ -238,6 +238,25 @@ describe('App', () => {
 
     expect(await screen.findByText('© OpenStreetMap contributors')).toBeTruthy()
   })
+
+  it('displays the update modal when a newer version is reported by the server', async () => {
+    const getSession = jest.fn().mockResolvedValue(null)
+    const checkForUpdates = jest.fn().mockResolvedValue({
+      app: 'app',
+      versionCode: 20,
+      versionName: '2.0.0',
+      minVersionCode: 1,
+      downloadUrl: '/updates/download/app',
+      changelog: 'Grande atualização!',
+    })
+    const getAppVersion = jest.fn().mockResolvedValue({ versionCode: 10, versionName: '1.0.0' })
+
+    await render(<App dependencies={{ getSession, checkForUpdates, getAppVersion }} />)
+
+    expect(await screen.findByText('Nova versão disponível')).toBeTruthy()
+    expect(screen.getByText('Versão 2.0.0')).toBeTruthy()
+    expect(screen.getByText('Grande atualização!')).toBeTruthy()
+  })
 })
 
 describe('withOfflineFallback', () => {

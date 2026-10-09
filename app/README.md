@@ -84,10 +84,45 @@ not been called".
 cd android && ./gradlew assembleRelease
 ```
 
-Gera o `.apk` em `android/app/build/outputs/apk/release/`. Não há assinatura de código configurada
+Gera o `.apk` em `android/app/build/outputs/apk/release/app-release.apk`. Não há assinatura de código configurada
 por enquanto — mesmo ponto já documentado para os binários do admin: o Android vai reclamar de
 "fonte desconhecida" ao instalar esse `.apk` fora da Play Store, e isso é esperado; oriente quem for
 instalar a permitir a instalação mesmo assim, em vez de tentar contornar o aviso.
+
+## Atualização Automática In-App (Auto-Update)
+
+O app conta com atualização in-app automática sem depender da Play Store ou de servidores externos:
+
+1. **Verificação no bootstrap:** Ao abrir o app, uma requisição em segundo plano consulta `GET /updates/latest?app=app`.
+2. **Comparação de versões:** Se o `versionCode` do servidor for superior ao do APK instalado:
+   - Uma tela modal é exibida com o número da versão e as notas de atualização (`changelog`).
+   - Se o `versionCode` local for menor que `minVersionCode`, a atualização é **obrigatória** (não pode ser descartada).
+   - Caso contrário, a atualização é opcional ("Depois" fecha o aviso).
+3. **Download e instalação nativa:** Ao clicar em "Atualizar agora", o módulo nativo `ApkInstallerModule` baixa o binário em segundo plano com barra de progresso e invoca o instalador padrão do Android via `FileProvider` (`Intent.ACTION_VIEW`).
+
+### Como publicar uma nova versão
+1. Incremente `versionCode` e `versionName` em `app/android/app/build.gradle`.
+2. Gere o APK:
+   ```bash
+   cd android && ./gradlew assembleRelease
+   ```
+3. Prepare o arquivo `version.json`:
+   ```json
+   {
+     "app": "app",
+     "version_code": 2,
+     "version_name": "1.1.0",
+     "min_version_code": 1,
+     "download_url": "/updates/download/app",
+     "changelog": "Descrição das novidades para os publicadores.",
+     "apk_filename": "app-release.apk"
+   }
+   ```
+4. Envie o APK e o manifesto para a VPS:
+   ```bash
+   scp app-release.apk version.json root@76.13.160.146:/opt/territory-map/releases/app/
+   ```
+
 
 ## Mapa: verificação manual pendente
 

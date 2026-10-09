@@ -185,3 +185,55 @@ gh secret delete SSH_PRIVATE_KEY -R Dalistor/Territory-Map --env production
    sobrescrito pelo deploy; alterá-lo é sempre manual.
 4. Se o pacote do GHCR estiver privado, autenticar uma vez na VPS (`docker login ghcr.io`) — ou
    marcar o pacote como público em `Packages → territory-map-server → Package settings`.
+
+---
+
+## Atualizações Automáticas dos Apps Android (Releases)
+
+O servidor disponibiliza metadados e binários APK para atualização automática in-app dos clientes Android (`app/` e `admin-app/`).
+
+### Endpoints
+- `GET /updates/latest?app=app|admin-app`: Retorna o manifesto da versão mais recente. Requer header `X-App-Key`.
+- `GET /updates/download/{app}`: Faz download do arquivo APK binário. Requer header `X-App-Key`.
+
+### Estrutura de Arquivos na VPS
+Os arquivos ficam no diretório configurado por `RELEASES_DIR` (padrão `./releases`), montado no container Docker em `/app/releases`:
+
+```
+/opt/territory-map/releases/
+├── app/
+│   ├── version.json
+│   └── app-release.apk
+└── admin-app/
+    ├── version.json
+    └── admin-app-release.apk
+```
+
+### Formato do Manifesto `version.json`
+```json
+{
+  "app": "app",
+  "version_code": 2,
+  "version_name": "1.1.0",
+  "min_version_code": 1,
+  "download_url": "/updates/download/app",
+  "changelog": "Novas melhorias e correções.",
+  "apk_filename": "app-release.apk"
+}
+```
+- `version_code`: Número inteiro incremental correspondente ao `versionCode` do Android.
+- `version_name`: Nome legível da versão (ex: `"1.1.0"`).
+- `min_version_code`: Versão mínima permitida. Se o app instalado tiver `versionCode < min_version_code`, a atualização é obrigatória e impede o uso antes de atualizar.
+- `download_url`: Caminho relativo ou URL absoluta para download do APK.
+- `apk_filename`: Nome do arquivo APK no mesmo diretório.
+
+### Publicando uma Nova Versão na VPS
+```bash
+# Criar diretórios na VPS (primeira vez)
+ssh root@76.13.160.146 "mkdir -p /opt/territory-map/releases/app /opt/territory-map/releases/admin-app"
+
+# Enviar novos arquivos via SCP
+scp version.json app-release.apk root@76.13.160.146:/opt/territory-map/releases/app/
+```
+Não é necessário reiniciar o container — os arquivos são lidos sob demanda pelo FastAPI.
+
