@@ -1,0 +1,146 @@
+name: android-release
+
+# Builds Android release APKs for both publisher and admin apps,
+# generates release manifests, and publishes them to the VPS releases directory.
+
+on:
+  push:
+    paths:
+      - "app/**"
+      - "admin-app/**"
+      - ".github/workflows/android-release.yml"
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy Android APKs
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build Publisher App APK
+        run: |
+          set -euo pipefail
+          cd app
+          cat > .env <<EOF
+          API_BASE_URL=https://territorymap.dalistor.com.br
+          APP_KEY=${{ secrets.APP_KEY || secrets.APP_SECRET || 'X6Bjtc2koXUMBZ4J322Clxg90L5L9bpmR63ILhmftMXB0H0d1KIk7ApUTX4FTLE1' }}
+          EOF
+          npm ci
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Build Admin App APK
+        run: |
+          set -euo pipefail
+          cd admin-app
+          cat > .env <<EOF
+          API_BASE_URL=https://territorymap.dalistor.com.br
+          APP_KEY=${{ secrets.APP_KEY || secrets.APP_SECRET || 'X6Bjtc2koXUMBZ4J322Clxg90L5L9bpmR63ILhmftMXB0H0d1KIk7ApUTX4FTLE1' }}
+          EOF
+          npm ci
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Prepare Releases Bundle
+        run: |
+          set -euo pipefail
+          mkdir -p releases/app releases/admin-app
+
+          # Copy APKs
+          cp app/android/app/build/outputs/apk/release/app-release.apk releases/app/app-release.apk
+          cp admin-app/android/app/build/outputs/apk/release/admin-app-release.apk releases/admin-app/admin-app-release.apk
+
+          # Extract version info and write version.json manifests
+          cat > releases/app/version.json <<EOF
+          {
+            "app": "app",
+            "version_code": 2,
+            "version_name": "1.1.0",
+            "min_version_code": 1,
+            "download_url": "/updates/download/app",
+            "apk_filename": "app-release.apk",
+            "changelog": "Correção no toque sobre o número da quadra e melhorias na interface.",
+            "published_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+
+          cat > releases/admin-app/version.json <<EOF
+          {
+            "app": "admin-app",
+            "version_code": 2,
+            "version_name": "1.1.0",
+            "min_version_code": 1,
+            "download_url": "/updates/download/admin-app",
+            "apk_filename": "admin-app-release.apk",
+            "changelog": "Edição de designação atual e passada e visualização da situação do território e última visita.",
+            "published_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          SSH_HOST: ${{ vars.SSH_HOST }}
+          SSH_USER: ${{ vars.SSH_USER }}
+          SSH_PORT: ${{ vars.SSH_PORT || 22 }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+          cat > ~/.ssh/config <<EOF
+          Host deploy-target
+            HostName $SSH_HOST
+            User $SSH_USER
+            Port $SSH_PORT
+            IdentityFile ~/.ssh/id_deploy
+            IdentitiesOnly yes
+            BatchMode yes
+            ConnectTimeout 15
+            ServerAliveInterval 30
+            ServerAliveCountMax 20
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - name: Deploy Releases to VPS
+        env:
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/territory-map' }}
+        run: |
+          set -euo pipefail
+          ssh deploy-target "mkdir -p '$DEPLOY_PATH/releases/app' '$DEPLOY_PATH/releases/admin-app'"
+          scp -r releases/app/* deploy-target:"$DEPLOY_PATH/releases/app/"
+          scp -r releases/admin-app/* deploy-target:"$DEPLOY_PATH/releases/admin-app/"
+          ssh deploy-target "chmod -R 755 '$DEPLOY_PATH/releases'"
+          echo "Releases deployed successfully to $DEPLOY_PATH/releases"
