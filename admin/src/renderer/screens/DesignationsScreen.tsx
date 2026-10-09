@@ -34,6 +34,13 @@ function formatDate(date: Date): string {
   return date.toLocaleDateString()
 }
 
+function toDateInputValue(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 /**
  * `assignmentIsOpen`'s complement, narrowed: an assignment is open exactly
  * while it has no `completedAt`, so everything that is *not* open provably
@@ -104,6 +111,21 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
     'overview'
   )
   const [selectedBlock, setSelectedBlock] = useState<Block | null>(null)
+  const [editingAssignment, setEditingAssignment] = useState<Assignment | null>(null)
+  const [editPublisherId, setEditPublisherId] = useState<string>('')
+  const [editStartedAt, setEditStartedAt] = useState<string>('')
+  const [editCompletedAt, setEditCompletedAt] = useState<string>('')
+  const [editReopen, setEditReopen] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+
+  const openEditModal = useCallback((assignment: Assignment) => {
+    setEditingAssignment(assignment)
+    setEditPublisherId(assignment.publisher.id)
+    setEditStartedAt(toDateInputValue(assignment.startedAt))
+    setEditCompletedAt(assignment.completedAt ? toDateInputValue(assignment.completedAt) : '')
+    setEditReopen(false)
+    setEditError(null)
+  }, [])
 
   // Only ever runs from an event handler ("Recarregar", reloading after an
   // action) -- the mount fetch below skips the synchronous reset, same
@@ -297,6 +319,62 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
     [panelTarget, reloadAfterAction, runConfirmed]
   )
 
+  const submitEditAssignment = useCallback(async () => {
+    if (panelTarget === null || editingAssignment === null) return
+    if (!editPublisherId) {
+      setEditError('Selecione um publicador.')
+      return
+    }
+    if (!editStartedAt) {
+      setEditError('Informe a data de início.')
+      return
+    }
+    const isCompleted = editingAssignment.completedAt !== undefined && !editReopen
+    if (isCompleted && !editCompletedAt) {
+      setEditError('Informe a data de conclusão.')
+      return
+    }
+    if (isCompleted && editStartedAt > editCompletedAt) {
+      setEditError('A data de início deve ser anterior ou igual à de conclusão.')
+      return
+    }
+
+    setEditError(null)
+    setIsActionPending(true)
+    try {
+      const [sy, sm, sd] = editStartedAt.split('-').map(Number)
+      const startedDate = new Date(Date.UTC(sy, sm - 1, sd, 12, 0, 0))
+
+      let completedDate: Date | undefined
+      if (isCompleted && editCompletedAt) {
+        const [cy, cm, cd] = editCompletedAt.split('-').map(Number)
+        completedDate = new Date(Date.UTC(cy, cm - 1, cd, 12, 0, 0))
+      }
+
+      await window.api.assignments.update(panelTarget.id, editingAssignment.id, {
+        publisherId: editPublisherId,
+        startedAt: startedDate,
+        completedAt: completedDate,
+        clearCompletedAt: editReopen
+      })
+
+      setEditingAssignment(null)
+      await reloadAfterAction(panelTarget.id)
+    } catch (error) {
+      setEditError(errorMessage(error))
+    } finally {
+      setIsActionPending(false)
+    }
+  }, [
+    panelTarget,
+    editingAssignment,
+    editPublisherId,
+    editStartedAt,
+    editCompletedAt,
+    editReopen,
+    reloadAfterAction
+  ])
+
   const [showExportModal, setShowExportModal] = useState(false)
   const [selectedServiceYear, setSelectedServiceYear] = useState<number>(() => getServiceYear())
   const [exportFormat, setExportFormat] = useState<'docx' | 'xlsx'>('docx')
@@ -398,7 +476,17 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
     {
       key: 'leader',
       header: 'Dirigente atual',
-      cell: (territory) => territory.assignedUser?.name ?? 'Sem dirigente'
+      cell: (territory) =>
+        territory.assignedUser !== undefined ? (
+          <span className="territory-leader-badge">
+            <span className="leader-avatar-dot" aria-hidden="true">
+              {territory.assignedUser.name.charAt(0).toUpperCase()}
+            </span>
+            {territory.assignedUser.name}
+          </span>
+        ) : (
+          <span className="cell-muted">Sem dirigente</span>
+        )
     },
     {
       key: 'withdrawn',
@@ -411,14 +499,28 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
     {
       key: 'status',
       header: 'Situação',
-      cell: (territory) => (territory.assignedUser === undefined ? 'Livre' : 'Em andamento')
+      cell: (territory) =>
+        territory.assignedUser === undefined ? (
+          <span className="status-badge status-idle">Disponível</span>
+        ) : (
+          <span className="status-badge status-working">Em andamento</span>
+        )
     },
     { key: 'blocks', header: 'Quadras', cell: (territory) => territory.blocks.length },
     {
       key: 'last-work',
       header: 'Último trabalho',
       cell: (territory) =>
-        territory.lastWork === undefined ? 'Nunca' : formatDate(territory.lastWork.workedAt)
+        territory.lastWork === undefined ? (
+          <span className="cell-muted">Nunca</span>
+        ) : (
+          <span
+            className="last-work-badge"
+            title={`Trabalhado por ${territory.lastWork.publisher.name}`}
+          >
+            🗓️ {formatDate(territory.lastWork.workedAt)}
+          </span>
+        )
     }
   ]
 
@@ -577,10 +679,21 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
                       {openAssignment === undefined ? (
                         <p className="dialog-subtitle">Sem dirigente</p>
                       ) : (
-                        <p className="status-badge status-active">
-                          {openAssignment.publisher.name} — desde{' '}
-                          {formatDate(openAssignment.startedAt)}
-                        </p>
+                        <div className="current-assignment-card">
+                          <p className="status-badge status-active">
+                            {openAssignment.publisher.name} — desde{' '}
+                            {formatDate(openAssignment.startedAt)}
+                          </p>
+                          <button
+                            type="button"
+                            className="button-small"
+                            disabled={isActionPending}
+                            aria-label={`Editar designação de ${openAssignment.publisher.name}`}
+                            onClick={() => openEditModal(openAssignment)}
+                          >
+                            Editar
+                          </button>
+                        </div>
                       )}
 
                       <h3 id="assignment-history-title">Histórico</h3>
@@ -597,14 +710,25 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
                                 {assignment.publisher.name} — {formatDate(assignment.startedAt)} a{' '}
                                 {formatDate(assignment.completedAt)}
                               </span>
-                              <button
-                                type="button"
-                                disabled={isActionPending}
-                                aria-label={`Apagar designação de ${assignment.publisher.name}`}
-                                onClick={() => void deleteAssignment(assignment)}
-                              >
-                                Apagar
-                              </button>
+                              <div className="assignment-history-actions">
+                                <button
+                                  type="button"
+                                  className="button-small"
+                                  disabled={isActionPending}
+                                  aria-label={`Editar designação de ${assignment.publisher.name}`}
+                                  onClick={() => openEditModal(assignment)}
+                                >
+                                  Editar
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isActionPending}
+                                  aria-label={`Apagar designação de ${assignment.publisher.name}`}
+                                  onClick={() => void deleteAssignment(assignment)}
+                                >
+                                  Apagar
+                                </button>
+                              </div>
                             </li>
                           ))}
                         </ul>
@@ -831,6 +955,104 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
                 onClick={() => void executeImport(importPreview)}
               >
                 {isActionPending ? 'Importando…' : 'Confirmar e Importar'}
+              </button>
+            </div>
+          </Dialog>
+        )}
+
+        {/* Modal de Edição de Designação (Atual ou Passada) */}
+        {editingAssignment !== null && (
+          <Dialog
+            className="edit-assignment-modal"
+            title={
+              assignmentIsOpen(editingAssignment)
+                ? 'Editar Designação Atual'
+                : 'Editar Designação Passada'
+            }
+            onClose={() => setEditingAssignment(null)}
+          >
+            <p className="dialog-subtitle">
+              {assignmentIsOpen(editingAssignment)
+                ? `Atualize o dirigente ou a data de retirada do território "${panelTarget?.name}".`
+                : `Corrija os dados registrados no histórico do território "${panelTarget?.name}".`}
+            </p>
+
+            {editError !== null && <p className="dialog-error">{editError}</p>}
+
+            <div className="field">
+              <label htmlFor="edit-assignment-publisher">
+                Dirigente responsável
+                <select
+                  id="edit-assignment-publisher"
+                  value={editPublisherId}
+                  onChange={(e) => setEditPublisherId(e.target.value)}
+                >
+                  {assignPublishers.map((publisher) => (
+                    <option key={publisher.id} value={publisher.id}>
+                      {publisher.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="field">
+              <label htmlFor="edit-assignment-started-at">
+                Data de início / retirada
+                <input
+                  id="edit-assignment-started-at"
+                  type="date"
+                  value={editStartedAt}
+                  onChange={(e) => setEditStartedAt(e.target.value)}
+                />
+              </label>
+            </div>
+
+            {!assignmentIsOpen(editingAssignment) && (
+              <>
+                <div className="field">
+                  <label htmlFor="edit-assignment-completed-at">
+                    Data de conclusão / devolução
+                    <input
+                      id="edit-assignment-completed-at"
+                      type="date"
+                      disabled={editReopen}
+                      value={editCompletedAt}
+                      onChange={(e) => setEditCompletedAt(e.target.value)}
+                    />
+                  </label>
+                </div>
+
+                {openAssignment === undefined && (
+                  <div className="field-checkbox">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={editReopen}
+                        onChange={(e) => setEditReopen(e.target.checked)}
+                      />
+                      Reabrir designação (tornar em andamento agora)
+                    </label>
+                  </div>
+                )}
+              </>
+            )}
+
+            <div className="dialog-actions">
+              <button
+                type="button"
+                disabled={isActionPending}
+                onClick={() => setEditingAssignment(null)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="button-primary"
+                disabled={isActionPending}
+                onClick={() => void submitEditAssignment()}
+              >
+                {isActionPending ? 'Salvando…' : 'Salvar Alterações'}
               </button>
             </div>
           </Dialog>

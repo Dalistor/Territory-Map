@@ -75,6 +75,7 @@ interface FakeApi extends TerritoryDetailScreenApi {
   designate: jest.Mock;
   completeAssignment: jest.Mock;
   deleteAssignment: jest.Mock;
+  updateAssignment: jest.Mock;
   listWorkLogs: jest.Mock;
   markWorked: jest.Mock;
   deleteWorkLog: jest.Mock;
@@ -88,6 +89,7 @@ function makeApi(overrides: Partial<FakeApi> = {}): FakeApi {
     designate: jest.fn(async () => makeAssignment()),
     completeAssignment: jest.fn(async () => makeAssignment()),
     deleteAssignment: jest.fn(async () => undefined),
+    updateAssignment: jest.fn(async () => undefined),
     listWorkLogs: jest.fn(async () => [] as WorkLog[]),
     markWorked: jest.fn(async () => makeWorkLog()),
     deleteWorkLog: jest.fn(async () => undefined),

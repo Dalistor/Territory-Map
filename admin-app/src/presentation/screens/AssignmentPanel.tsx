@@ -10,18 +10,21 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import {
   assignmentIsOpen,
   openAssignment as findOpenAssignment,
   sortAssignments,
 } from '../../domain/assignment';
 import type { Assignment, Publisher, Territory } from '../../domain/models';
+import type { AssignmentUpdatePayload } from '../../data/api-client';
 import { colors, radius, spacing } from '../theme';
 import { PublisherPicker } from './PublisherPicker';
 
@@ -30,6 +33,11 @@ export interface AssignmentPanelApi {
   listAssignments(territoryId: string): Promise<Assignment[]>;
   listPublishers(): Promise<Publisher[]>;
   designate(territoryId: string, publisherId: string): Promise<unknown>;
+  updateAssignment(
+    territoryId: string,
+    assignmentId: string,
+    payload: AssignmentUpdatePayload,
+  ): Promise<unknown>;
   completeAssignment(territoryId: string): Promise<unknown>;
   deleteAssignment(territoryId: string, assignmentId: string): Promise<void>;
 }
@@ -136,6 +144,16 @@ export function AssignmentPanel({
   const [selectedPublisherId, setSelectedPublisherId] = useState<string | null>(
     null,
   );
+  const [editingAssignment, setEditingAssignment] = useState<Assignment | null>(
+    null,
+  );
+  const [editPublisherId, setEditPublisherId] = useState<string | null>(null);
+  const [editStartedAt, setEditStartedAt] = useState<Date>(new Date());
+  const [editCompletedAt, setEditCompletedAt] = useState<Date>(new Date());
+  const [editReopen, setEditReopen] = useState(false);
+  const [isPickingStartDate, setIsPickingStartDate] = useState(false);
+  const [isPickingEndDate, setIsPickingEndDate] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isWriting, setIsWriting] = useState(false);
@@ -307,6 +325,55 @@ export function AssignmentPanel({
     [api, confirmThen, territory.id, writeThenRefresh],
   );
 
+  const openEditModal = useCallback((assignment: Assignment) => {
+    setEditingAssignment(assignment);
+    setEditPublisherId(assignment.publisher.id);
+    setEditStartedAt(assignment.startedAt);
+    setEditCompletedAt(assignment.completedAt ?? new Date());
+    setEditReopen(false);
+    setEditError(null);
+  }, []);
+
+  const closeEditModal = useCallback(() => {
+    setEditingAssignment(null);
+    setEditError(null);
+  }, []);
+
+  const handleSaveEdit = useCallback(async () => {
+    if (editingAssignment === null || editPublisherId === null) {
+      return;
+    }
+    const isCompleted = editingAssignment.completedAt !== null && !editReopen;
+    if (isCompleted && editStartedAt.getTime() > editCompletedAt.getTime()) {
+      setEditError(
+        'A data de início deve ser anterior ou igual à de conclusão.',
+      );
+      return;
+    }
+
+    setEditError(null);
+    await writeThenRefresh(async () => {
+      await api.updateAssignment(territory.id, editingAssignment.id, {
+        publisherId: editPublisherId,
+        startedAt: editStartedAt,
+        completedAt: isCompleted ? editCompletedAt : undefined,
+        clearCompletedAt: editReopen,
+      });
+      closeEditModal();
+    });
+  }, [
+    api,
+    closeEditModal,
+    editCompletedAt,
+    editPublisherId,
+    editReopen,
+    editStartedAt,
+    editingAssignment,
+    territory.id,
+    writeThenRefresh,
+  ]);
+
+
   // One element, two containers: scrolling or not is the only difference, and
   // branching on the wrapper keeps the card itself written once.
   const Container = scrollable ? ScrollView : View;
@@ -336,9 +403,21 @@ export function AssignmentPanel({
           {open === null ? (
             <Text style={styles.muted}>Sem designação</Text>
           ) : (
-            <Text style={styles.current}>
-              {open.publisher.name} — desde {formatDate(open.startedAt)}
-            </Text>
+            <View style={styles.currentCard}>
+              <Text style={styles.current}>
+                {open.publisher.name} — desde {formatDate(open.startedAt)}
+              </Text>
+              <Pressable
+                accessibilityLabel={`Editar designação de ${open.publisher.name}`}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: isWriting, busy: isWriting }}
+                disabled={isWriting}
+                onPress={() => openEditModal(open)}
+                style={styles.editButton}
+              >
+                <Text style={styles.editButtonText}>Editar</Text>
+              </Pressable>
+            </View>
           )}
 
           <Text style={styles.heading}>Histórico</Text>
@@ -358,16 +437,28 @@ export function AssignmentPanel({
                   {formatDate(assignment.startedAt)} a{' '}
                   {formatDate(assignment.completedAt)}
                 </Text>
-                <Pressable
-                  accessibilityLabel={`Apagar designação de ${assignment.publisher.name}`}
-                  accessibilityRole="button"
-                  accessibilityState={{ disabled: isWriting, busy: isWriting }}
-                  disabled={isWriting}
-                  onPress={() => requestDelete(assignment)}
-                  style={styles.deleteButton}
-                >
-                  <Text style={styles.deleteButtonText}>Apagar</Text>
-                </Pressable>
+                <View style={styles.rowActions}>
+                  <Pressable
+                    accessibilityLabel={`Editar designação de ${assignment.publisher.name}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: isWriting, busy: isWriting }}
+                    disabled={isWriting}
+                    onPress={() => openEditModal(assignment)}
+                    style={styles.editButton}
+                  >
+                    <Text style={styles.editButtonText}>Editar</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityLabel={`Apagar designação de ${assignment.publisher.name}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: isWriting, busy: isWriting }}
+                    disabled={isWriting}
+                    onPress={() => requestDelete(assignment)}
+                    style={styles.deleteButton}
+                  >
+                    <Text style={styles.deleteButtonText}>Apagar</Text>
+                  </Pressable>
+                </View>
               </View>
             ))
           )}
@@ -409,6 +500,125 @@ export function AssignmentPanel({
             </Pressable>
           )}
         </>
+      )}
+
+      {editingAssignment !== null && (
+        <Modal
+          visible
+          transparent
+          animationType="fade"
+          onRequestClose={closeEditModal}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>
+                {assignmentIsOpen(editingAssignment)
+                  ? 'Editar designação atual'
+                  : 'Editar designação passada'}
+              </Text>
+
+              {editError !== null && (
+                <Text style={styles.error}>{editError}</Text>
+              )}
+
+              <Text style={styles.heading}>Dirigente</Text>
+              <PublisherPicker
+                publishers={publishers}
+                selectedPublisherId={editPublisherId}
+                onSelect={setEditPublisherId}
+                optionTestIdPrefix="edit-publisher-"
+              />
+
+              <Text style={styles.heading}>Data de início</Text>
+              <Pressable
+                accessibilityLabel="Escolher data de início"
+                accessibilityRole="button"
+                style={styles.datePickerButton}
+                onPress={() => setIsPickingStartDate(true)}
+              >
+                <Text style={styles.datePickerButtonText}>
+                  🗓️ Início: {formatDate(editStartedAt)}
+                </Text>
+              </Pressable>
+              {isPickingStartDate && (
+                <DateTimePicker
+                  value={editStartedAt}
+                  mode="date"
+                  onChange={(_event, picked) => {
+                    setIsPickingStartDate(false);
+                    if (picked !== undefined) setEditStartedAt(picked);
+                  }}
+                />
+              )}
+
+              {!assignmentIsOpen(editingAssignment) && (
+                <>
+                  <Text style={styles.heading}>Data de conclusão</Text>
+                  <Pressable
+                    accessibilityLabel="Escolher data de conclusão"
+                    accessibilityRole="button"
+                    disabled={editReopen}
+                    style={[
+                      styles.datePickerButton,
+                      editReopen && styles.datePickerButtonDisabled,
+                    ]}
+                    onPress={() => setIsPickingEndDate(true)}
+                  >
+                    <Text style={styles.datePickerButtonText}>
+                      🗓️ Conclusão: {formatDate(editCompletedAt)}
+                    </Text>
+                  </Pressable>
+                  {isPickingEndDate && (
+                    <DateTimePicker
+                      value={editCompletedAt}
+                      mode="date"
+                      onChange={(_event, picked) => {
+                        setIsPickingEndDate(false);
+                        if (picked !== undefined) setEditCompletedAt(picked);
+                      }}
+                    />
+                  )}
+
+                  {open === null && (
+                    <Pressable
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: editReopen }}
+                      style={styles.reopenCheckbox}
+                      onPress={() => setEditReopen(!editReopen)}
+                    >
+                      <Text style={styles.reopenCheckboxText}>
+                        {editReopen ? '☑' : '☐'} Reabrir designação (tornar em andamento)
+                      </Text>
+                    </Pressable>
+                  )}
+                </>
+              )}
+
+              <View style={styles.modalActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancelar edição"
+                  style={styles.modalCancelButton}
+                  onPress={closeEditModal}
+                >
+                  <Text style={styles.modalCancelButtonText}>Cancelar</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Salvar alterações"
+                  accessibilityState={{ disabled: isWriting, busy: isWriting }}
+                  disabled={isWriting}
+                  style={styles.modalSaveButton}
+                  onPress={handleSaveEdit}
+                >
+                  <Text style={styles.modalSaveButtonText}>
+                    {isWriting ? 'Salvando…' : 'Salvar'}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
       )}
     </Container>
   );
@@ -484,6 +694,106 @@ const styles = StyleSheet.create({
   },
   deleteButtonText: {
     color: colors.danger,
+    fontWeight: '600',
+  },
+  currentCard: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: spacing.sm,
+  },
+  rowActions: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  editButton: {
+    backgroundColor: colors.surface,
+    borderColor: colors.borderStrong,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+  },
+  editButtonText: {
+    color: colors.textPrimary,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.md,
+  },
+  modalContent: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    elevation: 5,
+    maxHeight: '90%',
+    padding: spacing.lg,
+    width: '100%',
+  },
+  modalTitle: {
+    color: colors.textPrimary,
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: spacing.sm,
+  },
+  datePickerButton: {
+    backgroundColor: colors.background,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    padding: spacing.md,
+  },
+  datePickerButtonDisabled: {
+    opacity: 0.5,
+  },
+  datePickerButtonText: {
+    color: colors.textPrimary,
+    fontSize: 15,
+  },
+  reopenCheckbox: {
+    marginTop: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  reopenCheckboxText: {
+    color: colors.textPrimary,
+    fontSize: 15,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    justifyContent: 'flex-end',
+    marginTop: spacing.lg,
+  },
+  modalCancelButton: {
+    alignItems: 'center',
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 44,
+    paddingHorizontal: spacing.lg,
+  },
+  modalCancelButtonText: {
+    color: colors.textPrimary,
+    fontWeight: '600',
+  },
+  modalSaveButton: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    justifyContent: 'center',
+    minHeight: 44,
+    paddingHorizontal: spacing.lg,
+  },
+  modalSaveButtonText: {
+    color: colors.onPrimary,
     fontWeight: '600',
   },
 });

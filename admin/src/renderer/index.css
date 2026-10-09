@@ -1031,6 +1031,134 @@ li > [role='menu'] {
   font-size: 0.9rem;
 }
 
+.status-badge.status-idle {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.status-badge.status-working {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.territory-leader-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.leader-avatar-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #e0e7ff;
+  color: #4338ca;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.last-work-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.cell-muted {
+  color: var(--color-text-muted);
+  font-style: italic;
+  font-size: 0.85rem;
+}
+
+.current-assignment-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  margin-bottom: 14px;
+}
+
+.current-assignment-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.current-assignment-leader {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--color-text);
+}
+
+.current-assignment-date {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+}
+
+.assignment-history-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.assignment-history-publisher {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.assignment-history-dates {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.assignment-history-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.button-small {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  border-radius: var(--radius-sm);
+}
+
+.field-checkbox {
+  margin: 12px 0;
+}
+
+.field-checkbox label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.dialog-error {
+  padding: 8px 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  margin: 0 0 12px;
+}
+
 /* The line under a dialog's title ("Quem vai cuidar deste território?"). */
 .dialog-subtitle {
   margin: -8px 0 12px;
@@ -1622,7 +1750,9 @@ li > [role='menu'] {
 
 .kpi-card-active {
   border-color: var(--color-primary);
-  box-shadow: inset 0 2px 0 var(--color-primary), var(--shadow-sm);
+  box-shadow:
+    inset 0 2px 0 var(--color-primary),
+    var(--shadow-sm);
 }
 
 .kpi-label {

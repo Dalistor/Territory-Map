@@ -64,6 +64,8 @@ export class NetworkError extends Error {
   }
 }
 
+export { ApiError as ApiErrorException, NetworkError as NetworkException };
+
 /** Not the DOM lib's `RequestInit` -- just the subset this module builds and sends. */
 export interface FetchRequestInit {
   readonly method: string;
@@ -88,6 +90,13 @@ export interface AdminSession {
   readonly congregation: Congregation;
 }
 
+export interface AssignmentUpdatePayload {
+  readonly publisherId?: string;
+  readonly startedAt?: Date;
+  readonly completedAt?: Date;
+  readonly clearCompletedAt?: boolean;
+}
+
 export interface ApiClient {
   login(credentials: { name: string; city: string; password: string }): Promise<AdminSession>;
   setToken(token: string | null): void;
@@ -98,6 +107,11 @@ export interface ApiClient {
   listAssignments(territoryId: string): Promise<Assignment[]>;
   listAllAssignments(filters?: AssignmentHistoryFilters): Promise<AssignmentHistoryPage>;
   designate(territoryId: string, publisherId: string): Promise<Assignment>;
+  updateAssignment(
+    territoryId: string,
+    assignmentId: string,
+    payload: AssignmentUpdatePayload,
+  ): Promise<Assignment>;
   completeAssignment(territoryId: string): Promise<Assignment>;
   deleteAssignment(territoryId: string, assignmentId: string): Promise<void>;
   listWorkLogs(blockId: string): Promise<WorkLog[]>;
@@ -458,6 +472,26 @@ export function createApiClient(options: CreateApiClientOptions = {}): ApiClient
       const json = await request('POST', `/admin/territories/${territoryId}/assignments`, {
         user_id: publisherId,
       });
+      return parseAssignment(json as Record<string, unknown>, territoryId);
+    },
+
+    async updateAssignment(territoryId, assignmentId, payload) {
+      const json = await request(
+        'PATCH',
+        `/admin/territories/${territoryId}/assignments/${assignmentId}`,
+        {
+          ...(payload.publisherId !== undefined && { user_id: payload.publisherId }),
+          ...(payload.startedAt !== undefined && {
+            started_at: payload.startedAt.toISOString(),
+          }),
+          ...(payload.completedAt !== undefined && {
+            completed_at: payload.completedAt.toISOString(),
+          }),
+          ...(payload.clearCompletedAt !== undefined && {
+            clear_completed_at: payload.clearCompletedAt,
+          }),
+        },
+      );
       return parseAssignment(json as Record<string, unknown>, territoryId);
     },
 

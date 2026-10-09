@@ -30,6 +30,7 @@ function fakeApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     designate: jest.fn(),
     completeAssignment: jest.fn(),
     deleteAssignment: jest.fn(),
+    updateAssignment: jest.fn(),
     listWorkLogs: jest.fn(),
     markWorked: jest.fn(),
     deleteWorkLog: jest.fn(),

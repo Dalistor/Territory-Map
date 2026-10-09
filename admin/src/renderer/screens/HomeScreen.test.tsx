@@ -62,7 +62,11 @@ function makeTerritory(overrides: Partial<Territory> = {}): Territory {
   }
 }
 
-function makeApi(overrides: Partial<IpcApi> = {}): IpcApi {
+type DeepPartialIpcApi = {
+  [K in keyof IpcApi]?: Partial<IpcApi[K]>
+}
+
+function makeApi(overrides: DeepPartialIpcApi = {}): IpcApi {
   return {
     session: {
       isConfigured: vi.fn(),
@@ -99,6 +103,7 @@ function makeApi(overrides: Partial<IpcApi> = {}): IpcApi {
       designate: vi.fn(),
       complete: vi.fn(),
       delete: vi.fn(),
+      update: vi.fn(),
       ...overrides.assignments
     },
     exports: {

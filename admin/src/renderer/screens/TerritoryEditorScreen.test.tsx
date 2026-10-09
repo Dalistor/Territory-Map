@@ -85,7 +85,8 @@ function fakeApi(
       listFor: vi.fn(),
       designate: vi.fn(),
       complete: vi.fn(),
-      delete: vi.fn()
+      delete: vi.fn(),
+      update: vi.fn()
     },
     exports: { assignments: vi.fn(), s13t: vi.fn(), s13tDocx: vi.fn() },
     imports: { s13tSelectAndPreview: vi.fn(), s13tExecute: vi.fn() },

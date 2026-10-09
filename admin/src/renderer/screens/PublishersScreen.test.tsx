@@ -142,7 +142,8 @@ function installFakeApi(): FakePublishersApi {
       listAll: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 50 }),
       designate: vi.fn(),
       complete: vi.fn(),
-      delete: vi.fn()
+      delete: vi.fn(),
+      update: vi.fn()
     }
   }
   return fake
@@ -161,7 +162,8 @@ function installFakeApiWithHistory(): {
       listAll: history.listAll.bind(history),
       designate: vi.fn(),
       complete: vi.fn(),
-      delete: vi.fn()
+      delete: vi.fn(),
+      update: vi.fn()
     }
   }
   return { publishers, history }

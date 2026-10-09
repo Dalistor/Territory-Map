@@ -154,3 +154,17 @@ class TerritoryNotAssignedError(DomainError):
         "Este território não está designado a você. Peça a quem cuida dos territórios "
         "na congregação para atribuí-lo antes de marcar quadras."
     )
+
+
+class OpenAssignmentConflictError(DomainError):
+    """Territory already has an open assignment."""
+
+    code = "open_assignment_conflict"
+    default_message = "Este território já possui uma designação em andamento."
+
+
+class InvalidAssignmentDatesError(DomainError):
+    """Assignment start date cannot be after completion date."""
+
+    code = "invalid_assignment_dates"
+    default_message = "A data de início não pode ser posterior à data de conclusão."

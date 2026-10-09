@@ -53,6 +53,7 @@ interface FakeApi {
   designate: jest.Mock;
   completeAssignment: jest.Mock;
   deleteAssignment: jest.Mock;
+  updateAssignment: jest.Mock;
 }
 
 function makeApi(overrides: Partial<FakeApi> = {}): FakeApi {
@@ -62,6 +63,7 @@ function makeApi(overrides: Partial<FakeApi> = {}): FakeApi {
     designate: jest.fn(async () => undefined),
     completeAssignment: jest.fn(async () => undefined),
     deleteAssignment: jest.fn(async () => undefined),
+    updateAssignment: jest.fn(async () => undefined),
     ...overrides,
   };
 }
@@ -675,5 +677,89 @@ describe('AssignmentPanel', () => {
         'Não foi possível completar a operação.',
       ),
     );
+  });
+
+  it('permite abrir modal e editar a designação atual com novo publicador', async () => {
+    const current = makeAssignment({
+      id: 'asg-open',
+      publisher: { id: 'pub-1', name: 'Ana' },
+      startedAt: new Date('2026-01-10T12:00:00Z'),
+      completedAt: null,
+    });
+    const api = makeApi({
+      listAssignments: jest.fn(async () => [current]),
+      listPublishers: jest.fn(async () => [
+        makePublisher({ id: 'pub-1', name: 'Ana' }),
+        makePublisher({ id: 'pub-9', name: 'Bruno' }),
+      ]),
+    });
+    const onChanged = jest.fn();
+
+    await render(
+      <AssignmentPanel
+        territory={makeTerritory({ id: 'terr-1' })}
+        session={makeSession()}
+        api={api}
+        onChanged={onChanged}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('Editar designação de Ana')).toBeTruthy(),
+    );
+
+    await fireEvent.press(screen.getByLabelText('Editar designação de Ana'));
+
+    expect(screen.getByText('Editar designação atual')).toBeTruthy();
+
+    await fireEvent.press(screen.getByTestId('edit-publisher-pub-9'));
+    await fireEvent.press(screen.getByLabelText('Salvar alterações'));
+
+    await waitFor(() =>
+      expect(api.updateAssignment).toHaveBeenCalledWith(
+        'terr-1',
+        'asg-open',
+        expect.objectContaining({
+          publisherId: 'pub-9',
+          startedAt: expect.any(Date),
+        }),
+      ),
+    );
+    expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('permite abrir modal de edição para designação passada e cancelar sem chamar a API', async () => {
+    const past = makeAssignment({
+      id: 'asg-past',
+      publisher: { id: 'pub-1', name: 'Ana' },
+      startedAt: new Date('2025-01-10T12:00:00Z'),
+      completedAt: new Date('2025-03-10T12:00:00Z'),
+    });
+    const api = makeApi({
+      listAssignments: jest.fn(async () => [past]),
+      listPublishers: jest.fn(async () => [
+        makePublisher({ id: 'pub-1', name: 'Ana' }),
+      ]),
+    });
+
+    await render(
+      <AssignmentPanel
+        territory={makeTerritory({ id: 'terr-1' })}
+        session={makeSession()}
+        api={api}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('Editar designação de Ana')).toBeTruthy(),
+    );
+
+    await fireEvent.press(screen.getByLabelText('Editar designação de Ana'));
+    expect(screen.getByText('Editar designação passada')).toBeTruthy();
+
+    await fireEvent.press(screen.getByText('Cancelar'));
+
+    expect(screen.queryByText('Editar designação passada')).toBeNull();
+    expect(api.updateAssignment).not.toHaveBeenCalled();
   });
 });

@@ -7,6 +7,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import {
   IPC_CHANNELS,
+  type AssignmentUpdateInput,
   type BlockCreateInput,
   type BlockUpdateInput,
   type IpcApi,
@@ -57,6 +58,8 @@ const api: IpcApi = {
       ipcRenderer.invoke(IPC_CHANNELS.assignmentsListAll, query),
     designate: (territoryId: string, publisherId: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.assignmentsDesignate, territoryId, publisherId),
+    update: (territoryId: string, assignmentId: string, input: AssignmentUpdateInput) =>
+      ipcRenderer.invoke(IPC_CHANNELS.assignmentsUpdate, territoryId, assignmentId, input),
     complete: (territoryId: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.assignmentsComplete, territoryId),
     delete: (territoryId: string, assignmentId: string) =>

@@ -40,6 +40,7 @@ from app.schemas.assignment import (
     AssignmentHistoryPageOut,
     AssignmentHistoryQuery,
     AssignmentOut,
+    AssignmentUpdateIn,
     AssignmentWithTerritoryOut,
 )
 from app.services.assignment import AssignmentService
@@ -119,6 +120,30 @@ def complete_assignment(
     territory with nothing open is a 404: there is no stint to address.
     """
     assignment = assignments.complete(congregation.id, territory_id)
+    return AssignmentOut.model_validate(with_user(assignment))
+
+
+@router.patch("/{assignment_id}")
+def update_assignment(
+    territory_id: UUID,
+    assignment_id: UUID,
+    payload: AssignmentUpdateIn,
+    congregation: AdminCongregation,
+    assignments: Assignments,
+) -> AssignmentOut:
+    """Update an assignment in force or past.
+
+    Allows correcting publisher, start date, completion date, or reopening a stint.
+    """
+    assignment = assignments.update(
+        congregation.id,
+        assignment_id,
+        territory_id=territory_id,
+        user_id=payload.user_id,
+        started_at=payload.started_at,
+        completed_at=payload.completed_at,
+        clear_completed_at=payload.clear_completed_at,
+    )
     return AssignmentOut.model_validate(with_user(assignment))
 
 

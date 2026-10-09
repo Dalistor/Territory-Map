@@ -169,6 +169,7 @@ interface FakeApi extends DesignationsScreenApi {
   designate: jest.Mock;
   completeAssignment: jest.Mock;
   deleteAssignment: jest.Mock;
+  updateAssignment: jest.Mock;
   listWorkLogs: jest.Mock;
   markWorked: jest.Mock;
   deleteWorkLog: jest.Mock;
@@ -183,6 +184,7 @@ function makeApi(overrides: Partial<FakeApi> = {}): FakeApi {
     designate: jest.fn(async () => undefined),
     completeAssignment: jest.fn(async () => undefined),
     deleteAssignment: jest.fn(async () => undefined),
+    updateAssignment: jest.fn(async () => undefined),
     listWorkLogs: jest.fn(async () => []),
     markWorked: jest.fn(async () => undefined),
     deleteWorkLog: jest.fn(async () => undefined),

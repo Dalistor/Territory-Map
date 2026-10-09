@@ -70,7 +70,11 @@ function asDate(date: Date): string {
   return date.toLocaleDateString()
 }
 
-function makeApi(overrides: Partial<IpcApi> = {}): IpcApi {
+type DeepPartialIpcApi = {
+  [K in keyof IpcApi]?: Partial<IpcApi[K]>
+}
+
+function makeApi(overrides: DeepPartialIpcApi = {}): IpcApi {
   return {
     session: {
       isConfigured: vi.fn(),
@@ -107,6 +111,7 @@ function makeApi(overrides: Partial<IpcApi> = {}): IpcApi {
       designate: vi.fn().mockResolvedValue(makeAssignment()),
       complete: vi.fn().mockResolvedValue(makeAssignment()),
       delete: vi.fn().mockResolvedValue(undefined),
+      update: vi.fn().mockResolvedValue(makeAssignment()),
       ...overrides.assignments
     },
     exports: {
@@ -559,6 +564,38 @@ describe('DesignationsScreen assignment history panel', () => {
 
     await waitFor(() => expect(deleteAssignment).toHaveBeenCalledWith('territory-1', 'a-closed'))
     expect(confirmSpy.mock.calls.at(-1)?.[0]).toMatch(/histórico/i)
+  })
+
+  it('allows editing current and past assignments via modal', async () => {
+    const updateAssignment = vi.fn().mockResolvedValue(open)
+    vi.stubGlobal(
+      'api',
+      apiWithHistory({
+        assignments: { update: updateAssignment } as unknown as IpcApi['assignments']
+      })
+    )
+    const user = userEvent.setup()
+    const panel = await openPanel()
+
+    // Edit current assignment
+    const editCurrentBtn = await within(panel).findByRole('button', {
+      name: /editar designação de bia/i
+    })
+    await user.click(editCurrentBtn)
+
+    const modal = await screen.findByRole('dialog', { name: /editar designação atual/i })
+    expect(modal).toBeVisible()
+
+    const saveBtn = within(modal).getByRole('button', { name: /salvar alterações/i })
+    await user.click(saveBtn)
+
+    await waitFor(() =>
+      expect(updateAssignment).toHaveBeenCalledWith(
+        'territory-1',
+        'a-open',
+        expect.objectContaining({ publisherId: 'p2' })
+      )
+    )
   })
 
   it('shows a visible error message when an action fails, without breaking the screen', async () => {

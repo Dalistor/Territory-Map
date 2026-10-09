@@ -19,7 +19,9 @@ export async function fetchLatestRelease(
   options: UpdateClientOptions = {}
 ): Promise<AppRelease | null> {
   const fetchImpl: FetchImpl =
-    options.fetchImpl ?? ((url, init) => (globalThis as any).fetch(url, init));
+    options.fetchImpl ??
+    ((url, init) =>
+      (globalThis as unknown as { fetch: FetchImpl }).fetch(url, init));
   const baseUrl = (options.baseUrl ?? Config.API_BASE_URL ?? '').replace(/\/+$/, '');
   const appKey = options.appKey ?? Config.APP_KEY ?? '';
 

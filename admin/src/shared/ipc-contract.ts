@@ -76,6 +76,13 @@ export interface BlockUpdateInput {
   readonly statusOverride?: BlockStatusOverride | null
 }
 
+export interface AssignmentUpdateInput {
+  readonly publisherId?: string
+  readonly startedAt?: Date
+  readonly completedAt?: Date
+  readonly clearCompletedAt?: boolean
+}
+
 /**
  * What every error becomes before it crosses the IPC boundary.
  *
@@ -118,6 +125,7 @@ export const IPC_CHANNELS = {
   assignmentsListFor: 'assignments:listFor',
   assignmentsListAll: 'assignments:listAll',
   assignmentsDesignate: 'assignments:designate',
+  assignmentsUpdate: 'assignments:update',
   assignmentsComplete: 'assignments:complete',
   assignmentsDelete: 'assignments:delete',
   exportAssignments: 'export:assignments',
@@ -234,6 +242,12 @@ export interface IpcApi {
     listAll(query?: AssignmentHistoryQuery): Promise<AssignmentHistoryPage>
     /** Opens a new assignment; the server closes whatever was open before. */
     designate(territoryId: string, publisherId: string): Promise<Assignment>
+    /** Updates an existing assignment in force or past. */
+    update(
+      territoryId: string,
+      assignmentId: string,
+      input: AssignmentUpdateInput
+    ): Promise<Assignment>
     /** Closes the open assignment, freeing the territory for someone else. */
     complete(territoryId: string): Promise<Assignment>
     /** Erases one history line — the admin correcting a wrong record. */

@@ -31,6 +31,7 @@ function fakeApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     designate: vi.fn(),
     completeAssignment: vi.fn(),
     deleteAssignment: vi.fn(),
+    updateAssignment: vi.fn(),
     createBlock: vi.fn(),
     updateBlock: vi.fn(),
     deleteBlock: vi.fn(),

@@ -23,7 +23,11 @@ function makePage(
   return { items, total: items.length, page: 1, pageSize: 50, ...overrides }
 }
 
-function makeApi(overrides: Partial<IpcApi> = {}): IpcApi {
+type DeepPartialIpcApi = {
+  [K in keyof IpcApi]?: Partial<IpcApi[K]>
+}
+
+function makeApi(overrides: DeepPartialIpcApi = {}): IpcApi {
   return {
     session: {
       isConfigured: vi.fn(),
@@ -55,6 +59,7 @@ function makeApi(overrides: Partial<IpcApi> = {}): IpcApi {
       designate: vi.fn(),
       complete: vi.fn(),
       delete: vi.fn().mockResolvedValue(undefined),
+      update: vi.fn(),
       ...overrides.assignments
     },
     exports: { assignments: vi.fn(), s13t: vi.fn(), s13tDocx: vi.fn(), ...overrides.exports },

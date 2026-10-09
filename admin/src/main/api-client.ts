@@ -11,6 +11,7 @@
 
 import { type LatLng, ringFromJson, ringToJson, validateRing } from '../shared/geo'
 import { ApiErrorException, NetworkException } from '../shared/api-errors'
+import type { AssignmentUpdateInput } from '../shared/ipc-contract'
 import type {
   AdminSession,
   Assignment,
@@ -93,6 +94,12 @@ export interface ApiClient {
   listAllAssignments(query?: AssignmentHistoryQuery): Promise<AssignmentHistoryPage>
   /** Opens a new assignment; the server closes whatever was open before. */
   designate(territoryId: string, userId: string): Promise<Assignment>
+  /** Updates an existing assignment (active or past). */
+  updateAssignment(
+    territoryId: string,
+    assignmentId: string,
+    input: AssignmentUpdateInput
+  ): Promise<Assignment>
   /** Closes the open assignment, freeing the territory for someone else. */
   completeAssignment(territoryId: string): Promise<Assignment>
   /** Erases one history line -- the admin correcting a wrong record. */
@@ -471,6 +478,24 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
       const json = await request('POST', `/admin/territories/${territoryId}/assignments`, {
         user_id: userId
       })
+      return parseAssignment(json as Record<string, unknown>)
+    },
+
+    async updateAssignment(territoryId, assignmentId, input) {
+      const json = await request(
+        'PATCH',
+        `/admin/territories/${territoryId}/assignments/${assignmentId}`,
+        {
+          ...(input.publisherId !== undefined && { user_id: input.publisherId }),
+          ...(input.startedAt !== undefined && { started_at: input.startedAt.toISOString() }),
+          ...(input.completedAt !== undefined && {
+            completed_at: input.completedAt.toISOString()
+          }),
+          ...(input.clearCompletedAt !== undefined && {
+            clear_completed_at: input.clearCompletedAt
+          })
+        }
+      )
       return parseAssignment(json as Record<string, unknown>)
     },
 

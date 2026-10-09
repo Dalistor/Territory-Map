@@ -8,7 +8,7 @@ open row in this history, not a separate truth.
 from datetime import UTC, datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, Field, model_validator
 
 from app.schemas.common import OutSchema
 from app.schemas.territory import TerritoryBriefOut
@@ -24,6 +24,20 @@ class AssignmentCreateIn(BaseModel):
     """
 
     user_id: UUID
+
+
+class AssignmentUpdateIn(BaseModel):
+    """Admin updating an assignment record (active or past).
+
+    Allows changing the publisher, start date, or completion date.
+    Can also clear the completion date to reopen an assignment, provided
+    no other assignment is currently open for the territory.
+    """
+
+    user_id: UUID | None = None
+    started_at: AwareDatetime | None = None
+    completed_at: AwareDatetime | None = None
+    clear_completed_at: bool = False
 
 
 class AssignmentOut(OutSchema):

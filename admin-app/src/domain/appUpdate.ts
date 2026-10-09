@@ -20,14 +20,14 @@ export function isUpdateMandatory(currentCode: number, minVersionCode: number): 
   return currentCode < minVersionCode;
 }
 
-export function parseAppRelease(payload: any): AppRelease {
+export function parseAppRelease(payload: Record<string, unknown>): AppRelease {
   return {
-    app: payload.app,
-    versionCode: payload.version_code,
-    versionName: payload.version_name,
+    app: String(payload.app),
+    versionCode: Number(payload.version_code),
+    versionName: String(payload.version_name),
     minVersionCode: typeof payload.min_version_code === 'number' ? payload.min_version_code : 1,
-    downloadUrl: payload.download_url,
-    changelog: payload.changelog,
-    publishedAt: payload.published_at,
+    downloadUrl: String(payload.download_url),
+    changelog: typeof payload.changelog === 'string' ? payload.changelog : '',
+    publishedAt: typeof payload.published_at === 'string' ? payload.published_at : undefined,
   };
 }

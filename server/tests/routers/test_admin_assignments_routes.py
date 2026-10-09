@@ -460,3 +460,106 @@ async def test_the_general_listing_is_not_reachable_without_an_admin_token(clien
     response = await client.get("/admin/assignments")
 
     assert response.status_code == 401
+
+
+async def test_update_assignment_success(client, make_admin, make_publisher):
+    congregation, token = make_admin()
+    territory_id = await draw_territory(client, token)
+    pub1 = make_publisher(congregation.id, name="Irmão João")
+    pub2 = make_publisher(congregation.id, name="Irmã Maria")
+
+    create_res = await client.post(
+        f"/admin/territories/{territory_id}/assignments",
+        json={"user_id": str(pub1.id)},
+        headers=bearer(token),
+    )
+    assignment_id = create_res.json()["id"]
+
+    # Update publisher and dates
+    update_res = await client.patch(
+        f"/admin/territories/{territory_id}/assignments/{assignment_id}",
+        json={
+            "user_id": str(pub2.id),
+            "started_at": "2026-08-01T10:00:00Z",
+            "completed_at": "2026-08-10T18:00:00Z",
+        },
+        headers=bearer(token),
+    )
+    assert update_res.status_code == 200
+    data = update_res.json()
+    assert data["user"]["name"] == "Irmã Maria"
+    assert data["completed_at"] == "2026-08-10T18:00:00Z"
+
+
+async def test_update_assignment_reopen_and_conflict(client, make_admin, make_publisher):
+    congregation, token = make_admin()
+    territory_id = await draw_territory(client, token)
+    pub = make_publisher(congregation.id, name="Irmão João")
+
+    create_res = await client.post(
+        f"/admin/territories/{territory_id}/assignments",
+        json={"user_id": str(pub.id)},
+        headers=bearer(token),
+    )
+    assignment_id = create_res.json()["id"]
+
+    # Complete it
+    await client.post(
+        f"/admin/territories/{territory_id}/assignments/complete",
+        headers=bearer(token),
+    )
+
+    # Reopen
+    reopen_res = await client.patch(
+        f"/admin/territories/{territory_id}/assignments/{assignment_id}",
+        json={"clear_completed_at": True},
+        headers=bearer(token),
+    )
+    assert reopen_res.status_code == 200
+    assert reopen_res.json()["completed_at"] is None
+
+    # Open another assignment
+    pub2 = make_publisher(congregation.id, name="Irmão Lucas")
+    await client.post(
+        f"/admin/territories/{territory_id}/assignments",
+        json={"user_id": str(pub2.id)},
+        headers=bearer(token),
+    )
+
+    # Close the first again via complete or patch
+    await client.patch(
+        f"/admin/territories/{territory_id}/assignments/{assignment_id}",
+        json={"completed_at": "2026-08-12T00:00:00Z"},
+        headers=bearer(token),
+    )
+
+    # Now assignment2 is open. Trying to reopen assignment1 must 409
+    conflict_res = await client.patch(
+        f"/admin/territories/{territory_id}/assignments/{assignment_id}",
+        json={"clear_completed_at": True},
+        headers=bearer(token),
+    )
+    assert conflict_res.status_code == 409
+
+
+async def test_update_assignment_invalid_dates(client, make_admin, make_publisher):
+    congregation, token = make_admin()
+    territory_id = await draw_territory(client, token)
+    pub = make_publisher(congregation.id, name="Irmão João")
+
+    create_res = await client.post(
+        f"/admin/territories/{territory_id}/assignments",
+        json={"user_id": str(pub.id)},
+        headers=bearer(token),
+    )
+    assignment_id = create_res.json()["id"]
+
+    res = await client.patch(
+        f"/admin/territories/{territory_id}/assignments/{assignment_id}",
+        json={
+            "started_at": "2026-08-10T00:00:00Z",
+            "completed_at": "2026-08-01T00:00:00Z",
+        },
+        headers=bearer(token),
+    )
+    assert res.status_code == 422

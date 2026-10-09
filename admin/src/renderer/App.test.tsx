@@ -101,7 +101,11 @@ function makeTerritory(overrides: Partial<Territory> = {}): Territory {
  * `territories.listWithBlocks` directly, but `HomeScreen` (rendered for
  * real once `App` decides to show it) calls more, and `vi.fn()` stubs for
  * the rest keep this fake honest without touching the real IPC bridge. */
-function fakeApi(overrides: Partial<IpcApi> = {}): IpcApi {
+type DeepPartialIpcApi = {
+  [K in keyof IpcApi]?: Partial<IpcApi[K]>
+}
+
+function fakeApi(overrides: DeepPartialIpcApi = {}): IpcApi {
   return {
     session: {
       isConfigured: vi.fn(),
@@ -138,6 +142,7 @@ function fakeApi(overrides: Partial<IpcApi> = {}): IpcApi {
       designate: vi.fn(),
       complete: vi.fn(),
       delete: vi.fn(),
+      update: vi.fn(),
       ...overrides.assignments
     },
     exports: {

@@ -10,6 +10,7 @@ import { basename } from 'node:path'
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import {
   IPC_CHANNELS,
+  type AssignmentUpdateInput,
   type BlockCreateInput,
   type BlockUpdateInput,
   type S13TImportPreview,
@@ -154,6 +155,25 @@ export function registerIpcHandlers({
   )
   handle(IPC_CHANNELS.assignmentsDesignate, (territoryId: string, publisherId: string) =>
     session.run(() => api.designate(territoryId, publisherId))
+  )
+  handle(
+    IPC_CHANNELS.assignmentsUpdate,
+    (territoryId: string, assignmentId: string, input: AssignmentUpdateInput) =>
+      session.run(() =>
+        api.updateAssignment(territoryId, assignmentId, {
+          ...(input.publisherId !== undefined && { publisherId: input.publisherId }),
+          ...(input.startedAt !== undefined && {
+            startedAt: input.startedAt instanceof Date ? input.startedAt : new Date(input.startedAt)
+          }),
+          ...(input.completedAt !== undefined && {
+            completedAt:
+              input.completedAt instanceof Date ? input.completedAt : new Date(input.completedAt)
+          }),
+          ...(input.clearCompletedAt !== undefined && {
+            clearCompletedAt: input.clearCompletedAt
+          })
+        })
+      )
   )
   handle(IPC_CHANNELS.assignmentsComplete, (territoryId: string) =>
     session.run(() => api.completeAssignment(territoryId))

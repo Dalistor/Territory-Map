@@ -9,7 +9,11 @@ from collections.abc import Callable
 from datetime import datetime
 from uuid import UUID
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import (
+    InvalidAssignmentDatesError,
+    NotFoundError,
+    OpenAssignmentConflictError,
+)
 from app.models.territory import Territory
 from app.models.territory_assignment import TerritoryAssignment
 from app.models.user import User
@@ -100,6 +104,53 @@ class AssignmentService:
         closed = self._assignments.close(open_assignment, now)
         self._territories.set_assigned_user(territory, None)
         return closed
+
+    def update(
+        self,
+        congregation_id: UUID,
+        assignment_id: UUID,
+        *,
+        territory_id: UUID | None = None,
+        user_id: UUID | None = None,
+        started_at: datetime | None = None,
+        completed_at: datetime | None = None,
+        clear_completed_at: bool = False,
+    ) -> TerritoryAssignment:
+        """Update an existing assignment, open or completed.
+
+        Allows correcting who was responsible, or the start and completion dates.
+        Reopening a closed stint (clear_completed_at=True) is permitted only if no other
+        assignment is currently open for the territory.
+        """
+        assignment = self._assignments.get_in_congregation(congregation_id, assignment_id)
+        if assignment is None:
+            raise NotFoundError
+        if territory_id is not None and assignment.territory_id != territory_id:
+            raise NotFoundError
+
+        if user_id is not None:
+            publisher = self._publisher_of_congregation(congregation_id, user_id)
+            assignment.user_id = publisher.id
+            assignment.user_name = publisher.name
+
+        if started_at is not None:
+            assignment.started_at = started_at
+
+        if clear_completed_at:
+            if assignment.completed_at is not None:
+                open_assignment = self._assignments.get_open(assignment.territory_id)
+                if open_assignment is not None and open_assignment.id != assignment.id:
+                    raise OpenAssignmentConflictError
+                assignment.completed_at = None
+        elif completed_at is not None:
+            assignment.completed_at = completed_at
+
+        if assignment.completed_at is not None and assignment.started_at > assignment.completed_at:
+            raise InvalidAssignmentDatesError
+
+        self._assignments.session.flush()
+        self._refresh_assigned_user(assignment.territory)
+        return assignment
 
     def delete(self, congregation_id: UUID, assignment_id: UUID) -> None:
         """Erase one record from the history, as if it had never been written.

@@ -15,6 +15,7 @@ from app.core.exceptions import (
     InvalidAccessCodeError,
     InvalidCredentialsError,
     NotFoundError,
+    OpenAssignmentConflictError,
     PublisherHasOpenAssignmentError,
     TerritoryNotAssignedError,
 )
@@ -53,6 +54,7 @@ DOMAIN_ERROR_STATUS: dict[type[DomainError], int] = {
     InactiveUserError: status.HTTP_401_UNAUTHORIZED,
     DuplicateNameError: status.HTTP_409_CONFLICT,
     PublisherHasOpenAssignmentError: status.HTTP_409_CONFLICT,
+    OpenAssignmentConflictError: status.HTTP_409_CONFLICT,
     DuplicateBlockNumberError: status.HTTP_409_CONFLICT,
     TerritoryNotAssignedError: status.HTTP_403_FORBIDDEN,
 }

@@ -27,7 +27,7 @@ import {
   QuerySegmentedControl,
   QueryState,
 } from '../components';
-import { colors, radius, spacing } from '../theme';
+import { colors, radius, shadows, spacing } from '../theme';
 import AssignmentPanel from './AssignmentPanel';
 import type { AssignmentPanelApi } from './AssignmentPanel';
 import BlockPanel from './BlockPanel';
@@ -430,72 +430,128 @@ export function DesignationsScreen({
                       pressed && styles.pressed,
                     ]}
                   >
-                    <Text style={styles.territoryName}>{territory.name}</Text>
-                    <Text
-                      style={[
-                        styles.leader,
-                        territory.assignedPublisher === null &&
-                          styles.leaderAbsent,
-                      ]}
-                    >
-                      {territory.assignedPublisher?.name ?? NO_LEADER_LABEL}
-                    </Text>
-                    <Text style={styles.blockCount}>
-                      {blockCountLabel(territory.blocks.length)}
-                    </Text>
-                    <Text style={styles.situation}>
-                      {territory.assignedPublisher === null
-                        ? 'Situação: Disponível'
-                        : 'Situação: Designado'}
-                    </Text>
-                    <Text style={styles.lastWork}>
-                      {territory.lastWork
-                        ? `Último trabalho: ${
-                            territory.lastWork.publisher.name
-                          } — ${formatDate(territory.lastWork.workedAt)}`
-                        : 'Nunca trabalhado'}
-                    </Text>
+                    <View style={styles.cardHeader}>
+                      <Text style={styles.territoryName}>{territory.name}</Text>
+                      <View
+                        style={[
+                          styles.statusBadge,
+                          territory.assignedPublisher !== null
+                            ? styles.statusBadgeWorking
+                            : styles.statusBadgeIdle,
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.statusDot,
+                            territory.assignedPublisher !== null
+                              ? styles.statusDotWorking
+                              : styles.statusDotIdle,
+                          ]}
+                        />
+                        <Text
+                          style={[
+                            styles.statusBadgeText,
+                            territory.assignedPublisher !== null
+                              ? styles.statusBadgeTextWorking
+                              : styles.statusBadgeTextIdle,
+                          ]}
+                        >
+                          {territory.assignedPublisher !== null
+                            ? 'Em andamento'
+                            : 'Disponível'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.leaderRow}>
+                      <View
+                        style={[
+                          styles.leaderAvatar,
+                          territory.assignedPublisher === null &&
+                            styles.leaderAvatarEmpty,
+                        ]}
+                      >
+                        <Text style={styles.leaderAvatarText}>
+                          {territory.assignedPublisher
+                            ? territory.assignedPublisher.name.charAt(0).toUpperCase()
+                            : '—'}
+                        </Text>
+                      </View>
+                      <View style={styles.leaderInfo}>
+                        <Text
+                          style={[
+                            styles.leader,
+                            territory.assignedPublisher === null &&
+                              styles.leaderAbsent,
+                          ]}
+                        >
+                          {territory.assignedPublisher?.name ?? NO_LEADER_LABEL}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.metaRow}>
+                      <View style={styles.metaBadge}>
+                        <Text style={styles.metaIcon}>🧱</Text>
+                        <Text style={styles.blockCount}>
+                          {blockCountLabel(territory.blocks.length)}
+                        </Text>
+                      </View>
+                      <View style={styles.metaBadge}>
+                        <Text style={styles.metaIcon}>🗓️</Text>
+                        <Text style={styles.lastWork}>
+                          {territory.lastWork
+                            ? `Último trabalho: ${
+                                territory.lastWork.publisher.name
+                              } — ${formatDate(territory.lastWork.workedAt)}`
+                            : 'Nunca trabalhado'}
+                        </Text>
+                      </View>
+                    </View>
                   </Pressable>
-                  {/* The blocks are a second question about the same
-                      territory -- where the admin has already been -- so they
-                      get their own affordance rather than a step inside the
-                      S-13 card. */}
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Ver quadras de ${territory.name}`}
-                    onPress={() =>
-                      setDetail({ territoryId: territory.id, view: 'blocks' })
-                    }
-                    style={({ pressed }) => [
-                      styles.cardAction,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <Text style={styles.cardActionLabel}>Quadras</Text>
-                  </Pressable>
-                  {/* Only where there is an assignment to close. A territory
-                      nobody holds has nothing to conclude, and offering the
-                      button anyway would invite a tap that does nothing. */}
-                  {territory.assignedPublisher !== null && (
+
+                  <View style={styles.cardActionsContainer}>
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel={`Marcar ${territory.name} como concluído`}
-                      accessibilityState={{
-                        disabled: isWriting,
-                        busy: isWriting,
-                      }}
-                      disabled={isWriting}
-                      onPress={() => requestComplete(territory)}
+                      accessibilityLabel={`Ver quadras de ${territory.name}`}
+                      onPress={() =>
+                        setDetail({ territoryId: territory.id, view: 'blocks' })
+                      }
                       style={({ pressed }) => [
-                        styles.cardAction,
+                        styles.cardActionBtn,
                         pressed && styles.pressed,
                       ]}
                     >
-                      <Text style={styles.cardActionLabel}>
-                        {isWriting ? 'Atualizando…' : 'Marcar como concluído'}
-                      </Text>
+                      <Text style={styles.cardActionLabel}>Quadras</Text>
                     </Pressable>
-                  )}
+
+                    {territory.assignedPublisher !== null && (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Marcar ${territory.name} como concluído`}
+                        accessibilityState={{
+                          disabled: isWriting,
+                          busy: isWriting,
+                        }}
+                        disabled={isWriting}
+                        onPress={() => requestComplete(territory)}
+                        style={({ pressed }) => [
+                          styles.cardActionBtn,
+                          styles.cardActionBtnPrimary,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.cardActionLabel,
+                            styles.cardActionLabelPrimary,
+                          ]}
+                        >
+                          {isWriting ? 'Atualizando…' : 'Marcar como concluído'}
+                        </Text>
+                      </Pressable>
+                    )}
+                  </View>
                 </View>
               ))}
               </ScrollView>
@@ -621,6 +677,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.md,
     borderWidth: 1,
+    ...shadows.sm,
   },
   cardSelected: {
     borderColor: colors.primary,
@@ -629,15 +686,125 @@ const styles = StyleSheet.create({
   cardMain: {
     padding: spacing.md,
   },
-  cardAction: {
+  cardHeader: {
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
+  },
+  statusBadge: {
+    alignItems: 'center',
+    borderRadius: radius.full,
+    borderWidth: 1,
+    flexDirection: 'row',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  statusBadgeWorking: {
+    backgroundColor: '#ecfdf5',
+    borderColor: '#a7f3d0',
+  },
+  statusBadgeIdle: {
+    backgroundColor: '#f0f9ff',
+    borderColor: '#bae6fd',
+  },
+  statusDot: {
+    borderRadius: radius.full,
+    height: 6,
+    marginRight: 5,
+    width: 6,
+  },
+  statusDotWorking: {
+    backgroundColor: '#10b981',
+  },
+  statusDotIdle: {
+    backgroundColor: '#0284c7',
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  statusBadgeTextWorking: {
+    color: '#047857',
+  },
+  statusBadgeTextIdle: {
+    color: '#0369a1',
+  },
+  leaderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginVertical: spacing.xs,
+  },
+  leaderAvatar: {
+    alignItems: 'center',
+    backgroundColor: colors.primaryLight,
+    borderRadius: 14,
+    height: 28,
+    justifyContent: 'center',
+    width: 28,
+  },
+  leaderAvatarEmpty: {
+    backgroundColor: colors.surfaceSubtle,
+  },
+  leaderAvatarText: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  leaderInfo: {
+    flex: 1,
+  },
+  leaderLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  metaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  metaBadge: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: radius.sm,
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  metaIcon: {
+    fontSize: 12,
+  },
+  cardActionsContainer: {
     borderTopColor: colors.border,
     borderTopWidth: 1,
+    flexDirection: 'row',
+  },
+  cardActionBtn: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 44,
     paddingVertical: 10,
   },
+  cardActionBtnPrimary: {
+    backgroundColor: colors.surfaceSubtle,
+    borderLeftColor: colors.border,
+    borderLeftWidth: 1,
+  },
   cardActionLabel: {
-    color: colors.primary,
+    color: colors.textPrimary,
+    fontSize: 13,
     fontWeight: '600',
+  },
+  cardActionLabelPrimary: {
+    color: colors.primary,
+    fontWeight: '700',
   },
   overlay: {
     backgroundColor: colors.background,
@@ -650,24 +817,25 @@ const styles = StyleSheet.create({
   territoryName: {
     color: colors.textPrimary,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   leader: {
-    color: colors.textSecondary,
+    color: colors.textPrimary,
     fontSize: 14,
+    fontWeight: '500',
   },
   leaderAbsent: {
+    color: colors.textSecondary,
     fontStyle: 'italic',
   },
   blockCount: {
-    color: colors.textMuted,
-    fontSize: 13,
-    marginTop: 2,
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '500',
   },
   situation: {
     color: colors.textSecondary,
     fontSize: 13,
-    marginTop: 2,
   },
   queryControls: {
     gap: spacing.sm,
@@ -675,9 +843,9 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
   },
   lastWork: {
-    color: colors.textMuted,
-    fontSize: 13,
-    marginTop: 2,
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '500',
   },
   emptyMessage: {
     color: colors.textSecondary,

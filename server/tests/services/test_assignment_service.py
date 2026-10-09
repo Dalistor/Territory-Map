@@ -527,3 +527,141 @@ def test_renaming_the_publisher_afterwards_does_not_rewrite_the_assignments_alre
     session.flush()
 
     assert assignment.user_name == "Bruno"
+
+
+def test_update_assignment_publisher(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+    make_user,
+) -> None:
+    congregation = make_congregation()
+    territory = make_territory(congregation.id)
+    publisher1 = make_user(congregation.id, name="Bruno")
+    publisher2 = make_user(congregation.id, name="Carlos")
+    assignment = service.designate(congregation.id, territory.id, publisher1.id)
+
+    updated = service.update(
+        congregation.id,
+        assignment.id,
+        territory_id=territory.id,
+        user_id=publisher2.id,
+    )
+
+    assert updated.user_id == publisher2.id
+    assert updated.user_name == "Carlos"
+    assert territory.assigned_user_id == publisher2.id
+
+
+def test_update_assignment_dates(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+    make_user,
+) -> None:
+    congregation = make_congregation()
+    territory = make_territory(congregation.id)
+    publisher = make_user(congregation.id, name="Bruno")
+    assignment = service.designate(congregation.id, territory.id, publisher.id)
+    service.complete(congregation.id, territory.id)
+
+    new_start = NOW - timedelta(days=20)
+    new_end = NOW - timedelta(days=5)
+    updated = service.update(
+        congregation.id,
+        assignment.id,
+        territory_id=territory.id,
+        started_at=new_start,
+        completed_at=new_end,
+    )
+
+    assert updated.started_at == new_start
+    assert updated.completed_at == new_end
+
+
+def test_update_assignment_reopen_and_conflict(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+    make_user,
+) -> None:
+    from app.core.exceptions import OpenAssignmentConflictError
+
+    congregation = make_congregation()
+    territory = make_territory(congregation.id)
+    publisher = make_user(congregation.id, name="Bruno")
+    past = service.designate(congregation.id, territory.id, publisher.id)
+    service.complete(congregation.id, territory.id)
+
+    # Reopen when free
+    reopened = service.update(
+        congregation.id,
+        past.id,
+        territory_id=territory.id,
+        clear_completed_at=True,
+    )
+    assert reopened.completed_at is None
+    assert territory.assigned_user_id == publisher.id
+
+    # Complete it again and create another open one
+    service.complete(congregation.id, territory.id)
+    publisher2 = make_user(congregation.id, name="Daniel")
+    service.designate(congregation.id, territory.id, publisher2.id)
+
+    # Reopening past now should raise conflict
+    with pytest.raises(OpenAssignmentConflictError):
+        service.update(
+            congregation.id,
+            past.id,
+            territory_id=territory.id,
+            clear_completed_at=True,
+        )
+
+
+def test_update_assignment_invalid_dates_fails(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+    make_user,
+) -> None:
+    from app.core.exceptions import InvalidAssignmentDatesError
+
+    congregation = make_congregation()
+    territory = make_territory(congregation.id)
+    publisher = make_user(congregation.id, name="Bruno")
+    assignment = service.designate(congregation.id, territory.id, publisher.id)
+
+    with pytest.raises(InvalidAssignmentDatesError):
+        service.update(
+            congregation.id,
+            assignment.id,
+            territory_id=territory.id,
+            started_at=NOW,
+            completed_at=NOW - timedelta(days=1),
+        )
+
+
+def test_update_assignment_not_found(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+    make_user,
+) -> None:
+    congregation = make_congregation()
+    other_congregation = make_congregation(name="Outra", city="Outra")
+    territory = make_territory(congregation.id)
+    publisher = make_user(congregation.id, name="Bruno")
+    other_publisher = make_user(other_congregation.id, name="Estranho")
+    assignment = service.designate(congregation.id, territory.id, publisher.id)
+
+    # Nonexistent assignment
+    with pytest.raises(NotFoundError):
+        service.update(congregation.id, uuid4())
+
+    # Wrong territory
+    with pytest.raises(NotFoundError):
+        service.update(congregation.id, assignment.id, territory_id=uuid4())
+
+    # Other congregation's publisher
+    with pytest.raises(NotFoundError):
+        service.update(congregation.id, assignment.id, user_id=other_publisher.id)

@@ -96,6 +96,7 @@ interface FakeApi {
   designate: jest.Mock;
   completeAssignment: jest.Mock;
   deleteAssignment: jest.Mock;
+  updateAssignment: jest.Mock;
 }
 
 function makeApi(overrides: Partial<FakeApi> = {}): FakeApi {
@@ -108,6 +109,7 @@ function makeApi(overrides: Partial<FakeApi> = {}): FakeApi {
     designate: jest.fn(async () => undefined),
     completeAssignment: jest.fn(async () => undefined),
     deleteAssignment: jest.fn(async () => undefined),
+    updateAssignment: jest.fn(async () => undefined),
     ...overrides,
   };
 }
