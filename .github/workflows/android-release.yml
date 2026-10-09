@@ -73,8 +73,8 @@ jobs:
           mkdir -p releases/app releases/admin-app
 
           # Copy APKs
-          cp app/android/app/build/outputs/apk/release/app-release.apk releases/app/app-release.apk
-          cp admin-app/android/app/build/outputs/apk/release/admin-app-release.apk releases/admin-app/admin-app-release.apk
+          cp app/android/app/build/outputs/apk/release/*.apk releases/app/app-release.apk
+          cp admin-app/android/app/build/outputs/apk/release/*.apk releases/admin-app/admin-app-release.apk
 
           # Extract version info and write version.json manifests
           cat > releases/app/version.json <<EOF
