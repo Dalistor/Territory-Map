@@ -423,6 +423,7 @@ export function TerritoryMapView({
             id={`territory-label-${territory.id}`}
             lngLat={center}
             anchor="center"
+            onPress={() => onTerritoryTap?.(territory)}
           >
             <Pressable
               accessibilityRole="button"
@@ -436,10 +437,17 @@ export function TerritoryMapView({
           </Marker>
         ))}
         {blockLabelMarkers.map(({ territory, block, color, label, center }) => (
-          <Marker key={block.id} id={`block-label-${block.id}`} lngLat={center} anchor="center">
+          <Marker
+            key={block.id}
+            id={`block-label-${block.id}`}
+            lngLat={center}
+            anchor="center"
+            onPress={() => onBlockTap?.(territory, block)}
+          >
             {/* Tappable for the same reason the fill below is: the badge sits
                 on top of the polygon and would otherwise be a dead spot right
-                where the publisher aims. */}
+                where the publisher aims. Both the native Marker and inner Pressable
+                handle the press so it is guaranteed on every device. */}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Quadra ${label}`}

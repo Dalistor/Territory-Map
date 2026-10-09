@@ -315,7 +315,8 @@ export function AssignmentsMapView({
             key={feature.territory.id}
             id={`territory-label-${feature.territory.id}`}
             lngLat={toLngLat(feature.center)}
-            anchor="center">
+            anchor="center"
+            onPress={() => onSelectTerritory?.(feature.territory)}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Território ${feature.territory.name}, ${feature.leaderLabel}`}
@@ -337,10 +338,12 @@ export function AssignmentsMapView({
             key={feature.block.id}
             id={`block-label-${feature.block.id}`}
             lngLat={toLngLat(feature.center)}
-            anchor="center">
+            anchor="center"
+            onPress={() => onSelectBlock?.(feature.block, feature.territory)}>
             {/* Tappable for the same reason the fill below is: the badge sits
                 on top of the polygon and would otherwise be a dead spot right
-                where the admin aims. */}
+                where the admin aims. Both the native Marker and inner Pressable
+                handle the press so it is guaranteed on every device. */}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Quadra ${feature.label}`}

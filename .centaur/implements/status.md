@@ -89,3 +89,4 @@ Implementações anteriores a 0156 estão em `arquivo.md`.
 | [0237](0237/README.md) | Suporte nativo Android para instalação de APK no app admin (spec 0016, Task 06) | 2026-10-09 | Concluído | `AndroidManifest.xml`, `filepaths.xml`, `ApkInstallerModule.kt`, `ApkInstallerPackage.kt`, `MainApplication.kt` |
 | [0238](0238/README.md) | Modal de atualização e verificação ao abrir no app admin (spec 0016, Task 07) | 2026-10-09 | Concluído | `UpdateModal.tsx`, `UpdateModal.test.tsx`, `App.tsx`, `App.test.tsx` |
 | [0239](0239/README.md) | Documentação e fluxo de deploy das releases na VPS (spec 0016, Task 08) | 2026-10-09 | Concluído | `AGENTS.md`, `docker-compose.yml`, `server/README.md`, `app/README.md`, `admin-app/README.md` |
+| [0240](0240/README.md) | Correção do toque sobre o número da quadra nos mapas MapLibre | 2026-10-09 | Concluído | `app/src/presentation/map/TerritoryMapView.tsx`, `admin-app/src/presentation/map/AssignmentsMapView.tsx` |
