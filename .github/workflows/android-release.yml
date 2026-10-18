@@ -80,6 +80,16 @@ jobs:
             echo "build_admin=$build_admin"; echo "publish_admin=$publish_admin"
           } | tee -a "$GITHUB_OUTPUT"
 
+      - name: Check the app key secret
+        env:
+          APP_KEY: ${{ secrets.APP_KEY }}
+        run: |
+          # An APK built without the key starts fine and gets 401 on every request.
+          if [ -z "$APP_KEY" ]; then
+            echo "::error::Secret APP_KEY is missing from the production environment."
+            exit 1
+          fi
+
       - name: Compute app version
         run: |
           # Offset keeps the code above the manually versioned builds already installed (2).
@@ -98,13 +108,15 @@ jobs:
           node-version: "20"
 
       - name: Build Publisher App APK
+        env:
+          APP_KEY: ${{ secrets.APP_KEY }}
         if: steps.plan.outputs.build_app == 'true'
         run: |
           set -euo pipefail
           cd app
           cat > .env <<EOF
           API_BASE_URL=https://territorymap.dalistor.com.br
-          APP_KEY=${{ secrets.APP_KEY || secrets.APP_SECRET || 'X6Bjtc2koXUMBZ4J322Clxg90L5L9bpmR63ILhmftMXB0H0d1KIk7ApUTX4FTLE1' }}
+          APP_KEY=$APP_KEY
           EOF
           npm ci
           cd android
@@ -112,13 +124,15 @@ jobs:
           ./gradlew assembleRelease --no-daemon
 
       - name: Build Admin App APK
+        env:
+          APP_KEY: ${{ secrets.APP_KEY }}
         if: steps.plan.outputs.build_admin == 'true'
         run: |
           set -euo pipefail
           cd admin-app
           cat > .env <<EOF
           API_BASE_URL=https://territorymap.dalistor.com.br
-          APP_KEY=${{ secrets.APP_KEY || secrets.APP_SECRET || 'X6Bjtc2koXUMBZ4J322Clxg90L5L9bpmR63ILhmftMXB0H0d1KIk7ApUTX4FTLE1' }}
+          APP_KEY=$APP_KEY
           EOF
           npm ci
           cd android
