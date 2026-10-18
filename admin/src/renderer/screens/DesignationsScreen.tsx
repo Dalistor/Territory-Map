@@ -1,27 +1,32 @@
-// The Designations page (spec 0006, Task 03; assignment history in spec 0007,
-// Task 11): a light header with a summary of how many territories have a
-// publisher assigned, the "Exportar para Excel" button, and the
-// AssignmentsMap (outlines + leader labels) filling the rest of the area.
+// The Territories page (spec 0006, Task 03; assignment history in spec 0007,
+// Task 11): a header with the S-13-T import/export actions, a summary of how
+// many territories are out, and the territory table -- or the AssignmentsMap
+// with the leader labels, behind the "Visualização" switch.
 //
-// Clicking a territory opens its **history panel** -- the S-13 card, on
-// screen: who has it now and since when, every past assignment with the two
-// dates, and the three actions the admin has (designate, complete, delete a
-// record). Before spec 0007 this was a one-shot "pick a publisher" dialog;
-// designation is a historical record now, so the panel has to show the past,
-// not just overwrite the present.
+// Every row shows who has the territory and since when ("Retirada"), so the
+// admin can see at a glance which ones have been out the longest. Opening a
+// territory -- a row or its outline on the map -- brings up the
+// `TerritoryDetailDialog`, a modal with the S-13 card, the blocks and the map
+// of that one territory.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { LatLngTuple } from 'leaflet'
 import type { S13TImportPreview } from '../../shared/ipc-contract'
-import type { Assignment, Block, Publisher, Territory } from '../../shared/models'
-import { assignmentIsOpen, compareTerritoriesByNumber, getServiceYear } from '../../shared/models'
+import type { Territory } from '../../shared/models'
+import { compareTerritoriesByNumber, getServiceYear } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
 import { AssignmentsMap } from '../map/AssignmentsMap'
 import { Dialog } from '../components/Dialog'
-import { DataTable, type DataTableColumn, type DataTableState } from '../components/DataTable'
+import {
+  DataTable,
+  type DataTableColumn,
+  type DataTableSortDirection,
+  type DataTableState
+} from '../components/DataTable'
+import { Icon } from '../components/Icon'
 import { SearchField } from '../components/SearchField'
 import { SegmentedControl } from '../components/SegmentedControl'
-import { TerritoryMap } from '../map/TerritoryMap'
-import { BlockWorkPanel } from './BlockWorkPanel'
+import { TerritoryDetailDialog } from './TerritoryDetailDialog'
+import { daysSince, formatDaysAgo } from './territoryBlocks'
 
 const GENERIC_ERROR_MESSAGE = 'Não foi possível completar a operação.'
 
@@ -34,58 +39,54 @@ function formatDate(date: Date): string {
   return date.toLocaleDateString()
 }
 
-function toDateInputValue(date: Date): string {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
+type SituationFilter = 'all' | 'assigned' | 'free'
+type SortKey = 'territory' | 'withdrawn' | 'last-work'
 
 /**
- * `assignmentIsOpen`'s complement, narrowed: an assignment is open exactly
- * while it has no `completedAt`, so everything that is *not* open provably
- * has one. Saying that in the type keeps the history rows free of a
- * defensive "and if there is no completion date?" branch that could never
- * run.
+ * How each sortable column compares two territories in ascending order. Dates
+ * ascend from the oldest, so "Retirada" ascending reads "out the longest
+ * first" -- the question the column is there to answer. A territory with no
+ * date always goes last, whatever the direction.
  */
-function assignmentIsCompleted(
-  assignment: Assignment
-): assignment is Assignment & { readonly completedAt: Date } {
-  return !assignmentIsOpen(assignment)
+function compareBy(key: SortKey, left: Territory, right: Territory): number {
+  if (key === 'territory') return compareTerritoriesByNumber(left.name, right.name)
+  const pick = (territory: Territory): Date | undefined =>
+    key === 'withdrawn' ? territory.assignedSince : territory.lastWork?.workedAt
+  const leftDate = pick(left)
+  const rightDate = pick(right)
+  if (leftDate === undefined && rightDate === undefined) {
+    return compareTerritoriesByNumber(left.name, right.name)
+  }
+  if (leftDate === undefined) return Number.POSITIVE_INFINITY
+  if (rightDate === undefined) return Number.NEGATIVE_INFINITY
+  return leftDate.getTime() - rightDate.getTime()
 }
 
-function completeConfirmMessage(territory: Territory, leaderName: string): string {
-  return (
-    `Marcar a designação de ${leaderName} em "${territory.name}" como concluída?\n\n` +
-    'O território fica livre para outro publicador, e ' +
-    `${leaderName} perde na hora o acesso para marcar quadras nele.`
-  )
-}
-
-function replaceConfirmMessage(
-  territory: Territory,
-  currentName: string,
-  nextName: string
-): string {
-  return (
-    `Designar "${territory.name}" a ${nextName}?\n\n` +
-    `A designação atual, de ${currentName}, será encerrada com a data de hoje.`
-  )
-}
-
-function deleteAssignmentConfirmMessage(assignment: Assignment): string {
-  return (
-    `Apagar a designação de ${assignment.publisher.name}?\n\n` +
-    'O registro sai do histórico como se não tivesse existido. Não há como desfazer.'
-  )
+function sortTerritories(
+  territories: readonly Territory[],
+  key: SortKey,
+  direction: DataTableSortDirection
+): Territory[] {
+  return [...territories].sort((left, right) => {
+    const result = compareBy(key, left, right)
+    // Infinite results mark "no date": they stay last in both directions.
+    if (!Number.isFinite(result)) return result > 0 ? 1 : -1
+    return direction === 'ascending' ? result : -result
+  })
 }
 
 export interface DesignationsScreenProps {
   /** Where the map centres when there are no territories yet -- the congregation's own city. */
   readonly fallbackCenter?: LatLngTuple
+  /** Overridable so a test can pin what counts as "today". */
+  readonly now?: Date
 }
 
-export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps): React.JSX.Element {
+export function DesignationsScreen({
+  fallbackCenter,
+  now
+}: DesignationsScreenProps): React.JSX.Element {
+  const today = now ?? new Date()
   const [territories, setTerritories] = useState<Territory[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -97,35 +98,14 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
   const actionInFlight = useRef(false)
   const [exportPath, setExportPath] = useState<string | null>(null)
 
-  // `panelTarget` doubles as "is the panel open" -- non-null means it is, for
-  // this one territory. The publisher options are fetched fresh (filtered to
-  // active ones) every time it opens, since the admin may have deactivated
-  // someone since the territory list last loaded.
-  const [panelTarget, setPanelTarget] = useState<Territory | null>(null)
-  const [assignPublishers, setAssignPublishers] = useState<Publisher[]>([])
-  const [assignments, setAssignments] = useState<Assignment[]>([])
-  const [selectedPublisherId, setSelectedPublisherId] = useState<string | null>(null)
+  // The id, not the object: the dialog always gets the latest copy from the
+  // list, so a reload after marking a block shows up in it immediately.
+  const [openTerritoryId, setOpenTerritoryId] = useState<string | null>(null)
   const [view, setView] = useState<'list' | 'map'>('list')
   const [search, setSearch] = useState('')
-  const [detailTab, setDetailTab] = useState<'overview' | 'assignments' | 'blocks' | 'map'>(
-    'overview'
-  )
-  const [selectedBlock, setSelectedBlock] = useState<Block | null>(null)
-  const [editingAssignment, setEditingAssignment] = useState<Assignment | null>(null)
-  const [editPublisherId, setEditPublisherId] = useState<string>('')
-  const [editStartedAt, setEditStartedAt] = useState<string>('')
-  const [editCompletedAt, setEditCompletedAt] = useState<string>('')
-  const [editReopen, setEditReopen] = useState(false)
-  const [editError, setEditError] = useState<string | null>(null)
-
-  const openEditModal = useCallback((assignment: Assignment) => {
-    setEditingAssignment(assignment)
-    setEditPublisherId(assignment.publisher.id)
-    setEditStartedAt(toDateInputValue(assignment.startedAt))
-    setEditCompletedAt(assignment.completedAt ? toDateInputValue(assignment.completedAt) : '')
-    setEditReopen(false)
-    setEditError(null)
-  }, [])
+  const [situation, setSituation] = useState<SituationFilter>('all')
+  const [sortKey, setSortKey] = useState<SortKey>('territory')
+  const [sortDirection, setSortDirection] = useState<DataTableSortDirection>('ascending')
 
   // Only ever runs from an event handler ("Recarregar", reloading after an
   // action) -- the mount fetch below skips the synchronous reset, same
@@ -134,13 +114,12 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
     if (refreshInFlight.current) return
     refreshInFlight.current = true
     setIsRefreshing(true)
-    setIsLoading(true)
     setLoadError(null)
     try {
       const list = await window.api.territories.listWithBlocks()
       setTerritories(list)
-      setPanelTarget((current) =>
-        current === null ? null : (list.find((territory) => territory.id === current.id) ?? null)
+      setOpenTerritoryId((current) =>
+        current !== null && list.some((territory) => territory.id === current) ? current : null
       )
     } catch (error) {
       setLoadError(errorMessage(error))
@@ -151,21 +130,14 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
     }
   }, [])
 
-  // Same shape as HomeScreen's mount effect: every state update happens in a
-  // `.then` after the effect body returned, guarded against unmount.
+  // Every state update happens in a `.then` after the effect body returned,
+  // guarded against unmount.
   useEffect(() => {
     let cancelled = false
     window.api.territories
       .listWithBlocks()
       .then((list) => {
-        if (!cancelled) {
-          setTerritories(list)
-          setPanelTarget((current) =>
-            current === null
-              ? null
-              : (list.find((territory) => territory.id === current.id) ?? null)
-          )
-        }
+        if (!cancelled) setTerritories(list)
       })
       .catch((error: unknown) => {
         if (!cancelled) setLoadError(errorMessage(error))
@@ -194,187 +166,6 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
     }
   }, [])
 
-  /**
-   * The shape every *destructive* action shares on top of {@link runAction}:
-   * ask first, run only on "yes" -- the same `window.confirm` the rest of the
-   * admin uses (`HomeScreen`, `App`), for the same reason: there is no modal
-   * component of its own yet, and the text is exactly what each acceptance
-   * criterion asks for.
-   */
-  const runConfirmed = useCallback(
-    (message: string, action: () => Promise<void>) => {
-      if (!window.confirm(message)) return Promise.resolve()
-      return runAction(action)
-    },
-    [runAction]
-  )
-
-  /** Re-reads one territory's history. */
-  const loadAssignments = useCallback(async (territoryId: string) => {
-    const list = await window.api.assignments.listFor(territoryId)
-    setAssignments(list)
-  }, [])
-
-  /**
-   * Every write refreshes both sides: the history the panel shows, and the
-   * territory list -- `Territory.assignedUser` is a projection of the open
-   * assignment on the server, so designating, completing or deleting moves it
-   * too, and the map's outlines and the summary would go stale otherwise.
-   */
-  const reloadAfterAction = useCallback(
-    async (territoryId: string) => {
-      await loadAssignments(territoryId)
-      await load()
-    },
-    [load, loadAssignments]
-  )
-
-  /** Opens the history panel for `territory` and loads its history and options. */
-  const openPanel = useCallback(
-    async (territory: Territory) => {
-      setSelectedPublisherId(null)
-      setAssignments([])
-      setAssignPublishers([])
-      setPanelTarget(territory)
-      setDetailTab('overview')
-      setSelectedBlock(null)
-      try {
-        const [publishers] = await Promise.all([
-          window.api.publishers.list(),
-          loadAssignments(territory.id)
-        ])
-        setAssignPublishers(publishers.filter((publisher) => publisher.isActive))
-      } catch (error) {
-        setActionError(errorMessage(error))
-      }
-    },
-    [loadAssignments]
-  )
-
-  const closePanel = useCallback(() => {
-    setPanelTarget(null)
-    setSelectedBlock(null)
-    // The row remains mounted when a detail is closed. Returning focus makes
-    // Escape a true close-and-return action instead of dropping keyboard
-    // users at the top of the workspace.
-    window.setTimeout(() => {
-      document
-        .querySelector<HTMLTableRowElement>('.territories-workspace tr[aria-selected="true"]')
-        ?.focus()
-    })
-  }, [])
-
-  const openAssignment = assignments.find(assignmentIsOpen)
-  const history = assignments.filter(assignmentIsCompleted)
-
-  const designate = useCallback(() => {
-    if (panelTarget === null || selectedPublisherId === null) return Promise.resolve()
-    const territoryId = panelTarget.id
-    const publisherId = selectedPublisherId
-    const run = async (): Promise<void> => {
-      await window.api.assignments.designate(territoryId, publisherId)
-      await reloadAfterAction(territoryId)
-    }
-    // Only replacing somebody is destructive enough to ask about: the current
-    // assignment gets closed with today's date, which the admin has to know
-    // before it happens. Designating a free territory takes nothing away.
-    if (openAssignment === undefined) return runAction(run)
-    const nextName =
-      assignPublishers.find((publisher) => publisher.id === publisherId)?.name ?? 'este publicador'
-    return runConfirmed(
-      replaceConfirmMessage(panelTarget, openAssignment.publisher.name, nextName),
-      run
-    )
-  }, [
-    panelTarget,
-    selectedPublisherId,
-    openAssignment,
-    assignPublishers,
-    reloadAfterAction,
-    runAction,
-    runConfirmed
-  ])
-
-  const complete = useCallback(() => {
-    if (panelTarget === null || openAssignment === undefined) return Promise.resolve()
-    const territoryId = panelTarget.id
-    return runConfirmed(
-      completeConfirmMessage(panelTarget, openAssignment.publisher.name),
-      async () => {
-        await window.api.assignments.complete(territoryId)
-        await reloadAfterAction(territoryId)
-      }
-    )
-  }, [panelTarget, openAssignment, reloadAfterAction, runConfirmed])
-
-  const deleteAssignment = useCallback(
-    (assignment: Assignment) => {
-      if (panelTarget === null) return Promise.resolve()
-      const territoryId = panelTarget.id
-      return runConfirmed(deleteAssignmentConfirmMessage(assignment), async () => {
-        await window.api.assignments.delete(territoryId, assignment.id)
-        await reloadAfterAction(territoryId)
-      })
-    },
-    [panelTarget, reloadAfterAction, runConfirmed]
-  )
-
-  const submitEditAssignment = useCallback(async () => {
-    if (panelTarget === null || editingAssignment === null) return
-    if (!editPublisherId) {
-      setEditError('Selecione um publicador.')
-      return
-    }
-    if (!editStartedAt) {
-      setEditError('Informe a data de início.')
-      return
-    }
-    const isCompleted = editingAssignment.completedAt !== undefined && !editReopen
-    if (isCompleted && !editCompletedAt) {
-      setEditError('Informe a data de conclusão.')
-      return
-    }
-    if (isCompleted && editStartedAt > editCompletedAt) {
-      setEditError('A data de início deve ser anterior ou igual à de conclusão.')
-      return
-    }
-
-    setEditError(null)
-    setIsActionPending(true)
-    try {
-      const [sy, sm, sd] = editStartedAt.split('-').map(Number)
-      const startedDate = new Date(Date.UTC(sy, sm - 1, sd, 12, 0, 0))
-
-      let completedDate: Date | undefined
-      if (isCompleted && editCompletedAt) {
-        const [cy, cm, cd] = editCompletedAt.split('-').map(Number)
-        completedDate = new Date(Date.UTC(cy, cm - 1, cd, 12, 0, 0))
-      }
-
-      await window.api.assignments.update(panelTarget.id, editingAssignment.id, {
-        publisherId: editPublisherId,
-        startedAt: startedDate,
-        completedAt: completedDate,
-        clearCompletedAt: editReopen
-      })
-
-      setEditingAssignment(null)
-      await reloadAfterAction(panelTarget.id)
-    } catch (error) {
-      setEditError(errorMessage(error))
-    } finally {
-      setIsActionPending(false)
-    }
-  }, [
-    panelTarget,
-    editingAssignment,
-    editPublisherId,
-    editStartedAt,
-    editCompletedAt,
-    editReopen,
-    reloadAfterAction
-  ])
-
   const [showExportModal, setShowExportModal] = useState(false)
   const [selectedServiceYear, setSelectedServiceYear] = useState<number>(() => getServiceYear())
   const [exportFormat, setExportFormat] = useState<'docx' | 'xlsx'>('docx')
@@ -383,16 +174,13 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
 
   /** The spreadsheet is written by the main process; `null` means the admin
    * dismissed the save dialog, which is not an error and says nothing. */
-  const exportToExcel = useCallback(
-    () =>
-      runAction(async () => {
-        setExportPath(null)
-        setImportStatus(null)
-        const path = await window.api.exports.assignments()
-        if (path !== null) setExportPath(path)
-      }),
-    [runAction]
-  )
+  const exportToExcel = (): Promise<void> =>
+    runAction(async () => {
+      setExportPath(null)
+      setImportStatus(null)
+      const path = await window.api.exports.assignments()
+      if (path !== null) setExportPath(path)
+    })
 
   const exportS13T = (): Promise<void> =>
     runAction(async () => {
@@ -411,9 +199,7 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
       setExportPath(null)
       setImportStatus(null)
       const preview = await window.api.imports.s13tSelectAndPreview()
-      if (preview !== null) {
-        setImportPreview(preview)
-      }
+      if (preview !== null) setImportPreview(preview)
     })
 
   const executeImport = (preview: S13TImportPreview): Promise<void> =>
@@ -436,23 +222,29 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
   const currentYear = getServiceYear()
   const availableYears = [currentYear - 2, currentYear - 1, currentYear, currentYear + 1]
 
-  const sortedTerritories = useMemo(
-    () => [...territories].sort((left, right) => compareTerritoriesByNumber(left.name, right.name)),
-    [territories]
-  )
   const normalizedSearch = search.trim().toLocaleLowerCase()
   const visibleTerritories = useMemo(
     () =>
-      sortedTerritories.filter((territory) =>
-        normalizedSearch === ''
-          ? true
-          : territory.name.toLocaleLowerCase().includes(normalizedSearch)
-      ),
-    [normalizedSearch, sortedTerritories]
+      sortTerritories(territories, sortKey, sortDirection).filter((territory) => {
+        if (situation === 'assigned' && territory.assignedUser === undefined) return false
+        if (situation === 'free' && territory.assignedUser !== undefined) return false
+        if (normalizedSearch === '') return true
+        return (
+          territory.name.toLocaleLowerCase().includes(normalizedSearch) ||
+          (territory.assignedUser?.name.toLocaleLowerCase().includes(normalizedSearch) ?? false)
+        )
+      }),
+    [territories, sortKey, sortDirection, situation, normalizedSearch]
   )
+  const openTerritory = territories.find((territory) => territory.id === openTerritoryId)
+
+  const clearFilters = (): void => {
+    setSearch('')
+    setSituation('all')
+  }
   const tableState: DataTableState = isLoading
     ? { kind: 'busy', message: 'Carregando territórios…' }
-    : loadError !== null
+    : loadError !== null && territories.length === 0
       ? { kind: 'error', message: loadError, onRetry: () => void load() }
       : territories.length === 0
         ? { kind: 'empty', message: 'Nenhum território cadastrado ainda.' }
@@ -460,18 +252,33 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
           ? {
               kind: 'no-results',
               message: 'Nenhum território corresponde à busca.',
-              onClear: () => setSearch('')
+              onClear: clearFilters
             }
           : { kind: 'ready' }
-  const canShowMap =
-    !isLoading && loadError === null && territories.length > 0 && visibleTerritories.length > 0
+  const canShowMap = !isLoading && territories.length > 0 && visibleTerritories.length > 0
+
+  const sortable = (
+    key: SortKey
+  ): Pick<DataTableColumn<Territory>, 'sortable' | 'sortDirection'> => ({
+    sortable: true,
+    sortDirection: sortKey === key ? sortDirection : undefined
+  })
+  const onSort = (key: string): void => {
+    const next = key as SortKey
+    if (next === sortKey) {
+      setSortDirection((current) => (current === 'ascending' ? 'descending' : 'ascending'))
+    } else {
+      setSortKey(next)
+      setSortDirection('ascending')
+    }
+  }
+
   const territoryColumns: readonly DataTableColumn<Territory>[] = [
     {
       key: 'territory',
       header: 'Território',
-      cell: (territory) => territory.name,
-      sortable: true,
-      sortDirection: 'ascending'
+      cell: (territory) => <span className="cell-strong">{territory.name}</span>,
+      ...sortable('territory')
     },
     {
       key: 'leader',
@@ -479,7 +286,7 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
       cell: (territory) =>
         territory.assignedUser !== undefined ? (
           <span className="territory-leader-badge">
-            <span className="leader-avatar-dot" aria-hidden="true">
+            <span className="avatar avatar-sm" aria-hidden="true">
               {territory.assignedUser.name.charAt(0).toUpperCase()}
             </span>
             {territory.assignedUser.name}
@@ -492,21 +299,33 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
       key: 'withdrawn',
       header: 'Retirada',
       cell: (territory) =>
-        panelTarget?.id === territory.id && openAssignment !== undefined
-          ? formatDate(openAssignment.startedAt)
-          : '—'
+        territory.assignedSince === undefined ? (
+          <span className="cell-muted">—</span>
+        ) : (
+          <span className="cell-stack">
+            <span>{formatDate(territory.assignedSince)}</span>
+            <span className="cell-sub">
+              {formatDaysAgo(daysSince(territory.assignedSince, today))}
+            </span>
+          </span>
+        ),
+      ...sortable('withdrawn')
     },
     {
       key: 'status',
       header: 'Situação',
       cell: (territory) =>
         territory.assignedUser === undefined ? (
-          <span className="status-badge status-idle">Disponível</span>
+          <span className="status-badge status-idle">Livre</span>
         ) : (
           <span className="status-badge status-working">Em andamento</span>
         )
     },
-    { key: 'blocks', header: 'Quadras', cell: (territory) => territory.blocks.length },
+    {
+      key: 'blocks',
+      header: 'Quadras',
+      cell: (territory) => <span className="cell-number">{territory.blocks.length}</span>
+    },
     {
       key: 'last-work',
       header: 'Último trabalho',
@@ -515,21 +334,25 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
           <span className="cell-muted">Nunca</span>
         ) : (
           <span
-            className="last-work-badge"
+            className="cell-stack"
             title={`Trabalhado por ${territory.lastWork.publisher.name}`}
           >
-            🗓️ {formatDate(territory.lastWork.workedAt)}
+            <span>{formatDate(territory.lastWork.workedAt)}</span>
+            <span className="cell-sub">
+              {formatDaysAgo(daysSince(territory.lastWork.workedAt, today))}
+            </span>
           </span>
-        )
+        ),
+      ...sortable('last-work')
     }
   ]
 
   return (
     <div className="designations-screen">
-      <header>
+      <header className="page-header">
         <div className="header-title-block">
           <h1>Territórios</h1>
-          {!isLoading && loadError === null && (
+          {!isLoading && territories.length > 0 && (
             <p>
               {assignedCount} de {territories.length} territórios designados
             </p>
@@ -538,51 +361,83 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
         <div className="header-actions">
           <button
             type="button"
+            className="icon-button"
+            aria-label="Recarregar"
+            title="Recarregar"
+            disabled={isLoading || isRefreshing || isActionPending}
+            onClick={() => void load()}
+          >
+            <Icon name="refresh" className={isRefreshing ? 'is-spinning' : undefined} />
+          </button>
+          <button type="button" disabled={isActionPending} onClick={() => void exportToExcel()}>
+            <Icon name="sheet" />
+            Exportar para Excel
+          </button>
+          <button type="button" disabled={isActionPending} onClick={() => void importS13T()}>
+            <Icon name="upload" />
+            Importar S-13-T
+          </button>
+          <button
+            type="button"
             className="button-primary"
             disabled={isActionPending}
             onClick={() => setShowExportModal(true)}
           >
-            📋 Exportar S-13-T
-          </button>
-          <button type="button" disabled={isActionPending} onClick={() => void importS13T()}>
-            {isActionPending ? 'Atualizando…' : '📥 Importar S-13-T'}
-          </button>
-          <button type="button" disabled={isActionPending} onClick={() => void exportToExcel()}>
-            {isActionPending ? 'Atualizando…' : 'Exportar para Excel'}
-          </button>
-          <button
-            type="button"
-            disabled={isLoading || isRefreshing || isActionPending}
-            onClick={() => void load()}
-          >
-            {isLoading || isRefreshing ? 'Atualizando…' : 'Recarregar'}
+            <Icon name="download" />
+            Exportar S-13-T
           </button>
         </div>
       </header>
       <main>
         {actionError !== null && <p role="alert">{actionError}</p>}
+        {loadError !== null && territories.length > 0 && <p role="alert">{loadError}</p>}
         {exportPath !== null && <p role="status">Arquivo salvo em {exportPath}</p>}
         {importStatus !== null && <p role="status">{importStatus}</p>}
-        <section
-          className="territories-workspace"
-          aria-label="Consulta de territórios"
-          onKeyDown={(event) => {
-            if (event.key === 'Escape' && panelTarget !== null) {
-              event.preventDefault()
-              closePanel()
-            }
-          }}
-        >
+
+        <section className="territories-workspace" aria-label="Consulta de territórios">
+          <div className="kpi-strip" aria-label="Resumo de territórios">
+            <div className="kpi-tile">
+              <span className="kpi-label">Territórios</span>
+              <strong className="kpi-value">{territories.length}</strong>
+            </div>
+            <div className="kpi-tile">
+              <span className="kpi-label">Designados</span>
+              <strong className="kpi-value">{assignedCount}</strong>
+            </div>
+            <div className="kpi-tile">
+              <span className="kpi-label">Livres</span>
+              <strong className="kpi-value">{unassignedCount}</strong>
+            </div>
+            <div className="kpi-tile">
+              <span className="kpi-label">Cobertura</span>
+              <strong className="kpi-value">{coveragePercent}%</strong>
+              <span className="kpi-meter" aria-hidden="true">
+                <span style={{ width: `${coveragePercent}%` }} />
+              </span>
+            </div>
+          </div>
+
           <div className="territories-workspace-toolbar">
             <SearchField
               label="Buscar territórios"
               value={search}
-              placeholder="Nome ou número"
+              placeholder="Nome, número ou dirigente"
               onChange={setSearch}
               disabled={isLoading}
             />
             <SegmentedControl
+              label="Situação"
+              value={situation}
+              onChange={setSituation}
+              options={[
+                { value: 'all', label: 'Todos' },
+                { value: 'assigned', label: 'Em andamento' },
+                { value: 'free', label: 'Livres' }
+              ]}
+            />
+            <SegmentedControl
               label="Visualização"
+              className="toolbar-end"
               value={view}
               onChange={setView}
               options={[
@@ -591,247 +446,46 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
               ]}
             />
           </div>
-          <div className="territories-workspace-summary" aria-label="Resumo de territórios">
-            <span>{territories.length} territórios</span>
-            <span>{assignedCount} designados</span>
-            <span>{unassignedCount} livres</span>
-            <span>{coveragePercent}% de cobertura</span>
-          </div>
+
           <div className="territories-workspace-content">
-            <div className="territories-workspace-primary">
-              {view === 'list' ? (
-                <DataTable
-                  label="Territórios"
-                  columns={territoryColumns}
-                  rows={visibleTerritories}
-                  getRowKey={(territory) => territory.id}
-                  state={tableState}
-                  selectedRowKey={panelTarget?.id}
-                  onRowActivate={(territory) => void openPanel(territory)}
+            {view === 'list' || !canShowMap ? (
+              <DataTable
+                label="Territórios"
+                columns={territoryColumns}
+                rows={visibleTerritories}
+                getRowKey={(territory) => territory.id}
+                state={tableState}
+                onSort={onSort}
+                selectedRowKey={openTerritoryId}
+                onRowActivate={(territory) => setOpenTerritoryId(territory.id)}
+              />
+            ) : (
+              <div className="territories-workspace-map">
+                <AssignmentsMap
+                  territories={visibleTerritories}
+                  fallbackCenter={fallbackCenter}
+                  onTerritoryTap={(territory) => setOpenTerritoryId(territory.id)}
                 />
-              ) : (
-                <div className="territories-workspace-map">
-                  {canShowMap ? (
-                    <AssignmentsMap
-                      territories={territories}
-                      fallbackCenter={fallbackCenter}
-                      onTerritoryTap={(territory) => void openPanel(territory)}
-                    />
-                  ) : (
-                    <DataTable
-                      label="Territórios"
-                      columns={territoryColumns}
-                      rows={visibleTerritories}
-                      getRowKey={(territory) => territory.id}
-                      state={tableState}
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-            {panelTarget !== null && (
-              <aside
-                className="territory-detail-panel"
-                aria-label={`Detalhes de ${panelTarget.name}`}
-              >
-                <section role="dialog" aria-label={`Designações de ${panelTarget.name}`}>
-                  <div className="territory-detail-heading">
-                    <div>
-                      <p className="eyebrow">Território</p>
-                      <h2>{panelTarget.name}</h2>
-                    </div>
-                    <button type="button" onClick={closePanel} aria-label="Fechar detalhes">
-                      Fechar
-                    </button>
-                  </div>
-                  <SegmentedControl
-                    label="Detalhe do território"
-                    value={detailTab}
-                    onChange={setDetailTab}
-                    options={[
-                      { value: 'overview', label: 'Visão geral' },
-                      { value: 'assignments', label: 'Designações' },
-                      { value: 'blocks', label: 'Quadras' },
-                      { value: 'map', label: 'Mapa' }
-                    ]}
-                  />
-                  {detailTab === 'overview' && (
-                    <div className="territory-detail-overview">
-                      <dl>
-                        <dt>Dirigente atual</dt>
-                        <dd>{panelTarget.assignedUser?.name ?? 'Sem dirigente'}</dd>
-                        <dt>Situação</dt>
-                        <dd>{panelTarget.assignedUser === undefined ? 'Livre' : 'Em andamento'}</dd>
-                        <dt>Quadras</dt>
-                        <dd>{panelTarget.blocks.length}</dd>
-                        <dt>Último trabalho</dt>
-                        <dd>
-                          {panelTarget.lastWork === undefined
-                            ? 'Nunca registrado'
-                            : formatDate(panelTarget.lastWork.workedAt)}
-                        </dd>
-                      </dl>
-                    </div>
-                  )}
-                  {detailTab === 'assignments' && (
-                    <>
-                      <h3>Designação atual</h3>
-                      {openAssignment === undefined ? (
-                        <p className="dialog-subtitle">Sem dirigente</p>
-                      ) : (
-                        <div className="current-assignment-card">
-                          <p className="status-badge status-active">
-                            {openAssignment.publisher.name} — desde{' '}
-                            {formatDate(openAssignment.startedAt)}
-                          </p>
-                          <button
-                            type="button"
-                            className="button-small"
-                            disabled={isActionPending}
-                            aria-label={`Editar designação de ${openAssignment.publisher.name}`}
-                            onClick={() => openEditModal(openAssignment)}
-                          >
-                            Editar
-                          </button>
-                        </div>
-                      )}
-
-                      <h3 id="assignment-history-title">Histórico</h3>
-                      {history.length === 0 ? (
-                        <p className="dialog-subtitle">Nenhuma designação concluída ainda.</p>
-                      ) : (
-                        <ul
-                          className="assignment-history"
-                          aria-labelledby="assignment-history-title"
-                        >
-                          {history.map((assignment) => (
-                            <li key={assignment.id}>
-                              <span>
-                                {assignment.publisher.name} — {formatDate(assignment.startedAt)} a{' '}
-                                {formatDate(assignment.completedAt)}
-                              </span>
-                              <div className="assignment-history-actions">
-                                <button
-                                  type="button"
-                                  className="button-small"
-                                  disabled={isActionPending}
-                                  aria-label={`Editar designação de ${assignment.publisher.name}`}
-                                  onClick={() => openEditModal(assignment)}
-                                >
-                                  Editar
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={isActionPending}
-                                  aria-label={`Apagar designação de ${assignment.publisher.name}`}
-                                  onClick={() => void deleteAssignment(assignment)}
-                                >
-                                  Apagar
-                                </button>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-
-                      <h3>Designar a…</h3>
-                      <div className="field assign-options">
-                        {assignPublishers.map((publisher) => (
-                          <label
-                            key={publisher.id}
-                            className={
-                              selectedPublisherId === publisher.id ? 'is-selected' : undefined
-                            }
-                          >
-                            <input
-                              type="radio"
-                              name="assign-publisher"
-                              checked={selectedPublisherId === publisher.id}
-                              onChange={() => setSelectedPublisherId(publisher.id)}
-                            />
-                            <span className="assign-option-avatar" aria-hidden="true">
-                              {publisher.name.charAt(0).toUpperCase()}
-                            </span>
-                            <span className="assign-option-name">{publisher.name}</span>
-                          </label>
-                        ))}
-                      </div>
-                      <div className="dialog-actions">
-                        {openAssignment !== undefined && (
-                          <button
-                            type="button"
-                            disabled={isActionPending}
-                            onClick={() => void complete()}
-                          >
-                            {isActionPending ? 'Atualizando…' : 'Marcar como concluído'}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          className="button-primary"
-                          disabled={selectedPublisherId === null || isActionPending}
-                          onClick={() => void designate()}
-                        >
-                          {isActionPending ? 'Atualizando…' : 'Designar'}
-                        </button>
-                      </div>
-                    </>
-                  )}
-                  {detailTab === 'blocks' && (
-                    <div className="territory-detail-blocks">
-                      {panelTarget.blocks.length === 0 ? (
-                        <p>Este território ainda não tem quadras.</p>
-                      ) : (
-                        <>
-                          <ul>
-                            {[...panelTarget.blocks]
-                              .sort((left, right) => left.number - right.number)
-                              .map((block) => (
-                                <li key={block.id}>
-                                  <button
-                                    type="button"
-                                    aria-expanded={selectedBlock?.id === block.id}
-                                    onClick={() => setSelectedBlock(block)}
-                                  >
-                                    Quadra {block.number}
-                                  </button>
-                                </li>
-                              ))}
-                          </ul>
-                          {selectedBlock !== null && (
-                            <BlockWorkPanel
-                              territory={panelTarget}
-                              block={selectedBlock}
-                              onChanged={() => void reloadAfterAction(panelTarget.id)}
-                            />
-                          )}
-                        </>
-                      )}
-                    </div>
-                  )}
-                  {detailTab === 'map' && (
-                    <div className="territory-detail-map">
-                      <TerritoryMap
-                        territories={[panelTarget]}
-                        now={new Date()}
-                        fallbackCenter={fallbackCenter}
-                        onBlockTap={(_, block) => {
-                          setSelectedBlock(block)
-                          setDetailTab('blocks')
-                        }}
-                      />
-                    </div>
-                  )}
-                </section>
-              </aside>
+              </div>
             )}
           </div>
         </section>
+
+        {openTerritory !== undefined && (
+          <TerritoryDetailDialog
+            territory={openTerritory}
+            fallbackCenter={fallbackCenter}
+            now={now}
+            onClose={() => setOpenTerritoryId(null)}
+            onChanged={load}
+          />
+        )}
 
         {/* S-13-T Export Modal */}
         {showExportModal && (
           <Dialog
             className="export-modal"
+            size="md"
             title="Exportar Registro de Designação (S-13-T)"
             onClose={() => setShowExportModal(false)}
           >
@@ -891,6 +545,7 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
         {importPreview !== null && (
           <Dialog
             className="import-modal"
+            size="xl"
             title="Importar Registros S-13-T"
             onClose={() => setImportPreview(null)}
           >
@@ -923,9 +578,11 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
                   <li key={idx} className={terr.matchedTerritoryId ? 'is-matched' : 'is-unmatched'}>
                     <div className="import-preview-terr-header">
                       <strong>Território {terr.territoryNumberOrName}</strong>
-                      <span className="status-badge">
-                        {terr.matchedTerritoryId ? '✓ Reconhecido' : '⚠ Não cadastrado'}
-                      </span>
+                      {terr.matchedTerritoryId ? (
+                        <span className="status-badge status-active">Reconhecido</span>
+                      ) : (
+                        <span className="status-badge status-pending">Não cadastrado</span>
+                      )}
                     </div>
                     {terr.assignments.length > 0 ? (
                       <span className="import-preview-assignments">
@@ -955,104 +612,6 @@ export function DesignationsScreen({ fallbackCenter }: DesignationsScreenProps):
                 onClick={() => void executeImport(importPreview)}
               >
                 {isActionPending ? 'Importando…' : 'Confirmar e Importar'}
-              </button>
-            </div>
-          </Dialog>
-        )}
-
-        {/* Modal de Edição de Designação (Atual ou Passada) */}
-        {editingAssignment !== null && (
-          <Dialog
-            className="edit-assignment-modal"
-            title={
-              assignmentIsOpen(editingAssignment)
-                ? 'Editar Designação Atual'
-                : 'Editar Designação Passada'
-            }
-            onClose={() => setEditingAssignment(null)}
-          >
-            <p className="dialog-subtitle">
-              {assignmentIsOpen(editingAssignment)
-                ? `Atualize o dirigente ou a data de retirada do território "${panelTarget?.name}".`
-                : `Corrija os dados registrados no histórico do território "${panelTarget?.name}".`}
-            </p>
-
-            {editError !== null && <p className="dialog-error">{editError}</p>}
-
-            <div className="field">
-              <label htmlFor="edit-assignment-publisher">
-                Dirigente responsável
-                <select
-                  id="edit-assignment-publisher"
-                  value={editPublisherId}
-                  onChange={(e) => setEditPublisherId(e.target.value)}
-                >
-                  {assignPublishers.map((publisher) => (
-                    <option key={publisher.id} value={publisher.id}>
-                      {publisher.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <div className="field">
-              <label htmlFor="edit-assignment-started-at">
-                Data de início / retirada
-                <input
-                  id="edit-assignment-started-at"
-                  type="date"
-                  value={editStartedAt}
-                  onChange={(e) => setEditStartedAt(e.target.value)}
-                />
-              </label>
-            </div>
-
-            {!assignmentIsOpen(editingAssignment) && (
-              <>
-                <div className="field">
-                  <label htmlFor="edit-assignment-completed-at">
-                    Data de conclusão / devolução
-                    <input
-                      id="edit-assignment-completed-at"
-                      type="date"
-                      disabled={editReopen}
-                      value={editCompletedAt}
-                      onChange={(e) => setEditCompletedAt(e.target.value)}
-                    />
-                  </label>
-                </div>
-
-                {openAssignment === undefined && (
-                  <div className="field-checkbox">
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={editReopen}
-                        onChange={(e) => setEditReopen(e.target.checked)}
-                      />
-                      Reabrir designação (tornar em andamento agora)
-                    </label>
-                  </div>
-                )}
-              </>
-            )}
-
-            <div className="dialog-actions">
-              <button
-                type="button"
-                disabled={isActionPending}
-                onClick={() => setEditingAssignment(null)}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="button-primary"
-                disabled={isActionPending}
-                onClick={() => void submitEditAssignment()}
-              >
-                {isActionPending ? 'Salvando…' : 'Salvar Alterações'}
               </button>
             </div>
           </Dialog>

@@ -253,7 +253,7 @@ export function HomeScreen({
     <div className="screen screen-map">
       <header className="screen-header">
         <div className="screen-title-block">
-          <p className="eyebrow">Workbench</p>
+          <p className="eyebrow">Mapa da congregação</p>
           <h1>{title}</h1>
         </div>
         <button

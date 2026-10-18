@@ -12,6 +12,7 @@ import type { AssignmentWithTerritory, Publisher } from '../../shared/models'
 import { publisherHasLiveCode, publisherIsPending } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
 import { Dialog } from '../components/Dialog'
+import { Icon } from '../components/Icon'
 
 const GENERIC_ERROR_MESSAGE = 'Não foi possível completar a operação.'
 
@@ -350,335 +351,347 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
 
   return (
     <div className="publishers-screen">
-      <h1>Publicadores</h1>
-
-      {!loading && !loadError && publishers.length > 0 && (
-        <p className="publishers-summary" data-testid="publishers-summary">
-          {summaryOf(publishers, today)}
-        </p>
-      )}
-
-      {toast && (
-        <div role="alert" data-testid="toast">
-          {toast}
-        </div>
-      )}
-
-      <button
-        type="button"
-        className="button-primary"
-        disabled={isWriting}
-        onClick={openCreateForm}
-      >
-        Cadastrar
-      </button>
-
-      {loading && <div role="progressbar" aria-label="Carregando publicadores" />}
-
-      {!loading && loadError && <p role="alert">{loadError}</p>}
-
-      {!loading && !loadError && publishers.length === 0 && <p>Nenhum publicador cadastrado.</p>}
-
-      {!loading && !loadError && publishers.length > 0 && (
-        <input
-          type="search"
-          className="publishers-search"
-          aria-label="Buscar publicador"
-          placeholder="Buscar por nome…"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-        />
-      )}
-
-      {!loading && !loadError && publishers.length > 0 && (
-        <div
-          className={`publishers-workspace${selectedPublisher === undefined ? '' : ' has-detail'}`}
-        >
-          <div className="publishers-directory">
-            {filtered.length === 0 ? (
-              <p className="publishers-no-results">Nenhum publicador encontrado para a busca.</p>
-            ) : (
-              <div
-                className="publishers-list"
-                role="region"
-                aria-label="Lista de publicadores"
-                tabIndex={0}
-              >
-                <ul>
-                  {filtered.map((publisher) => (
-                    <li
-                      key={publisher.id}
-                      className="publisher-row"
-                      data-testid={`publisher-row-${publisher.name}`}
-                    >
-                      <span
-                        className={`avatar${publisher.isActive ? '' : ' is-inactive'}`}
-                        aria-hidden="true"
-                      >
-                        {publisher.name.charAt(0).toUpperCase()}
-                      </span>
-                      <span className="publisher-name-block">
-                        {renamingId === publisher.id ? (
-                          <form
-                            noValidate
-                            onSubmit={(event) => {
-                              event.preventDefault()
-                              void submitRename(publisher)
-                            }}
-                          >
-                            <label htmlFor={`rename-${publisher.id}`} className="sr-only">
-                              Novo nome de {publisher.name}
-                            </label>
-                            <input
-                              id={`rename-${publisher.id}`}
-                              value={renameValue}
-                              autoFocus
-                              onChange={(event) => setRenameValue(event.target.value)}
-                              onKeyDown={(event) => {
-                                if (event.key === 'Escape') cancelRename()
-                              }}
-                            />
-                            <button type="submit" disabled={isWriting}>
-                              {isWriting ? 'Salvando…' : 'Salvar'}
-                            </button>
-                            <button type="button" onClick={cancelRename}>
-                              Cancelar
-                            </button>
-                          </form>
-                        ) : (
-                          <button
-                            type="button"
-                            className="publisher-history-trigger"
-                            aria-pressed={publisher.id === selectedPublisherId}
-                            ref={
-                              publisher.id === selectedPublisherId ? selectedTriggerRef : undefined
-                            }
-                            onClick={() => selectPublisher(publisher)}
-                          >
-                            {publisher.name}
-                          </button>
-                        )}
-                        <span
-                          className={`status-badge status-${statusCategory(publisher, today)}`}
-                          data-testid="publisher-status"
-                        >
-                          {statusOf(publisher, today)}
-                        </span>
-                      </span>
-                      <button
-                        type="button"
-                        className="icon-button"
-                        aria-label={`Ações de ${publisher.name}`}
-                        aria-expanded={openMenuId === publisher.id}
-                        onClick={() =>
-                          setOpenMenuId(openMenuId === publisher.id ? null : publisher.id)
-                        }
-                      >
-                        ⋮
-                      </button>
-                      {openMenuId === publisher.id && (
-                        <ul
-                          role="menu"
-                          aria-label={`Ações de ${publisher.name}`}
-                          data-publisher-menu={publisher.id}
-                          onKeyDown={moveInMenu}
-                        >
-                          {publisherHasLiveCode(publisher, today) && (
-                            <li>
-                              <button type="button" onClick={() => showExistingCode(publisher)}>
-                                Ver código
-                              </button>
-                            </li>
-                          )}
-                          <li>
-                            <button type="button" onClick={() => startRename(publisher)}>
-                              Renomear
-                            </button>
-                          </li>
-                          <li>
-                            <button
-                              type="button"
-                              disabled={isWriting}
-                              onClick={() => regenerate(publisher)}
-                            >
-                              Gerar novo código
-                            </button>
-                          </li>
-                          <li>
-                            <button
-                              type="button"
-                              disabled={isWriting}
-                              onClick={() => toggleActive(publisher)}
-                            >
-                              {publisher.isActive ? 'Desativar' : 'Reativar'}
-                            </button>
-                          </li>
-                          <li>
-                            <button
-                              type="button"
-                              className="block-action-danger"
-                              aria-label={`Apagar ${publisher.name}`}
-                              disabled={isWriting}
-                              onClick={() => void deletePublisher(publisher)}
-                            >
-                              Apagar
-                            </button>
-                          </li>
-                        </ul>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-
-          {selectedPublisher !== undefined && (
-            <aside
-              className="publisher-history-panel"
-              aria-label={`Histórico de territórios de ${selectedPublisher.name}`}
-            >
-              <div className="publisher-history-panel-header">
-                <div>
-                  <h2 className="eyebrow">Histórico de territórios</h2>
-                  <p className="publisher-history-name">{selectedPublisher.name}</p>
-                  {!historyLoading && historyError === null && (
-                    <p className="publisher-history-count">{historyCount(historyTotal)}</p>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  className="button-quiet"
-                  aria-label="Fechar histórico de territórios"
-                  onClick={closeHistory}
-                >
-                  Fechar
-                </button>
-              </div>
-              <div className="publisher-history-content">
-                {historyLoading && <p role="status">Carregando histórico…</p>}
-                {!historyLoading && historyError !== null && (
-                  <div className="publisher-history-state">
-                    <p role="alert">{historyError}</p>
-                    <button type="button" onClick={() => void loadHistory(selectedPublisher.id, 1)}>
-                      Tentar novamente
-                    </button>
-                  </div>
-                )}
-                {!historyLoading && historyError === null && history.length === 0 && (
-                  <div className="publisher-history-state">
-                    <strong>Nenhum território retirado</strong>
-                    <p>Nenhum território registrado para esta pessoa.</p>
-                  </div>
-                )}
-                {!historyLoading && historyError === null && history.length > 0 && (
-                  <div
-                    className="publisher-history-table-wrap"
-                    role="region"
-                    aria-label="Registros do histórico"
-                    tabIndex={0}
-                  >
-                    <table aria-label={`Histórico de territórios de ${selectedPublisher.name}`}>
-                      <thead>
-                        <tr>
-                          <th scope="col">Território</th>
-                          <th scope="col">Retirada</th>
-                          <th scope="col">Devolução</th>
-                          <th scope="col">Situação</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {history.map((assignment) => {
-                          const ongoing = assignment.completedAt === undefined
-                          return (
-                            <tr key={assignment.id}>
-                              <td>
-                                <strong>{assignment.territory.name}</strong>
-                              </td>
-                              <td>{formatDate(assignment.startedAt)}</td>
-                              <td>{ongoing ? '—' : formatDate(assignment.completedAt)}</td>
-                              <td>
-                                <span
-                                  className={`assignment-status${ongoing ? ' is-ongoing' : ' is-returned'}`}
-                                >
-                                  {ongoing ? 'Em andamento' : 'Devolvido'}
-                                </span>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-                {!historyLoading && historyError === null && history.length < historyTotal && (
-                  <button
-                    type="button"
-                    className="publisher-history-more"
-                    onClick={() => void loadHistory(selectedPublisher.id, historyPage + 1, true)}
-                  >
-                    Carregar mais
-                  </button>
-                )}
-              </div>
-            </aside>
+      <header className="page-header">
+        <div className="header-title-block">
+          <h1>Publicadores</h1>
+          {!loading && !loadError && publishers.length > 0 && (
+            <p className="publishers-summary" data-testid="publishers-summary">
+              {summaryOf(publishers, today)}
+            </p>
           )}
         </div>
-      )}
+        <button
+          type="button"
+          className="button-primary"
+          disabled={isWriting}
+          onClick={openCreateForm}
+        >
+          <Icon name="userPlus" />
+          Cadastrar
+        </button>
+      </header>
+      <main>
+        {toast && (
+          <div role="alert" data-testid="toast">
+            {toast}
+          </div>
+        )}
 
-      {showCreateForm && (
-        <Dialog title="Cadastrar publicador" onClose={closeCreateForm}>
-          <div className="field">
-            <label htmlFor="publisher-name">Nome da pessoa</label>
-            <input
-              id="publisher-name"
-              value={newName}
-              onChange={(event) => setNewName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') submitCreate()
-              }}
-              autoFocus
-            />
-          </div>
-          <div className="dialog-actions">
-            <button type="button" onClick={closeCreateForm}>
-              Cancelar
-            </button>
-            <button
-              type="button"
-              className="button-primary"
-              disabled={newName.trim().length === 0}
-              onClick={submitCreate}
-            >
-              Gerar código
-            </button>
-          </div>
-        </Dialog>
-      )}
+        {loading && <div role="progressbar" aria-label="Carregando publicadores" />}
 
-      {codeDialog && (
-        <Dialog title={`Código de ${codeDialog.publisherName}`} onClose={() => setCodeDialog(null)}>
-          <p className="access-code-display" data-testid="access-code">
-            {codeDialog.code}
-          </p>
-          <p>
-            Entregue este código à pessoa. Ele vale 24 horas, serve uma única vez e não poderá ser
-            consultado depois de usado.
-          </p>
-          <div className="dialog-actions">
-            <button type="button" onClick={() => setCodeDialog(null)}>
-              Fechar
-            </button>
-            <button
-              type="button"
-              className="button-primary"
-              onClick={() => copyCode(codeDialog.code)}
-            >
-              Copiar
-            </button>
+        {!loading && loadError && <p role="alert">{loadError}</p>}
+
+        {!loading && !loadError && publishers.length === 0 && <p>Nenhum publicador cadastrado.</p>}
+
+        {!loading && !loadError && publishers.length > 0 && (
+          <input
+            type="search"
+            className="publishers-search"
+            aria-label="Buscar publicador"
+            placeholder="Buscar por nome…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        )}
+
+        {!loading && !loadError && publishers.length > 0 && (
+          <div
+            className={`publishers-workspace${selectedPublisher === undefined ? '' : ' has-detail'}`}
+          >
+            <div className="publishers-directory">
+              {filtered.length === 0 ? (
+                <p className="publishers-no-results">Nenhum publicador encontrado para a busca.</p>
+              ) : (
+                <div
+                  className="publishers-list"
+                  role="region"
+                  aria-label="Lista de publicadores"
+                  tabIndex={0}
+                >
+                  <ul>
+                    {filtered.map((publisher) => (
+                      <li
+                        key={publisher.id}
+                        className="publisher-row"
+                        data-testid={`publisher-row-${publisher.name}`}
+                      >
+                        <span
+                          className={`avatar${publisher.isActive ? '' : ' is-inactive'}`}
+                          aria-hidden="true"
+                        >
+                          {publisher.name.charAt(0).toUpperCase()}
+                        </span>
+                        <span className="publisher-name-block">
+                          {renamingId === publisher.id ? (
+                            <form
+                              noValidate
+                              onSubmit={(event) => {
+                                event.preventDefault()
+                                void submitRename(publisher)
+                              }}
+                            >
+                              <label htmlFor={`rename-${publisher.id}`} className="sr-only">
+                                Novo nome de {publisher.name}
+                              </label>
+                              <input
+                                id={`rename-${publisher.id}`}
+                                value={renameValue}
+                                autoFocus
+                                onChange={(event) => setRenameValue(event.target.value)}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Escape') cancelRename()
+                                }}
+                              />
+                              <button type="submit" disabled={isWriting}>
+                                {isWriting ? 'Salvando…' : 'Salvar'}
+                              </button>
+                              <button type="button" onClick={cancelRename}>
+                                Cancelar
+                              </button>
+                            </form>
+                          ) : (
+                            <button
+                              type="button"
+                              className="publisher-history-trigger"
+                              aria-pressed={publisher.id === selectedPublisherId}
+                              ref={
+                                publisher.id === selectedPublisherId
+                                  ? selectedTriggerRef
+                                  : undefined
+                              }
+                              onClick={() => selectPublisher(publisher)}
+                            >
+                              {publisher.name}
+                            </button>
+                          )}
+                          <span
+                            className={`status-badge status-${statusCategory(publisher, today)}`}
+                            data-testid="publisher-status"
+                          >
+                            {statusOf(publisher, today)}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          className="icon-button"
+                          aria-label={`Ações de ${publisher.name}`}
+                          aria-expanded={openMenuId === publisher.id}
+                          onClick={() =>
+                            setOpenMenuId(openMenuId === publisher.id ? null : publisher.id)
+                          }
+                        >
+                          ⋮
+                        </button>
+                        {openMenuId === publisher.id && (
+                          <ul
+                            role="menu"
+                            aria-label={`Ações de ${publisher.name}`}
+                            data-publisher-menu={publisher.id}
+                            onKeyDown={moveInMenu}
+                          >
+                            {publisherHasLiveCode(publisher, today) && (
+                              <li>
+                                <button type="button" onClick={() => showExistingCode(publisher)}>
+                                  Ver código
+                                </button>
+                              </li>
+                            )}
+                            <li>
+                              <button type="button" onClick={() => startRename(publisher)}>
+                                Renomear
+                              </button>
+                            </li>
+                            <li>
+                              <button
+                                type="button"
+                                disabled={isWriting}
+                                onClick={() => regenerate(publisher)}
+                              >
+                                Gerar novo código
+                              </button>
+                            </li>
+                            <li>
+                              <button
+                                type="button"
+                                disabled={isWriting}
+                                onClick={() => toggleActive(publisher)}
+                              >
+                                {publisher.isActive ? 'Desativar' : 'Reativar'}
+                              </button>
+                            </li>
+                            <li>
+                              <button
+                                type="button"
+                                className="block-action-danger"
+                                aria-label={`Apagar ${publisher.name}`}
+                                disabled={isWriting}
+                                onClick={() => void deletePublisher(publisher)}
+                              >
+                                Apagar
+                              </button>
+                            </li>
+                          </ul>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            {selectedPublisher !== undefined && (
+              <aside
+                className="publisher-history-panel"
+                aria-label={`Histórico de territórios de ${selectedPublisher.name}`}
+              >
+                <div className="publisher-history-panel-header">
+                  <div>
+                    <h2 className="eyebrow">Histórico de territórios</h2>
+                    <p className="publisher-history-name">{selectedPublisher.name}</p>
+                    {!historyLoading && historyError === null && (
+                      <p className="publisher-history-count">{historyCount(historyTotal)}</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="button-quiet"
+                    aria-label="Fechar histórico de territórios"
+                    onClick={closeHistory}
+                  >
+                    Fechar
+                  </button>
+                </div>
+                <div className="publisher-history-content">
+                  {historyLoading && <p role="status">Carregando histórico…</p>}
+                  {!historyLoading && historyError !== null && (
+                    <div className="publisher-history-state">
+                      <p role="alert">{historyError}</p>
+                      <button
+                        type="button"
+                        onClick={() => void loadHistory(selectedPublisher.id, 1)}
+                      >
+                        Tentar novamente
+                      </button>
+                    </div>
+                  )}
+                  {!historyLoading && historyError === null && history.length === 0 && (
+                    <div className="publisher-history-state">
+                      <strong>Nenhum território retirado</strong>
+                      <p>Nenhum território registrado para esta pessoa.</p>
+                    </div>
+                  )}
+                  {!historyLoading && historyError === null && history.length > 0 && (
+                    <div
+                      className="publisher-history-table-wrap"
+                      role="region"
+                      aria-label="Registros do histórico"
+                      tabIndex={0}
+                    >
+                      <table aria-label={`Histórico de territórios de ${selectedPublisher.name}`}>
+                        <thead>
+                          <tr>
+                            <th scope="col">Território</th>
+                            <th scope="col">Retirada</th>
+                            <th scope="col">Devolução</th>
+                            <th scope="col">Situação</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {history.map((assignment) => {
+                            const ongoing = assignment.completedAt === undefined
+                            return (
+                              <tr key={assignment.id}>
+                                <td>
+                                  <strong>{assignment.territory.name}</strong>
+                                </td>
+                                <td>{formatDate(assignment.startedAt)}</td>
+                                <td>{ongoing ? '—' : formatDate(assignment.completedAt)}</td>
+                                <td>
+                                  <span
+                                    className={`assignment-status${ongoing ? ' is-ongoing' : ' is-returned'}`}
+                                  >
+                                    {ongoing ? 'Em andamento' : 'Devolvido'}
+                                  </span>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {!historyLoading && historyError === null && history.length < historyTotal && (
+                    <button
+                      type="button"
+                      className="publisher-history-more"
+                      onClick={() => void loadHistory(selectedPublisher.id, historyPage + 1, true)}
+                    >
+                      Carregar mais
+                    </button>
+                  )}
+                </div>
+              </aside>
+            )}
           </div>
-        </Dialog>
-      )}
+        )}
+
+        {showCreateForm && (
+          <Dialog title="Cadastrar publicador" onClose={closeCreateForm}>
+            <div className="field">
+              <label htmlFor="publisher-name">Nome da pessoa</label>
+              <input
+                id="publisher-name"
+                value={newName}
+                onChange={(event) => setNewName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') submitCreate()
+                }}
+                autoFocus
+              />
+            </div>
+            <div className="dialog-actions">
+              <button type="button" onClick={closeCreateForm}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="button-primary"
+                disabled={newName.trim().length === 0}
+                onClick={submitCreate}
+              >
+                Gerar código
+              </button>
+            </div>
+          </Dialog>
+        )}
+
+        {codeDialog && (
+          <Dialog
+            title={`Código de ${codeDialog.publisherName}`}
+            onClose={() => setCodeDialog(null)}
+          >
+            <p className="access-code-display" data-testid="access-code">
+              {codeDialog.code}
+            </p>
+            <p>
+              Entregue este código à pessoa. Ele vale 24 horas, serve uma única vez e não poderá ser
+              consultado depois de usado.
+            </p>
+            <div className="dialog-actions">
+              <button type="button" onClick={() => setCodeDialog(null)}>
+                Fechar
+              </button>
+              <button
+                type="button"
+                className="button-primary"
+                onClick={() => copyCode(codeDialog.code)}
+              >
+                Copiar
+              </button>
+            </div>
+          </Dialog>
+        )}
+      </main>
     </div>
   )
 }

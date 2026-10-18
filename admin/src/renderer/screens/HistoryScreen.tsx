@@ -3,6 +3,7 @@ import { DataTable } from '../components/DataTable'
 import type { AssignmentHistoryQuery, AssignmentWithTerritory } from '../../shared/models'
 import { assignmentIsOpen } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
+import { Icon } from '../components/Icon'
 
 const GENERIC_ERROR_MESSAGE = 'Não foi possível completar a operação.'
 
@@ -164,8 +165,8 @@ export function HistoryScreen(): React.JSX.Element {
 
   return (
     <section className="history-screen" aria-labelledby="history-title">
-      <header className="page-heading">
-        <div>
+      <header className="page-header">
+        <div className="header-title-block">
           <p className="eyebrow">Consulta da congregação</p>
           <h1 id="history-title">Histórico completo</h1>
           <p>Designações que se sobrepõem ao período selecionado.</p>
@@ -175,102 +176,115 @@ export function HistoryScreen(): React.JSX.Element {
           disabled={isLoading || isActionPending}
           onClick={() => void load(page)}
         >
+          <Icon name="refresh" className={isLoading ? 'is-spinning' : undefined} />
           {isLoading ? 'Atualizando…' : 'Recarregar'}
         </button>
       </header>
-
-      <div className="history-period" aria-label="Período do histórico">
-        <label>
-          De
-          <input
-            type="date"
-            value={fromDay}
-            onChange={(event) => changePeriod(event.target.value, toDay)}
-          />
-        </label>
-        <label>
-          Até
-          <input
-            type="date"
-            value={toDay}
-            onChange={(event) => changePeriod(fromDay, event.target.value)}
-          />
-        </label>
-        <button type="button" disabled={!hasPeriod} onClick={() => changePeriod('', '')}>
-          Limpar período
-        </button>
-      </div>
-
-      {actionError !== null && <p role="alert">{actionError}</p>}
-      <DataTable
-        label="Histórico completo"
-        columns={[
-          {
-            key: 'territory',
-            header: 'Território',
-            cell: (entry: AssignmentWithTerritory) => entry.territory.name
-          },
-          {
-            key: 'publisher',
-            header: 'Publicador',
-            cell: (entry: AssignmentWithTerritory) => entry.publisher.name
-          },
-          {
-            key: 'started',
-            header: 'Retirada',
-            cell: (entry: AssignmentWithTerritory) => formatDate(entry.startedAt)
-          },
-          {
-            key: 'completed',
-            header: 'Devolução',
-            cell: (entry: AssignmentWithTerritory) =>
-              entry.completedAt === undefined ? '—' : formatDate(entry.completedAt)
-          },
-          {
-            key: 'status',
-            header: 'Situação',
-            cell: (entry: AssignmentWithTerritory) =>
-              assignmentIsOpen(entry) ? 'Em andamento' : 'Devolvido'
-          },
-          {
-            key: 'actions',
-            header: 'Ações',
-            cell: (entry: AssignmentWithTerritory) => (
-              <button
-                type="button"
-                disabled={isActionPending}
-                aria-label={`Apagar designação de ${entry.publisher.name} em ${entry.territory.name}`}
-                onClick={() => void deleteEntry(entry)}
-              >
-                Apagar
-              </button>
-            )
-          }
-        ]}
-        rows={entries}
-        getRowKey={(entry) => entry.id}
-        state={state}
-      />
-
-      {!isLoading && loadError === null && total > 0 && (
-        <nav className="history-pagination" aria-label="Paginação do histórico">
-          <p aria-live="polite">{resultRange(page, pageSize, total, entries.length)}</p>
+      <main>
+        <div className="history-period" role="group" aria-label="Período do histórico">
+          <label>
+            De
+            <input
+              type="date"
+              value={fromDay}
+              onChange={(event) => changePeriod(event.target.value, toDay)}
+            />
+          </label>
+          <label>
+            Até
+            <input
+              type="date"
+              value={toDay}
+              onChange={(event) => changePeriod(fromDay, event.target.value)}
+            />
+          </label>
           <button
             type="button"
-            disabled={page <= 1 || isActionPending}
-            onClick={() => void load(page - 1)}
+            className="button-quiet"
+            disabled={!hasPeriod}
+            onClick={() => changePeriod('', '')}
           >
-            Página anterior
+            Limpar período
           </button>
-          <button
-            type="button"
-            disabled={page >= lastPage || isActionPending}
-            onClick={() => void load(page + 1)}
-          >
-            Próxima página
-          </button>
-        </nav>
-      )}
+        </div>
+
+        {actionError !== null && <p role="alert">{actionError}</p>}
+        <DataTable
+          label="Histórico completo"
+          columns={[
+            {
+              key: 'territory',
+              header: 'Território',
+              cell: (entry: AssignmentWithTerritory) => entry.territory.name
+            },
+            {
+              key: 'publisher',
+              header: 'Publicador',
+              cell: (entry: AssignmentWithTerritory) => entry.publisher.name
+            },
+            {
+              key: 'started',
+              header: 'Retirada',
+              cell: (entry: AssignmentWithTerritory) => formatDate(entry.startedAt)
+            },
+            {
+              key: 'completed',
+              header: 'Devolução',
+              cell: (entry: AssignmentWithTerritory) =>
+                entry.completedAt === undefined ? '—' : formatDate(entry.completedAt)
+            },
+            {
+              key: 'status',
+              header: 'Situação',
+              cell: (entry: AssignmentWithTerritory) =>
+                assignmentIsOpen(entry) ? (
+                  <span className="status-badge status-working">Em andamento</span>
+                ) : (
+                  <span className="status-badge status-idle">Devolvido</span>
+                )
+            },
+            {
+              key: 'actions',
+              header: 'Ações',
+              cell: (entry: AssignmentWithTerritory) => (
+                <button
+                  type="button"
+                  className="button-small button-quiet button-danger"
+                  disabled={isActionPending}
+                  aria-label={`Apagar designação de ${entry.publisher.name} em ${entry.territory.name}`}
+                  onClick={() => void deleteEntry(entry)}
+                >
+                  <Icon name="trash" />
+                  Apagar
+                </button>
+              )
+            }
+          ]}
+          rows={entries}
+          getRowKey={(entry) => entry.id}
+          state={state}
+        />
+
+        {!isLoading && loadError === null && total > 0 && (
+          <nav className="history-pagination" aria-label="Paginação do histórico">
+            <p aria-live="polite">{resultRange(page, pageSize, total, entries.length)}</p>
+            <button
+              type="button"
+              disabled={page <= 1 || isActionPending}
+              onClick={() => void load(page - 1)}
+            >
+              Página anterior
+            </button>
+            <button
+              type="button"
+              disabled={page >= lastPage || isActionPending}
+              onClick={() => void load(page + 1)}
+            >
+              Próxima página
+            </button>
+          </nav>
+        )}
+      </main>
     </section>
   )
 }

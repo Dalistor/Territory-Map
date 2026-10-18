@@ -58,6 +58,9 @@ class TerritoryOut(OutSchema):
     clients read that as "use the default cycle" -- the 120-day threshold they already
     apply today. It travels in the listing as well as the detail because the app colours
     its map offline, from whatever it cached.
+
+    `assigned_since` is when the assignment in force started -- the "retirada" date of
+    the S-13 card. Only the admin routes fill it; `None` means nobody has it now.
     """
 
     id: UUID
@@ -67,6 +70,7 @@ class TerritoryOut(OutSchema):
     assigned_user: UserBriefOut | None = None
     rotation_days: int | None = None
     last_work: LastWorkOut | None = None
+    assigned_since: datetime | None = None
 
 
 class TerritoryBriefOut(OutSchema):

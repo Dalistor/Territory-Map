@@ -44,6 +44,7 @@ import BlockHistorySheet from './screens/BlockHistorySheet'
 import DesignationsScreen from './screens/DesignationsScreen'
 import HistoryScreen from './screens/HistoryScreen'
 import TerritorySettingsScreen from './screens/TerritorySettingsScreen'
+import { Icon, type IconName } from './components/Icon'
 
 const STORAGE_READ_ERROR_MESSAGE = 'Não foi possível ler os dados guardados neste computador.'
 const CREDENTIALS_REJECTED_NAME = 'CredentialsRejectedException'
@@ -223,6 +224,7 @@ function AuthenticatedApp({ congregation, onSignedOut }: AuthenticatedAppProps):
   const section = sectionOf(route)
   const sectionButton = (
     target: Section,
+    icon: IconName,
     label: string,
     destination: Extract<
       Route,
@@ -235,6 +237,7 @@ function AuthenticatedApp({ congregation, onSignedOut }: AuthenticatedAppProps):
       aria-current={section === target ? 'page' : undefined}
       onClick={() => setRoute({ kind: destination })}
     >
+      <Icon name={icon} size={18} />
       {label}
     </button>
   )
@@ -260,13 +263,14 @@ function AuthenticatedApp({ congregation, onSignedOut }: AuthenticatedAppProps):
           </div>
         </div>
         <div className="sidebar-nav">
-          {sectionButton('home', 'Mapa', 'home')}
-          {sectionButton('territories', 'Territórios', 'designations')}
-          {sectionButton('publishers', 'Publicadores', 'publishers')}
-          {sectionButton('history', 'Histórico completo', 'history')}
+          {sectionButton('home', 'map', 'Mapa', 'home')}
+          {sectionButton('territories', 'list', 'Territórios', 'designations')}
+          {sectionButton('publishers', 'users', 'Publicadores', 'publishers')}
+          {sectionButton('history', 'history', 'Histórico completo', 'history')}
         </div>
         <div className="sidebar-footer">
           <button type="button" onClick={() => void signOut()}>
+            <Icon name="logOut" size={18} />
             Sair da congregação
           </button>
         </div>

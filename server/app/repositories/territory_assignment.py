@@ -109,6 +109,23 @@ class TerritoryAssignmentRepository:
             )
         )
 
+    def list_open_by_congregation(self, congregation_id: UUID) -> list[TerritoryAssignment]:
+        """Every assignment currently in force in the congregation, one per territory at most.
+
+        The territory listing reads this to show since when each territory has been
+        out, in a single statement instead of one history request per row.
+        """
+        return list(
+            self.session.scalars(
+                select(TerritoryAssignment)
+                .join(Territory, TerritoryAssignment.territory_id == Territory.id)
+                .where(
+                    Territory.congregation_id == congregation_id,
+                    TerritoryAssignment.completed_at.is_(None),
+                )
+            )
+        )
+
     def list_by_congregation(self, congregation_id: UUID) -> list[TerritoryAssignment]:
         """The whole history of the congregation, most recent assignment first.
 

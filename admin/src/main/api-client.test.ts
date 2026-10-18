@@ -317,6 +317,20 @@ describe('createApiClient', () => {
       })
     })
 
+    it('parses assigned_since as the date the open assignment started', async () => {
+      const { client } = makeClient(
+        jsonResponse(200, [
+          { ...TERRITORY_JSON, assigned_since: '2026-10-12T12:00:00Z' },
+          { ...TERRITORY_JSON, id: 'free', assigned_since: null }
+        ])
+      )
+
+      const [assigned, free] = await client.listTerritories()
+
+      expect(assigned.assignedSince).toEqual(new Date('2026-10-12T12:00:00Z'))
+      expect(free.assignedSince).toBeUndefined()
+    })
+
     it('keeps last_work absent as undefined', async () => {
       const { client } = makeClient(jsonResponse(200, [{ ...TERRITORY_JSON, last_work: null }]))
 

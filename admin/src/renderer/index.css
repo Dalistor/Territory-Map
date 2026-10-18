@@ -51,8 +51,13 @@
   --color-surface: var(--surface-raised);
   --color-surface-subtle: var(--surface-subtle);
   --color-background: var(--surface-canvas);
+  --radius-sm: 6px;
   --radius: 8px;
   --radius-lg: 12px;
+  --text-tertiary: #7b8aa0;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
@@ -745,115 +750,6 @@ li > [role='menu'] {
   font-size: 1.15rem;
 }
 
-/* DesignationsScreen's "Atribuir publicador" dialog -- one radio option per row,
-   input and label sharing a line instead of the `.field` default of stacking
-   a label above its control (there is one shared `.field` here, not one per
-   option, so the stacking rule alone would not separate the options). */
-/* The leader picker: one selectable card per option, the raw radio kept in
-   the DOM (accessibility, and what the tests query) but visually hidden --
-   the card itself is the control the admin sees. */
-.assign-options {
-  gap: 6px;
-  max-height: 320px;
-  overflow-y: auto;
-}
-
-.assign-options label {
-  display: flex;
-  /* The generic `label` rule stacks its children in a column; without this
-     the avatar and the name would pile up instead of sitting side by side. */
-  flex-direction: row;
-  align-items: center;
-  gap: 10px;
-  font-weight: 500;
-  color: var(--color-text);
-  font-size: 0.95rem;
-  padding: 8px 10px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition:
-    border-color 0.15s ease,
-    background 0.15s ease;
-}
-
-.assign-options label:hover {
-  background: var(--color-background);
-}
-
-.assign-options label.is-selected {
-  border-color: var(--color-primary);
-  background: #e8f0fe;
-  color: var(--color-primary-dark);
-}
-
-/* Visually hidden, still focusable/checkable -- never `display: none`, which
-   would drop it from the accessibility tree and break keyboard use. */
-.assign-options input[type='radio'] {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  border: 0;
-  clip-path: inset(50%);
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-/* Keyboard focus has to stay visible somewhere once the radio itself is
-   invisible -- paint it on the card instead. */
-.assign-options label:has(input:focus-visible) {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 1px;
-}
-
-.assign-option-avatar {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: #dbe7f5;
-  color: var(--color-primary-dark);
-  font-weight: 700;
-  font-size: 0.85rem;
-}
-
-.assign-option-avatar-none {
-  background: #ececec;
-  color: var(--color-text-muted);
-}
-
-.assign-option-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* DesignationsScreen's assignment history panel (spec 0007, Task 11) -- the
-   S-13 card on screen: who has the territory now, the completed assignments,
-   then the actions. Wider than the default dialog because each history line
-   carries a name, two dates and a button on one row. */
-.assignment-panel {
-  width: 100%;
-  max-width: min(500px, calc(100vw - 32px));
-}
-
-/* The three section labels inside the panel ("Designação atual",
-   "Histórico", "Designar a…") -- quieter than the dialog's own h2, which
-   stays the only real title. */
-.assignment-panel h3 {
-  margin: 16px 0 8px;
-  font-size: 0.8rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-text-muted);
-}
-
 /* The territories consultation keeps one scroll owner per pane: the table
    scrolls horizontally inside DataTable, while a long detail scrolls inside
    the persistent side panel. At narrow widths the detail becomes the next
@@ -865,27 +761,12 @@ li > [role='menu'] {
   gap: 1rem;
   min-height: 0;
 }
-
-.territories-workspace-toolbar,
-.territories-workspace-summary,
-.territory-detail-heading {
+.territories-workspace-toolbar {
   align-items: end;
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
   justify-content: space-between;
-}
-
-.territories-workspace-summary {
-  align-items: center;
-  color: var(--text-secondary);
-  font-size: 0.875rem;
-  justify-content: flex-start;
-}
-
-.territories-workspace-summary span + span {
-  border-left: 1px solid var(--border-subtle);
-  padding-left: 0.75rem;
 }
 
 .territories-workspace-content {
@@ -895,15 +776,9 @@ li > [role='menu'] {
   grid-template-columns: minmax(0, 1fr) minmax(20rem, 26rem);
   min-height: 0;
 }
-
-.territories-workspace-primary,
-.territories-workspace-primary > .data-table,
 .territories-workspace-map {
   min-height: 0;
 }
-
-.territories-workspace-primary > .data-table,
-.territories-workspace-primary > .data-table .data-table-scroll,
 .territories-workspace-map,
 .territories-workspace-map > .leaflet-container {
   height: 100%;
@@ -911,26 +786,6 @@ li > [role='menu'] {
 
 .territories-workspace-map {
   display: flex;
-}
-
-.territory-detail-panel {
-  background: var(--surface-raised);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  min-height: 0;
-  overflow: auto;
-  padding: 1rem;
-}
-
-.territory-detail-heading {
-  align-items: center;
-  margin-bottom: 1rem;
-}
-
-.territory-detail-heading h2,
-.territory-detail-heading p {
-  margin: 0;
 }
 
 .eyebrow {
@@ -941,94 +796,10 @@ li > [role='menu'] {
   text-transform: uppercase;
 }
 
-.territory-detail-panel .segmented-control-options {
-  max-width: 100%;
-  overflow-x: auto;
-}
-
-.territory-detail-overview dl {
-  display: grid;
-  gap: 0.75rem 1rem;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-}
-
-.territory-detail-overview dt {
-  color: var(--text-secondary);
-}
-
-.territory-detail-overview dd {
-  font-weight: 600;
-  margin: 0;
-  text-align: right;
-}
-
-.territory-detail-blocks ul {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  list-style: none;
-  margin: 0 0 1rem;
-  padding: 0;
-}
-
-.territory-detail-map {
-  height: 26rem;
-  margin-top: 1rem;
-}
-
-.territory-detail-map .map-with-status-legend,
-.territory-detail-map .leaflet-container {
-  height: 100%;
-}
-
 @media (max-width: 920px) {
   .territories-workspace-content {
     grid-template-columns: minmax(0, 1fr);
   }
-
-  .territory-detail-panel {
-    max-height: none;
-  }
-}
-
-@media (max-width: 560px) {
-  .territories-workspace-summary span + span {
-    border-left: 0;
-    padding-left: 0;
-  }
-
-  .territory-detail-overview dl {
-    grid-template-columns: 1fr;
-  }
-
-  .territory-detail-overview dd {
-    margin-top: -0.5rem;
-    text-align: left;
-  }
-}
-
-.assignment-history {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  /* Long-lived territories accumulate lines; scroll the history instead of
-     pushing the actions off the bottom of the panel. */
-  max-height: 220px;
-  overflow-y: auto;
-}
-
-.assignment-history li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 8px 10px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  font-size: 0.9rem;
 }
 
 .status-badge.status-idle {
@@ -1049,85 +820,10 @@ li > [role='menu'] {
   color: var(--color-text);
 }
 
-.leader-avatar-dot {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: #e0e7ff;
-  color: #4338ca;
-  font-size: 0.72rem;
-  font-weight: 700;
-}
-
-.last-work-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.85rem;
-  color: var(--color-text);
-  font-weight: 500;
-}
-
 .cell-muted {
   color: var(--color-text-muted);
   font-style: italic;
   font-size: 0.85rem;
-}
-
-.current-assignment-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  background: var(--color-background);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  margin-bottom: 14px;
-}
-
-.current-assignment-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.current-assignment-leader {
-  margin: 0;
-  font-weight: 600;
-  font-size: 0.95rem;
-  color: var(--color-text);
-}
-
-.current-assignment-date {
-  margin: 0;
-  font-size: 0.82rem;
-  color: var(--color-text-muted);
-}
-
-.assignment-history-details {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.assignment-history-publisher {
-  font-weight: 600;
-  color: var(--color-text);
-}
-
-.assignment-history-dates {
-  font-size: 0.8rem;
-  color: var(--color-text-muted);
-}
-
-.assignment-history-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
 
 .button-small {
@@ -2397,4 +2093,852 @@ li > [role='menu'] {
   .app-content {
     min-height: 0;
   }
+}
+
+/* ------------------------------------------------------------------------
+   Design refresh (2026-10): icons in buttons, the page header, KPI tiles,
+   the territory dialog and its block table. Minimal/Swiss: one accent
+   colour, hairline borders, dense tables, motion only as feedback.
+   ------------------------------------------------------------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.visually-hidden,
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.icon {
+  flex-shrink: 0;
+}
+
+.icon.is-spinning {
+  animation: icon-spin 0.9s linear infinite;
+}
+
+@keyframes icon-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Every button can carry an icon beside its label without extra markup. */
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.sidebar-nav button,
+.sidebar-footer button,
+.data-table-sort {
+  justify-content: flex-start;
+}
+
+.sidebar-nav button,
+.sidebar-footer button {
+  gap: 10px;
+}
+
+.sidebar-nav button .icon {
+  color: var(--text-tertiary);
+}
+
+.sidebar-nav button.is-active .icon,
+.sidebar-nav button:hover:not(:disabled) .icon {
+  color: inherit;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin: 0;
+  accent-color: var(--intent-primary);
+  cursor: pointer;
+}
+
+select {
+  cursor: pointer;
+}
+
+.button-small {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 0.8125rem;
+  border-radius: var(--radius-sm);
+}
+
+.button-small.button-quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
+}
+
+.button-small.button-quiet:hover:not(:disabled) {
+  background: var(--surface-subtle);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.button-small.button-quiet.button-danger:hover:not(:disabled) {
+  background: var(--intent-danger-surface);
+  border-color: color-mix(in srgb, var(--intent-danger) 35%, white);
+  color: var(--intent-danger);
+}
+
+.icon-button {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+}
+
+header .icon-button {
+  border-color: var(--border-subtle);
+  background: var(--surface-raised);
+}
+
+header .icon-button:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+/* -- Page header ---------------------------------------------------------- */
+
+.page-header {
+  min-height: 68px;
+  padding: 14px clamp(16px, 2.2vw, 28px);
+}
+
+.page-header h1 {
+  font-size: 1.25rem;
+  letter-spacing: -0.01em;
+}
+
+/* -- Notices -------------------------------------------------------------- */
+
+.notice-success,
+main > p[role='status'] {
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  background: var(--intent-success-surface);
+  border: 1px solid #bbf7d0;
+  color: #166534;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+[role='alert'] {
+  margin: 0;
+}
+
+/* -- KPI strip ------------------------------------------------------------ */
+
+.kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.kpi-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 16px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.kpi-tile .kpi-label {
+  font-size: 0.75rem;
+}
+
+.kpi-tile .kpi-value {
+  font-size: 1.5rem;
+  line-height: 1.2;
+}
+
+.kpi-meter {
+  display: block;
+  height: 4px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  overflow: hidden;
+}
+
+.kpi-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--intent-primary);
+  transition: width var(--duration-base) var(--ease-out);
+}
+
+@media (max-width: 720px) {
+  .kpi-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* -- Territory workspace -------------------------------------------------- */
+
+.territories-workspace-toolbar {
+  align-items: end;
+  justify-content: flex-start;
+}
+
+.territories-workspace-toolbar .toolbar-end {
+  margin-left: auto;
+}
+
+.territories-workspace-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.territories-workspace-content > .data-table,
+.territories-workspace-content > .data-table .data-table-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+.territories-workspace-content .data-table-scroll {
+  background: var(--surface-raised);
+}
+
+.territories-workspace-map {
+  flex: 1;
+  min-height: 420px;
+}
+
+.data-table table {
+  width: 100%;
+}
+
+.data-table td {
+  font-size: 0.9375rem;
+  padding-top: 0.625rem;
+  padding-bottom: 0.625rem;
+}
+
+.data-table tbody tr {
+  transition: background var(--duration-fast) ease;
+}
+
+.data-table th[aria-sort] .data-table-sort::after {
+  content: '';
+  display: inline-block;
+  width: 0;
+  height: 0;
+  margin-left: 6px;
+  vertical-align: middle;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  opacity: 0.35;
+  border-top: 5px solid currentColor;
+}
+
+.data-table th[aria-sort='ascending'] .data-table-sort::after {
+  border-top: 0;
+  border-bottom: 5px solid currentColor;
+  opacity: 1;
+}
+
+.data-table th[aria-sort='descending'] .data-table-sort::after {
+  opacity: 1;
+}
+
+.cell-strong {
+  font-weight: 600;
+}
+
+.cell-number {
+  font-variant-numeric: tabular-nums;
+}
+
+.cell-stack {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cell-sub {
+  color: var(--text-tertiary);
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+
+.cell-muted {
+  font-style: normal;
+  color: var(--text-tertiary);
+}
+
+.cell-check {
+  width: 1%;
+  padding-right: 0 !important;
+}
+
+.cell-actions {
+  width: 1%;
+  text-align: right !important;
+}
+
+.row-actions {
+  display: inline-flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.avatar-sm {
+  width: 26px;
+  height: 26px;
+  font-size: 0.75rem;
+}
+
+/* -- Dialogs -------------------------------------------------------------- */
+
+[role='dialog'].dialog-md {
+  width: min(520px, calc(100vw - 32px));
+  max-width: none;
+}
+
+[role='dialog'].dialog-xl {
+  width: min(1040px, calc(100vw - 48px));
+  max-width: none;
+  height: min(860px, calc(100vh - 48px));
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 0;
+  overflow: hidden;
+}
+
+[role='dialog'] {
+  animation: dialog-in var(--duration-base) var(--ease-out);
+}
+
+.dialog-backdrop {
+  animation: backdrop-in var(--duration-base) ease;
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+}
+
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.dialog-header-text {
+  min-width: 0;
+}
+
+.dialog-header .eyebrow {
+  margin: 0 0 2px;
+}
+
+.dialog-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+[role='dialog'] .dialog-title-row h2 {
+  margin: 0;
+}
+
+.dialog-close {
+  margin: -4px -6px 0 0;
+}
+
+.dialog-xl > .dialog-header {
+  margin: 0;
+  padding: 20px 24px 0;
+}
+
+.dialog-xl > .dialog-header h2 {
+  font-size: 1.375rem;
+  letter-spacing: -0.01em;
+}
+
+.dialog-xl > [role='alert'] {
+  margin: 0 24px;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+label.field-checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+/* -- Territory dialog ----------------------------------------------------- */
+
+.territory-dialog-summary {
+  display: grid;
+  grid-template-columns: minmax(16rem, 1.6fr) repeat(3, minmax(0, 1fr));
+  margin: 0 24px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface-subtle);
+}
+
+.summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 16px;
+}
+
+.summary-item + .summary-item {
+  border-left: 1px solid var(--border-subtle);
+}
+
+.summary-label {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.summary-value {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary-leader .summary-value {
+  align-items: center;
+}
+
+.summary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.summary-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.dot-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dot-label::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.dot-recent::before {
+  background: #2e7d32;
+}
+
+.dot-overdue::before {
+  background: #ef6c00;
+}
+
+.dot-never::before {
+  background: #c62828;
+}
+
+@media (max-width: 900px) {
+  .territory-dialog-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .summary-item + .summary-item {
+    border-left: 0;
+  }
+
+  .summary-item:nth-child(n + 3) {
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .summary-item:nth-child(even) {
+    border-left: 1px solid var(--border-subtle);
+  }
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 24px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.tabs [role='tab'] {
+  position: relative;
+  margin-bottom: -1px;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.tabs [role='tab']:hover:not(:disabled) {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.tabs [role='tab'].is-active {
+  border-bottom-color: var(--intent-primary);
+  color: var(--selection-text);
+}
+
+.tabs [role='tab']:active:not(:disabled) {
+  transform: none;
+}
+
+.territory-dialog-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 24px 24px;
+}
+
+.territory-dialog-map {
+  height: 100%;
+  min-height: 420px;
+}
+
+.territory-dialog-map .map-with-status-legend,
+.territory-dialog-map .leaflet-container {
+  height: 100%;
+}
+
+/* -- Blocks tab ----------------------------------------------------------- */
+
+.territory-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.territory-blocks-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px 16px;
+  padding: 12px 0;
+  background: var(--surface-raised);
+}
+
+.territory-blocks-toolbar .field {
+  margin: 0;
+}
+
+.territory-blocks-date span {
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.territory-blocks-date input {
+  min-height: 2.625rem;
+}
+
+.territory-blocks-bulk {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.territory-blocks-bulk-hint {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.territory-blocks-bulk-hint strong {
+  color: var(--text-primary);
+}
+
+.territory-blocks-bulk .button-primary {
+  min-height: 2.625rem;
+}
+
+.territory-blocks .field-error {
+  margin: 0;
+}
+
+.territory-blocks-table {
+  min-height: 0;
+}
+
+.territory-blocks-table .data-table-scroll {
+  overflow: visible;
+}
+
+.territory-blocks-table th {
+  top: 66px;
+}
+
+.territory-blocks-table tbody tr.is-selected {
+  background: var(--surface-selected);
+}
+
+.block-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-subtle);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.block-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.block-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 0%, white 70%);
+}
+
+.block-status-forced {
+  color: var(--text-tertiary);
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
+.block-history-row > td {
+  padding: 0 0 12px 0 !important;
+  background: var(--surface-subtle);
+  white-space: normal !important;
+}
+
+.block-history-row .block-work-panel {
+  margin: 12px 16px 0;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 48px 16px;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+.empty-state p {
+  margin: 0;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.empty-state .empty-state-hint {
+  color: var(--text-secondary);
+  font-weight: 400;
+  font-size: 0.875rem;
+}
+
+/* -- Assignments tab ------------------------------------------------------ */
+
+.territory-assignments {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-top: 16px;
+}
+
+.territory-assignments h3 {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+}
+
+.designate-card {
+  padding: 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface-subtle);
+}
+
+.designate-card .field-hint {
+  margin: -4px 0 10px;
+}
+
+.designate-row {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.designate-row .field {
+  flex: 1 1 18rem;
+  max-width: 28rem;
+  margin: 0;
+}
+
+.designate-row .button-primary {
+  min-height: 40px;
+}
+
+.territory-assignments .data-table {
+  min-height: 0;
+}
+
+.territory-assignments .data-table-scroll {
+  overflow: visible;
+}
+
+/* -- Publicadores and Histórico ------------------------------------------- */
+
+.app-content > section {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.publishers-screen > main,
+.history-screen > main {
+  gap: 14px;
+}
+
+.publishers-search {
+  max-width: 24rem;
+  min-height: 2.625rem;
+}
+
+.publisher-history-trigger {
+  justify-content: flex-start;
+}
+
+.publisher-row {
+  padding: 10px 14px;
+}
+
+.publisher-row .publisher-name-block {
+  align-items: flex-start;
+}
+
+/* The generic "first span pushes the rest right" list rule would split the
+   free space between the avatar and the name block. */
+.publisher-row > .avatar {
+  margin-right: 0;
+}
+
+.history-period {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.history-period label {
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.history-period input {
+  min-height: 2.625rem;
+  min-width: 11rem;
+}
+
+.history-period button {
+  min-height: 2.625rem;
+}
+
+.history-screen .data-table {
+  min-height: 0;
+}
+
+.history-screen .data-table-scroll {
+  background: var(--surface-raised);
+}
+
+.history-pagination {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-pagination p {
+  margin: 0 auto 0 0;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
 }

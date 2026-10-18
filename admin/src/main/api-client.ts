@@ -253,7 +253,8 @@ function parseTerritory(json: Record<string, unknown>): Territory {
     // the clients' default rotation -- so both collapse to `undefined`, the
     // same treatment `parseBlock` gives `last_worked_at`.
     rotationDays: (json.rotation_days as number | null | undefined) ?? undefined,
-    lastWork: lastWorkJson ? parseLastWork(lastWorkJson) : undefined
+    lastWork: lastWorkJson ? parseLastWork(lastWorkJson) : undefined,
+    assignedSince: parseOptionalDate(json.assigned_since)
   }
 }
 

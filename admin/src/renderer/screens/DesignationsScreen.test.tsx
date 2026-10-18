@@ -239,7 +239,7 @@ describe('DesignationsScreen loading and summary', () => {
 })
 
 describe('DesignationsScreen territory workspace', () => {
-  it('orders the territory table by its number and opens the selected territory in the persistent detail', async () => {
+  it('orders the territory table by its number and opens the selected territory in a modal', async () => {
     const later = makeTerritory({ id: 'later', name: 'Jardim - N12' })
     const first = makeTerritory({ id: 'first', name: 'Centro - N2' })
     vi.stubGlobal(
@@ -272,12 +272,10 @@ describe('DesignationsScreen territory workspace', () => {
 
     await user.click(rows[0])
 
-    expect(
-      await screen.findByRole('complementary', { name: /detalhes de centro - n2/i })
-    ).toBeVisible()
+    expect(await screen.findByRole('dialog', { name: /^centro - n2$/i })).toBeVisible()
   })
 
-  it('keeps the selected territory and search when changing between list and map', async () => {
+  it('keeps the search when changing between list and map, and opens a territory from the map', async () => {
     const territory = makeTerritory({ id: 'territory-12', name: 'Jardim - N12' })
     vi.stubGlobal(
       'api',
@@ -287,14 +285,6 @@ describe('DesignationsScreen territory workspace', () => {
           create: vi.fn(),
           update: vi.fn(),
           delete: vi.fn()
-        },
-        publishers: {
-          list: vi.fn().mockResolvedValue([]),
-          create: vi.fn(),
-          regenerateCode: vi.fn(),
-          rename: vi.fn(),
-          setActive: vi.fn(),
-          delete: vi.fn()
         }
       })
     )
@@ -303,15 +293,14 @@ describe('DesignationsScreen territory workspace', () => {
     render(<DesignationsScreen />)
 
     await user.type(await screen.findByRole('searchbox', { name: /buscar territórios/i }), 'N12')
-    await user.click(screen.getByRole('row', { name: /jardim - n12/i }))
     await user.click(
       within(screen.getByRole('radiogroup', { name: 'Visualização' })).getByRole('radio', {
         name: 'Mapa'
       })
     )
-
-    expect(screen.getByTestId('fake-assignments-map')).toBeVisible()
-    expect(screen.getByRole('complementary', { name: /detalhes de jardim - n12/i })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Território Jardim - N12' }))
+    expect(await screen.findByRole('dialog', { name: /^jardim - n12$/i })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: /fechar detalhes/i }))
 
     await user.click(
       within(screen.getByRole('radiogroup', { name: 'Visualização' })).getByRole('radio', {
@@ -319,10 +308,7 @@ describe('DesignationsScreen territory workspace', () => {
       })
     )
     expect(screen.getByRole('searchbox', { name: /buscar territórios/i })).toHaveValue('N12')
-    expect(screen.getByRole('row', { name: /jardim - n12/i })).toHaveAttribute(
-      'aria-selected',
-      'true'
-    )
+    expect(screen.getByRole('row', { name: /jardim - n12/i })).toBeInTheDocument()
   })
 
   it('opens a row by keyboard and Escape closes the detail returning focus to that row', async () => {
@@ -353,14 +339,10 @@ describe('DesignationsScreen territory workspace', () => {
     const row = await screen.findByRole('row', { name: /centro - n3/i })
     row.focus()
     await user.keyboard('{Enter}')
-    expect(
-      await screen.findByRole('complementary', { name: /detalhes de centro - n3/i })
-    ).toBeVisible()
+    expect(await screen.findByRole('dialog', { name: /^centro - n3$/i })).toBeVisible()
 
     await user.keyboard('{Escape}')
-    expect(
-      screen.queryByRole('complementary', { name: /detalhes de centro - n3/i })
-    ).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: /^centro - n3$/i })).not.toBeInTheDocument()
     expect(row).toHaveFocus()
   })
 
@@ -391,15 +373,11 @@ describe('DesignationsScreen territory workspace', () => {
     render(<DesignationsScreen />)
 
     await user.click(await screen.findByRole('row', { name: /centro - n4/i }))
-    expect(
-      await screen.findByRole('complementary', { name: /detalhes de centro - n4/i })
-    ).toBeVisible()
+    expect(await screen.findByRole('dialog', { name: /^centro - n4$/i })).toBeVisible()
 
     await user.click(screen.getByRole('button', { name: /recarregar/i }))
     await waitFor(() => expect(listWithBlocks).toHaveBeenCalledTimes(2))
-    expect(
-      screen.queryByRole('complementary', { name: /detalhes de centro - n4/i })
-    ).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: /^centro - n4$/i })).not.toBeInTheDocument()
   })
 })
 
@@ -455,8 +433,9 @@ describe('DesignationsScreen assignment history panel', () => {
     const user = userEvent.setup()
     render(<DesignationsScreen />)
     await user.click(await screen.findByRole('row', { name: /centro/i }))
-    await user.click(screen.getByRole('radio', { name: 'Designações' }))
-    return screen.findByRole('dialog', { name: 'Designações de Centro' })
+    const dialog = await screen.findByRole('dialog', { name: 'Centro' })
+    await user.click(within(dialog).getByRole('tab', { name: 'Designações' }))
+    return dialog
   }
 
   it('shows the current leader with the start date and the completed assignments in the history', async () => {
@@ -464,15 +443,17 @@ describe('DesignationsScreen assignment history panel', () => {
 
     const panel = await openPanel()
 
-    expect(
-      await within(panel).findByText(`Bia — desde ${asDate(open.startedAt)}`)
-    ).toBeInTheDocument()
-    const history = within(panel).getByRole('list', { name: /histórico/i })
-    expect(within(history).getByText(/Ana/)).toHaveTextContent(
-      `Ana — ${asDate(closed.startedAt)} a ${asDate(closed.completedAt as Date)}`
+    const summary = within(panel).getByRole('region', { name: /resumo do território/i })
+    expect(await within(summary).findByText(asDate(open.startedAt))).toBeInTheDocument()
+    expect(within(summary).getByText('Bia')).toBeInTheDocument()
+
+    const history = within(panel).getByRole('table', { name: /histórico de designações/i })
+    const [, current, past] = within(history).getAllByRole('row')
+    // The one in force reads "Em andamento" in place of a return date, on top.
+    expect(current).toHaveTextContent(`Bia${asDate(open.startedAt)}Em andamento`)
+    expect(past).toHaveTextContent(
+      `Ana${asDate(closed.startedAt)}${asDate(closed.completedAt as Date)}`
     )
-    // The open assignment belongs to "Designação atual", never to the history.
-    expect(within(history).queryByText(/Bia/)).not.toBeInTheDocument()
   })
 
   it('designating an active publisher calls designate with both ids and reloads', async () => {
@@ -489,7 +470,10 @@ describe('DesignationsScreen assignment history panel', () => {
     const user = userEvent.setup()
 
     const panel = await openPanel()
-    await user.click(await within(panel).findByRole('radio', { name: 'Ana' }))
+    await user.selectOptions(
+      await within(panel).findByRole('combobox', { name: 'Publicador' }),
+      await within(panel).findByRole('option', { name: 'Ana' })
+    )
     await user.click(within(panel).getByRole('button', { name: /^designar$/i }))
 
     await waitFor(() => expect(designate).toHaveBeenCalledWith('territory-1', 'p1'))
@@ -508,7 +492,10 @@ describe('DesignationsScreen assignment history panel', () => {
     const user = userEvent.setup()
 
     const panel = await openPanel()
-    await user.click(await within(panel).findByRole('radio', { name: 'Ana' }))
+    await user.selectOptions(
+      await within(panel).findByRole('combobox', { name: 'Publicador' }),
+      await within(panel).findByRole('option', { name: 'Ana' })
+    )
     await user.click(within(panel).getByRole('button', { name: /^designar$/i }))
 
     expect(confirmSpy).toHaveBeenCalledTimes(1)
@@ -577,8 +564,9 @@ describe('DesignationsScreen assignment history panel', () => {
     const user = userEvent.setup()
     const panel = await openPanel()
 
-    // Edit current assignment
-    const editCurrentBtn = await within(panel).findByRole('button', {
+    // The current assignment is editable straight from the summary strip.
+    const summary = within(panel).getByRole('region', { name: /resumo do território/i })
+    const editCurrentBtn = await within(summary).findByRole('button', {
       name: /editar designação de bia/i
     })
     await user.click(editCurrentBtn)
@@ -596,6 +584,47 @@ describe('DesignationsScreen assignment history panel', () => {
         expect.objectContaining({ publisherId: 'p2' })
       )
     )
+  })
+
+  it('Escape in the edit modal closes only that modal, keeping the territory open', async () => {
+    vi.stubGlobal('api', apiWithHistory())
+    const user = userEvent.setup()
+    const panel = await openPanel()
+
+    await user.click(
+      await within(panel).findByRole('button', { name: /editar designação de ana/i })
+    )
+    expect(await screen.findByRole('dialog', { name: /editar designação passada/i })).toBeVisible()
+
+    await user.keyboard('{Escape}')
+
+    expect(
+      screen.queryByRole('dialog', { name: /editar designação passada/i })
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Centro' })).toBeVisible()
+  })
+
+  it('refuses a withdrawal date in the future before calling the server', async () => {
+    const updateAssignment = vi.fn()
+    vi.stubGlobal(
+      'api',
+      apiWithHistory({
+        assignments: { update: updateAssignment } as unknown as IpcApi['assignments']
+      })
+    )
+    const user = userEvent.setup()
+    const panel = await openPanel()
+    const summary = within(panel).getByRole('region', { name: /resumo do território/i })
+    await user.click(await within(summary).findByRole('button', { name: /editar designação/i }))
+    const modal = await screen.findByRole('dialog', { name: /editar designação atual/i })
+
+    const started = within(modal).getByLabelText('Data de retirada')
+    await user.clear(started)
+    await user.type(started, '2999-01-01')
+    await user.click(within(modal).getByRole('button', { name: /salvar alterações/i }))
+
+    expect(within(modal).getByText(/não pode estar no futuro/i)).toBeInTheDocument()
+    expect(updateAssignment).not.toHaveBeenCalled()
   })
 
   it('shows a visible error message when an action fails, without breaking the screen', async () => {
@@ -632,12 +661,15 @@ describe('DesignationsScreen assignment history panel', () => {
 
     const panel = await openPanel()
 
-    expect(within(panel).getByText('Sem dirigente')).toBeInTheDocument()
+    expect(await within(panel).findByText('Sem dirigente')).toBeInTheDocument()
     expect(
       within(panel).queryByRole('button', { name: /marcar como concluído/i })
     ).not.toBeInTheDocument()
 
-    await user.click(await within(panel).findByRole('radio', { name: 'Ana' }))
+    await user.selectOptions(
+      await within(panel).findByRole('combobox', { name: 'Publicador' }),
+      await within(panel).findByRole('option', { name: 'Ana' })
+    )
     await user.click(within(panel).getByRole('button', { name: /^designar$/i }))
 
     await waitFor(() => expect(designate).toHaveBeenCalledWith('territory-1', 'p1'))
@@ -645,7 +677,7 @@ describe('DesignationsScreen assignment history panel', () => {
     expect(confirmSpy).not.toHaveBeenCalled()
   })
 
-  it('does not offer deactivated publishers in the panel', async () => {
+  it('does not offer deactivated publishers, nor the current leader, to designate', async () => {
     vi.stubGlobal(
       'api',
       apiWithHistory({
@@ -662,9 +694,10 @@ describe('DesignationsScreen assignment history panel', () => {
 
     const panel = await openPanel()
 
-    expect(await within(panel).findByRole('radio', { name: 'Ana' })).toBeInTheDocument()
-    expect(within(panel).queryByRole('radio', { name: 'Beto' })).not.toBeInTheDocument()
-    expect(within(panel).queryByRole('radio', { name: 'Nenhum' })).not.toBeInTheDocument()
+    expect(await within(panel).findByRole('option', { name: 'Ana' })).toBeInTheDocument()
+    expect(within(panel).queryByRole('option', { name: 'Beto' })).not.toBeInTheDocument()
+    // The current leader is not offered to replace themselves.
+    expect(within(panel).queryByRole('option', { name: 'Bia' })).not.toBeInTheDocument()
   })
 
   it('shows a visible error message when loading the publisher options fails', async () => {
@@ -682,7 +715,7 @@ describe('DesignationsScreen assignment history panel', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Falha ao carregar publicadores.')
   })
 
-  it('"Fechar" closes the panel without calling anything', async () => {
+  it('"Fechar" closes the modal without calling anything', async () => {
     const designate = vi.fn()
     vi.stubGlobal(
       'api',
@@ -822,5 +855,110 @@ describe('DesignationsScreen exporting to Excel', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(
       /importação concluída: 1 designações processadas/i
     )
+  })
+})
+
+describe('DesignationsScreen territory table', () => {
+  const now = new Date(2026, 9, 17, 10)
+  const longest = makeTerritory({
+    id: 'longest',
+    name: 'Centro - N5',
+    assignedUser: { id: 'p1', name: 'Ana' },
+    assignedSince: new Date(2026, 6, 1, 12)
+  })
+  const recent = makeTerritory({
+    id: 'recent',
+    name: 'Cambé - N1',
+    assignedUser: { id: 'p2', name: 'Bia' },
+    assignedSince: new Date(2026, 9, 12, 12)
+  })
+  const free = makeTerritory({ id: 'free', name: 'Vila - N9' })
+
+  function stubTerritories(): void {
+    vi.stubGlobal(
+      'api',
+      makeApi({
+        territories: {
+          listWithBlocks: vi.fn().mockResolvedValue([free, longest, recent]),
+          create: vi.fn(),
+          update: vi.fn(),
+          delete: vi.fn()
+        }
+      })
+    )
+  }
+
+  function bodyRows(): HTMLElement[] {
+    return within(screen.getByRole('table', { name: 'Territórios' }))
+      .getAllByRole('row')
+      .slice(1)
+  }
+
+  it('shows since when every assigned territory is out, without opening it', async () => {
+    stubTerritories()
+
+    render(<DesignationsScreen now={now} />)
+
+    const row = await screen.findByRole('row', { name: /centro - n5/i })
+    expect(row).toHaveTextContent(asDate(longest.assignedSince as Date))
+    expect(row).toHaveTextContent('há 108 dias')
+    expect(screen.getByRole('row', { name: /cambé - n1/i })).toHaveTextContent(
+      asDate(recent.assignedSince as Date)
+    )
+    expect(screen.getByRole('row', { name: /vila - n9/i })).toHaveTextContent('—')
+  })
+
+  it('sorts by "Retirada" with the territory out the longest first, free ones last', async () => {
+    stubTerritories()
+    const user = userEvent.setup()
+
+    render(<DesignationsScreen now={now} />)
+    await screen.findByRole('row', { name: /centro - n5/i })
+    expect(bodyRows().map((row) => (row as HTMLTableRowElement).cells[0].textContent)).toEqual([
+      'Cambé - N1',
+      'Centro - N5',
+      'Vila - N9'
+    ])
+
+    await user.click(screen.getByRole('button', { name: 'Ordenar por Retirada' }))
+    expect(bodyRows().map((row) => (row as HTMLTableRowElement).cells[0].textContent)).toEqual([
+      'Centro - N5',
+      'Cambé - N1',
+      'Vila - N9'
+    ])
+
+    await user.click(screen.getByRole('button', { name: 'Ordenar por Retirada' }))
+    expect(bodyRows().map((row) => (row as HTMLTableRowElement).cells[0].textContent)).toEqual([
+      'Cambé - N1',
+      'Centro - N5',
+      'Vila - N9'
+    ])
+  })
+
+  it('filters by situation and finds a territory by its leader name', async () => {
+    stubTerritories()
+    const user = userEvent.setup()
+
+    render(<DesignationsScreen now={now} />)
+    await screen.findByRole('row', { name: /centro - n5/i })
+
+    await user.click(
+      within(screen.getByRole('radiogroup', { name: 'Situação' })).getByRole('radio', {
+        name: 'Livres'
+      })
+    )
+    expect(bodyRows().map((row) => (row as HTMLTableRowElement).cells[0].textContent)).toEqual([
+      'Vila - N9'
+    ])
+
+    await user.click(
+      within(screen.getByRole('radiogroup', { name: 'Situação' })).getByRole('radio', {
+        name: 'Todos'
+      })
+    )
+    await user.type(screen.getByRole('searchbox', { name: /buscar territórios/i }), 'bia')
+    expect(bodyRows().map((row) => (row as HTMLTableRowElement).cells[0].textContent)).toEqual([
+      'Cambé - N1'
+    ])
   })
 })

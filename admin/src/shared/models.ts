@@ -77,6 +77,11 @@ export interface Territory {
   readonly rotationDays?: number
   /** `undefined` (absent) means no block in the territory has been worked. */
   readonly lastWork?: LastWorkSummary
+  /**
+   * When the assignment in force started -- the "retirada" of the S-13 card.
+   * `undefined` (absent) whenever `assignedUser` is.
+   */
+  readonly assignedSince?: Date
 }
 
 export interface WorkLog {

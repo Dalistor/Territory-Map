@@ -106,10 +106,15 @@ Monorepo. O servidor está completo. O `admin/` está implementado — configura
 daí, **navegação por sidebar permanente** (Mapa / Designações / Histórico / Publicadores, com o nome da
 congregação no topo e "Sair da congregação" no rodapé): o Mapa é a Home (mapa + lista de
 territórios), **Designações** é a página própria da designação de território (mapa só com as
-demarcações, sem quadras, o nome do dirigente sobreposto a cada território), onde clicar num
-território abre um **painel de histórico** — o cartão S-13, com a designação em vigor, as
-anteriores com suas datas e um botão de apagar em cada, mais "Designar a…" e "Marcar como
-concluído" — e um botão **"Exportar para Excel"** gera um `.xlsx` com **uma aba por território**,
+demarcações, sem quadras, o nome do dirigente sobreposto a cada território) ou numa tabela que
+mostra em **toda linha** o dirigente e a data de **retirada** (o `assigned_since` que
+`GET /admin/territories` devolve, derivado da designação aberta), com filtro por situação e
+ordenação por território, retirada e último trabalho. Clicar num território abre um **modal**
+(`TerritoryDetailDialog`): no topo, a designação em vigor com "Editar" e "Marcar como concluído"
+sempre à mão; abaixo, as abas **Quadras** (`TerritoryBlocksTab` — ordenar por número ou por mais
+tempo sem trabalho, e **marcar uma quadra ou várias selecionadas em nome do dirigente atual**, na
+data escolhida; lançar em nome de outra pessoa continua no histórico de cada quadra),
+**Designações** (designar e o cartão S-13 com editar/apagar em cada registro) e **Mapa** — e um botão **"Exportar para Excel"** gera um `.xlsx` com **uma aba por território**,
 no estilo do S-13 (publicador, data de início, data de conclusão); a planilha é montada com
 **`exceljs`** no main process (`admin/src/main/excel-export.ts`, que sanea e desduplica o nome da
 aba dentro do limite de 31 caracteres do Excel) e sai **formatada** — larguras de coluna que

@@ -36,11 +36,14 @@ from app.models.territory import Territory
 from app.repositories.block import BlockRepository
 from app.repositories.block_work_log import BlockWorkLogRepository
 from app.repositories.territory import TerritoryRepository
+from app.repositories.territory_assignment import TerritoryAssignmentRepository
+from app.repositories.user import UserRepository
 from app.routers.auth import utc_now
 from app.schemas.block import BlockOut
 from app.schemas.geo import LatLngIn, LatLngOut
 from app.schemas.territory import LastWorkOut, TerritoryCreateIn, TerritoryOut, TerritoryPatchIn
 from app.schemas.user import UserBriefOut
+from app.services.assignment import AssignmentService
 from app.services.block import BlockService
 from app.services.territory import UNSET, TerritoryService
 
@@ -114,6 +117,7 @@ def territory_out(
     territory: Territory,
     blocks: list[BlockOut] | None = None,
     last_work: tuple[UUID, str, datetime] | None = None,
+    assigned_since: datetime | None = None,
 ) -> TerritoryOut:
     """A territory as the admin reads it, with its blocks only where they are asked for.
 
@@ -142,7 +146,25 @@ def territory_out(
             if last_work
             else None
         ),
+        assigned_since=assigned_since,
     )
+
+
+def get_assignment_service(session: DbSession) -> AssignmentService:
+    """Build the assignment service, to read when each open assignment started.
+
+    `admin_assignments` has its own factory, but it imports this module, so reusing
+    it here would make the import circular.
+    """
+    return AssignmentService(
+        assignments=TerritoryAssignmentRepository(session),
+        territories=TerritoryRepository(session),
+        users=UserRepository(session),
+        now_provider=utc_now,
+    )
+
+
+Assignments = Annotated[AssignmentService, Depends(get_assignment_service)]
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -160,11 +182,18 @@ def create_territory(
 def list_territories(
     congregation: AdminCongregation,
     territories: Territories,
+    assignments: Assignments,
 ) -> list[TerritoryOut]:
     """Every territory of the caller's congregation, and nobody else's."""
     latest_work = territories.latest_work_by_territory(congregation.id)
+    assigned_since = assignments.open_started_by_territory(congregation.id)
     return [
-        territory_out(territories, item, last_work=latest_work.get(item.id))
+        territory_out(
+            territories,
+            item,
+            last_work=latest_work.get(item.id),
+            assigned_since=assigned_since.get(item.id),
+        )
         for item in territories.list(congregation.id)
     ]
 
@@ -175,6 +204,7 @@ def get_territory(
     congregation: AdminCongregation,
     territories: Territories,
     blocks: Blocks,
+    assignments: Assignments,
 ) -> TerritoryOut:
     """One territory with the blocks drawn inside it.
 
@@ -189,6 +219,7 @@ def get_territory(
         territory,
         [block_out(blocks, block) for block in drawn],
         last_work=latest_work.get(territory.id),
+        assigned_since=assignments.open_started_by_territory(congregation.id).get(territory.id),
     )
 
 

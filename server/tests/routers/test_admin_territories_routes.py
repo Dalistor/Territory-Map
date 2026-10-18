@@ -447,3 +447,32 @@ async def test_the_detail_reports_the_forced_status_of_every_block(client, make_
     assert response.status_code == 200
     reported = {item["number"]: item["status_override"] for item in response.json()["blocks"]}
     assert reported == {blocks[0]["number"]: "overdue", blocks[1]["number"]: None}
+
+
+async def test_listing_and_detail_say_since_when_the_territory_is_out(client, make_admin, session):
+    from app.models.user import User
+
+    congregation, token = make_admin()
+    territory = (await draw(client, token)).json()
+    free = (await draw(client, token, name="Vila", boundary=square(5.0, 5.0))).json()
+    publisher = User(congregation_id=congregation.id, name="Irmã Maria")
+    session.add(publisher)
+    session.flush()
+    designated = await client.post(
+        f"/admin/territories/{territory['id']}/assignments",
+        json={"user_id": str(publisher.id)},
+        headers=bearer(token),
+    )
+
+    listing = {
+        item["id"]: item
+        for item in (await client.get("/admin/territories", headers=bearer(token))).json()
+    }
+    detail = (
+        await client.get(f"/admin/territories/{territory['id']}", headers=bearer(token))
+    ).json()
+
+    started_at = designated.json()["started_at"]
+    assert listing[territory["id"]]["assigned_since"] == started_at
+    assert detail["assigned_since"] == started_at
+    assert listing[free["id"]]["assigned_since"] is None

@@ -665,3 +665,28 @@ def test_update_assignment_not_found(
     # Other congregation's publisher
     with pytest.raises(NotFoundError):
         service.update(congregation.id, assignment.id, user_id=other_publisher.id)
+
+
+def test_open_started_by_territory_maps_each_open_assignment_to_its_start(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+    make_user,
+) -> None:
+    """Only the assignment in force counts, and only inside the caller's congregation."""
+    congregation = make_congregation()
+    other = make_congregation(name="Norte", city="Contagem")
+    out = make_territory(congregation.id, "Centro")
+    returned = make_territory(congregation.id, "Vila")
+    free = make_territory(congregation.id, "Livre")
+    foreign = make_territory(other.id, "Centro")
+    publisher = make_user(congregation.id)
+    service.designate(congregation.id, out.id, publisher.id, now=EARLIER)
+    service.designate(congregation.id, returned.id, publisher.id, now=EARLIER)
+    service.complete(congregation.id, returned.id)
+    service.designate(other.id, foreign.id, make_user(other.id).id)
+
+    started = service.open_started_by_territory(congregation.id)
+
+    assert started == {out.id: EARLIER}
+    assert free.id not in started

@@ -183,6 +183,13 @@ class AssignmentService:
         """
         return self._assignments.list_by_congregation(congregation_id)
 
+    def open_started_by_territory(self, congregation_id: UUID) -> dict[UUID, datetime]:
+        """When the assignment in force started, for every territory that has one."""
+        return {
+            assignment.territory_id: assignment.started_at
+            for assignment in self._assignments.list_open_by_congregation(congregation_id)
+        }
+
     def list_page(
         self,
         congregation_id: UUID,
