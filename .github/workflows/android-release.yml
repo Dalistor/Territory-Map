@@ -1,7 +1,12 @@
 name: android-release
 
-# Builds Android release APKs for both publisher and admin apps,
-# generates release manifests, and publishes them to the VPS releases directory.
+# Builds the Android APKs and publishes them to the VPS releases directory,
+# where `GET /updates/latest` serves the manifest both apps check on launch.
+#
+# Only an app whose own files changed is published: publishing an unchanged
+# app would still show its users an "update available" prompt. A push that
+# only touches this workflow builds both apps as a check and publishes none.
+# `workflow_dispatch` chooses explicitly (e.g. to republish after a failure).
 
 on:
   push:
@@ -12,6 +17,16 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      apps:
+        description: "Which apps to build and publish"
+        type: choice
+        options: [both, app, admin-app, build-only]
+        default: both
+      changelog:
+        description: "Text shown in the update dialog (optional)"
+        type: string
+        default: ""
 
 concurrency:
   group: android-release-${{ github.ref }}
@@ -29,10 +44,45 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Decide what to build and publish
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          INPUT_APPS: ${{ inputs.apps }}
+        run: |
+          set -euo pipefail
+          build_app=false; publish_app=false; build_admin=false; publish_admin=false
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            case "$INPUT_APPS" in
+              both) build_app=true; publish_app=true; build_admin=true; publish_admin=true ;;
+              app) build_app=true; publish_app=true ;;
+              admin-app) build_admin=true; publish_admin=true ;;
+              build-only) build_app=true; build_admin=true ;;
+            esac
+          else
+            if [ -z "$BEFORE" ] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+              changed=$(printf 'app/\nadmin-app/\n')
+            else
+              changed=$(git diff --name-only "$BEFORE" "$GITHUB_SHA")
+            fi
+            if grep -q '^app/' <<<"$changed"; then build_app=true; publish_app=true; fi
+            if grep -q '^admin-app/' <<<"$changed"; then build_admin=true; publish_admin=true; fi
+            if grep -q '^\.github/workflows/android-release\.yml$' <<<"$changed"; then
+              build_app=true; build_admin=true
+            fi
+          fi
+          {
+            echo "build_app=$build_app"; echo "publish_app=$publish_app"
+            echo "build_admin=$build_admin"; echo "publish_admin=$publish_admin"
+          } | tee -a "$GITHUB_OUTPUT"
 
       - name: Compute app version
         run: |
-          # Offset keeps the code above the manually versioned builds already installed.
+          # Offset keeps the code above the manually versioned builds already installed (2).
           echo "VERSION_CODE=$((GITHUB_RUN_NUMBER + 100))" >> "$GITHUB_ENV"
           echo "VERSION_NAME=1.1.$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
 
@@ -48,6 +98,7 @@ jobs:
           node-version: "20"
 
       - name: Build Publisher App APK
+        if: steps.plan.outputs.build_app == 'true'
         run: |
           set -euo pipefail
           cd app
@@ -61,6 +112,7 @@ jobs:
           ./gradlew assembleRelease --no-daemon
 
       - name: Build Admin App APK
+        if: steps.plan.outputs.build_admin == 'true'
         run: |
           set -euo pipefail
           cd admin-app
@@ -74,42 +126,32 @@ jobs:
           ./gradlew assembleRelease --no-daemon
 
       - name: Prepare Releases Bundle
+        if: steps.plan.outputs.publish_app == 'true' || steps.plan.outputs.publish_admin == 'true'
+        env:
+          PUBLISH_APP: ${{ steps.plan.outputs.publish_app }}
+          PUBLISH_ADMIN: ${{ steps.plan.outputs.publish_admin }}
+          CHANGELOG: ${{ inputs.changelog }}
         run: |
           set -euo pipefail
-          mkdir -p releases/app releases/admin-app
-
-          # Copy APKs
-          cp app/android/app/build/outputs/apk/release/*.apk releases/app/app-release.apk
-          cp admin-app/android/app/build/outputs/apk/release/*.apk releases/admin-app/admin-app-release.apk
-
-          # Extract version info and write version.json manifests
-          cat > releases/app/version.json <<EOF
-          {
-            "app": "app",
-            "version_code": $VERSION_CODE,
-            "version_name": "$VERSION_NAME",
-            "min_version_code": 1,
-            "download_url": "/updates/download/app",
-            "apk_filename": "app-release.apk",
-            "changelog": "Correção no toque sobre o número da quadra e melhorias na interface.",
-            "published_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          notes="${CHANGELOG:-Melhorias e correções.}"
+          now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          # Same APK name and URL the server already serves for each app.
+          bundle() {
+            local app="$1" source_dir="$2"
+            mkdir -p "releases/$app"
+            cp "$source_dir"/android/app/build/outputs/apk/release/*.apk "releases/$app/$app-release.apk"
+            jq -n --arg app "$app" --argjson code "$VERSION_CODE" --arg name "$VERSION_NAME" \
+              --arg notes "$notes" --arg at "$now" \
+              '{app: $app, version_code: $code, version_name: $name, min_version_code: 1,
+                download_url: "/updates/download/\($app)", apk_filename: "\($app)-release.apk",
+                changelog: $notes, published_at: $at}' > "releases/$app/version.json"
+            cat "releases/$app/version.json"
           }
-          EOF
-
-          cat > releases/admin-app/version.json <<EOF
-          {
-            "app": "admin-app",
-            "version_code": $VERSION_CODE,
-            "version_name": "$VERSION_NAME",
-            "min_version_code": 1,
-            "download_url": "/updates/download/admin-app",
-            "apk_filename": "admin-app-release.apk",
-            "changelog": "Edição de designação atual e passada e visualização da situação do território e última visita.",
-            "published_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          }
-          EOF
+          if [ "$PUBLISH_APP" = "true" ]; then bundle app app; fi
+          if [ "$PUBLISH_ADMIN" = "true" ]; then bundle admin-app admin-app; fi
 
       - name: Configure SSH
+        if: steps.plan.outputs.publish_app == 'true' || steps.plan.outputs.publish_admin == 'true'
         env:
           SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
@@ -141,12 +183,17 @@ jobs:
           chmod 600 ~/.ssh/config
 
       - name: Deploy Releases to VPS
+        if: steps.plan.outputs.publish_app == 'true' || steps.plan.outputs.publish_admin == 'true'
         env:
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/territory-map' }}
         run: |
           set -euo pipefail
-          ssh deploy-target "mkdir -p '$DEPLOY_PATH/releases/app' '$DEPLOY_PATH/releases/admin-app'"
-          scp -r releases/app/* deploy-target:"$DEPLOY_PATH/releases/app/"
-          scp -r releases/admin-app/* deploy-target:"$DEPLOY_PATH/releases/admin-app/"
+          for app in app admin-app; do
+            [ -d "releases/$app" ] || continue
+            ssh deploy-target "mkdir -p '$DEPLOY_PATH/releases/$app'"
+            # APK first, manifest last: the phones never see a version whose APK is not there yet.
+            scp "releases/$app/$app-release.apk" deploy-target:"$DEPLOY_PATH/releases/$app/"
+            scp "releases/$app/version.json" deploy-target:"$DEPLOY_PATH/releases/$app/"
+            echo "Published $app $VERSION_NAME ($VERSION_CODE)" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
           ssh deploy-target "chmod -R 755 '$DEPLOY_PATH/releases'"
-          echo "Releases deployed successfully to $DEPLOY_PATH/releases"

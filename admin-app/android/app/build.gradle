@@ -85,8 +85,10 @@ android {
         applicationId "com.territorymapadmin"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode (System.getenv("VERSION_CODE") ?: "2").toInteger()
-        versionName System.getenv("VERSION_NAME") ?: "1.1.0"
+        // CI sets both from the workflow run; local builds fall back to the last manual version.
+        // Explicit parentheses: `versionCode (x).toInteger()` parses as `versionCode(x).toInteger()`.
+        versionCode(Integer.parseInt(System.getenv("VERSION_CODE") ?: "2"))
+        versionName(System.getenv("VERSION_NAME") ?: "1.1.0")
     }
     signingConfigs {
         debug {
