@@ -11,7 +11,11 @@
 
 import { type LatLng, ringFromJson, ringToJson, validateRing } from '../shared/geo'
 import { ApiErrorException, NetworkException } from '../shared/api-errors'
-import type { AssignmentUpdateInput } from '../shared/ipc-contract'
+import type {
+  AssignmentUpdateInput,
+  CampaignCreateInput,
+  CampaignUpdateInput
+} from '../shared/ipc-contract'
 import type {
   AdminSession,
   Assignment,
@@ -20,6 +24,9 @@ import type {
   AssignmentWithTerritory,
   Block,
   BlockStatusOverride,
+  Campaign,
+  CampaignBrief,
+  CampaignDesignation,
   Congregation,
   LastWorkSummary,
   Publisher,
@@ -104,6 +111,20 @@ export interface ApiClient {
   completeAssignment(territoryId: string): Promise<Assignment>
   /** Erases one history line -- the admin correcting a wrong record. */
   deleteAssignment(territoryId: string, assignmentId: string): Promise<void>
+
+  /** Every campaign of the congregation, active or not, ordered by name. */
+  listCampaigns(): Promise<Campaign[]>
+  createCampaign(input: CampaignCreateInput): Promise<Campaign>
+  /** Only the keys present in `input` reach the wire; the server refuses an empty body. */
+  updateCampaign(campaignId: string, input: CampaignUpdateInput): Promise<Campaign>
+  /** 409 `campaign_active` while the campaign is out. */
+  deleteCampaign(campaignId: string): Promise<void>
+  /** Opens a period for these publishers, replacing every territory's dirigente. */
+  designateCampaign(campaignId: string, userIds: string[]): Promise<Campaign>
+  /** Replaces the publishers of the open period. */
+  setCampaignPublishers(campaignId: string, userIds: string[]): Promise<Campaign>
+  /** Closes the open period and every S-13 line it holds. */
+  completeCampaign(campaignId: string): Promise<Campaign>
 
   /** `number` left out asks the server for the lowest free integer. */
   createBlock(input: { territoryId: string; polygon: LatLng[]; number?: number }): Promise<Block>
@@ -219,6 +240,15 @@ function parsePublisherBrief(json: Record<string, unknown>): PublisherBrief {
   return { id: json.id as string, name: json.name as string }
 }
 
+function parseCampaignBrief(json: Record<string, unknown>): CampaignBrief {
+  return { id: json.id as string, name: json.name as string }
+}
+
+/** `null`, absent or an object: only the object names a campaign. */
+function parseOptionalCampaignBrief(value: unknown): CampaignBrief | undefined {
+  return isRecord(value) ? parseCampaignBrief(value) : undefined
+}
+
 function parseLastWork(json: Record<string, unknown>): LastWorkSummary {
   return {
     publisher: parsePublisherBrief(json.user as Record<string, unknown>),
@@ -249,6 +279,7 @@ function parseTerritory(json: Record<string, unknown>): Territory {
     boundary: ringFromJson(json.boundary as { lat: number; lng: number }[]),
     blocks: blocks.map(parseBlock),
     assignedUser: assignedUserJson ? parsePublisherBrief(assignedUserJson) : undefined,
+    campaign: parseOptionalCampaignBrief(json.campaign),
     // Absent and explicitly `null` mean the same thing -- the territory uses
     // the clients' default rotation -- so both collapse to `undefined`, the
     // same treatment `parseBlock` gives `last_worked_at`.
@@ -262,12 +293,15 @@ function parseTerritory(json: Record<string, unknown>): Territory {
  * One row of the S-13 card. `completed_at` arriving as `null` is the whole
  * point of the record -- it marks the assignment that is still open -- so it
  * becomes `undefined` here rather than an invalid `Date`, matching how
- * `parseBlock` treats `last_worked_at`.
+ * `parseBlock` treats `last_worked_at`. A campaign's line arrives with
+ * `user: null` and a `campaign` instead; either side left null becomes
+ * `undefined`.
  */
 function parseAssignment(json: Record<string, unknown>): Assignment {
   return {
     id: json.id as string,
-    publisher: parsePublisherBrief(json.user as Record<string, unknown>),
+    publisher: isRecord(json.user) ? parsePublisherBrief(json.user) : undefined,
+    campaign: parseOptionalCampaignBrief(json.campaign),
     startedAt: new Date(json.started_at as string),
     completedAt: parseOptionalDate(json.completed_at)
   }
@@ -296,7 +330,7 @@ function parseAssignmentHistoryPage(
     const filtered = json
       .map((entry) => parseAssignmentWithTerritory(entry as Record<string, unknown>))
       .filter((assignment) => {
-        if (query.publisherId !== undefined && assignment.publisher.id !== query.publisherId) {
+        if (query.publisherId !== undefined && assignment.publisher?.id !== query.publisherId) {
           return false
         }
         if (query.territoryId !== undefined && assignment.territory.id !== query.territoryId) {
@@ -338,6 +372,30 @@ function assignmentHistoryPath(query: AssignmentHistoryQuery): string {
 
   const encodedParameters = parameters.toString()
   return encodedParameters === '' ? '/admin/assignments' : `/admin/assignments?${encodedParameters}`
+}
+
+function parseCampaignDesignation(json: Record<string, unknown>): CampaignDesignation {
+  return {
+    id: json.id as string,
+    startedAt: new Date(json.started_at as string),
+    completedAt: parseOptionalDate(json.completed_at),
+    publishers: (json.publishers as Record<string, unknown>[]).map(parsePublisherBrief)
+  }
+}
+
+function parseCampaign(json: Record<string, unknown>): Campaign {
+  const current = json.current_designation
+  return {
+    id: json.id as string,
+    name: json.name as string,
+    createdAt: new Date(json.created_at as string),
+    territories: (json.territories as Record<string, unknown>[]).map((territory) => ({
+      id: territory.id as string,
+      name: territory.name as string
+    })),
+    currentDesignation: isRecord(current) ? parseCampaignDesignation(current) : undefined,
+    designations: (json.designations as Record<string, unknown>[]).map(parseCampaignDesignation)
+  }
 }
 
 function parseWorkLog(json: Record<string, unknown>): WorkLog {
@@ -507,6 +565,52 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
 
     async deleteAssignment(territoryId, assignmentId) {
       await request('DELETE', `/admin/territories/${territoryId}/assignments/${assignmentId}`)
+    },
+
+    listCampaigns: () => list('/admin/campaigns', parseCampaign),
+
+    async createCampaign({ name, territoryIds }) {
+      const json = await request('POST', '/admin/campaigns', {
+        name,
+        territory_ids: territoryIds
+      })
+      return parseCampaign(json as Record<string, unknown>)
+    },
+
+    async updateCampaign(campaignId, { name, territoryIds }) {
+      const json = await request('PATCH', `/admin/campaigns/${campaignId}`, {
+        ...(name !== undefined && { name }),
+        ...(territoryIds !== undefined && { territory_ids: territoryIds })
+      })
+      return parseCampaign(json as Record<string, unknown>)
+    },
+
+    async deleteCampaign(campaignId) {
+      await request('DELETE', `/admin/campaigns/${campaignId}`)
+    },
+
+    async designateCampaign(campaignId, userIds) {
+      const json = await request('POST', `/admin/campaigns/${campaignId}/designations`, {
+        user_ids: userIds
+      })
+      return parseCampaign(json as Record<string, unknown>)
+    },
+
+    async setCampaignPublishers(campaignId, userIds) {
+      const json = await request(
+        'PUT',
+        `/admin/campaigns/${campaignId}/designations/current/publishers`,
+        { user_ids: userIds }
+      )
+      return parseCampaign(json as Record<string, unknown>)
+    },
+
+    async completeCampaign(campaignId) {
+      const json = await request(
+        'POST',
+        `/admin/campaigns/${campaignId}/designations/current/complete`
+      )
+      return parseCampaign(json as Record<string, unknown>)
     },
 
     async createBlock({ territoryId, polygon, number }) {

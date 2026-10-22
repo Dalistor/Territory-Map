@@ -5,7 +5,7 @@
 // territories rather than depending on whatever `DashboardScreen` happened to
 // load, because the filter needs the *whole* congregation list ("Todos" and
 // the per-territory picker), not just the ones assigned to this publisher.
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -18,23 +18,51 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { v4 as uuidv4 } from 'uuid';
 import { ApiErrorException, NetworkException, type ApiClient } from '../../data/api-client';
-import { isTerritoryAssignedToMe } from '../../domain/assignment';
-import { describeLastWorked } from '../../domain/lastWorked';
-import type { Block, Session, Territory } from '../../domain/models';
+import {
+  canMarkBlocksOf,
+  isTerritoryAssignedToMe,
+  myCampaignHolding,
+} from '../../domain/assignment';
+import { describeLastWorked, formatDate } from '../../domain/lastWorked';
+import type { Block, Campaign, Session, Territory } from '../../domain/models';
 import { TerritoryMapView } from '../map/TerritoryMapView';
 import {
   defaultFilter,
   searchTerritories,
+  showsBlocks,
   visibleTerritories,
   type MapFilter,
 } from '../map/territoryFilter';
 import { colors, radius, shadows, spacing } from '../theme';
 
+/**
+ * The server's answer when the publisher is no longer allowed to mark in a
+ * territory: the designation or the campaign was concluded (or they were
+ * taken off it) between loading the map and tapping the block.
+ */
+const TERRITORY_NOT_ASSIGNED = 'territory_not_assigned';
+
+const NO_LONGER_ASSIGNED_MESSAGE =
+  'A marcação não foi registrada: este território não está mais designado a você — a designação ' +
+  'ou a campanha pode ter sido concluída. O mapa foi atualizado.';
+
 export interface MapScreenProps {
   readonly session: Session;
-  readonly apiClient: Pick<ApiClient, 'listTerritories' | 'markBlockWorked'>;
+  /**
+   * `listCampaigns` is optional the same way `DashboardScreen`'s
+   * `listWorkHistory` is: without it the map simply knows of no campaign,
+   * and only individual designations open blocks for marking.
+   */
+  readonly apiClient: Pick<ApiClient, 'listTerritories' | 'markBlockWorked'> &
+    Partial<Pick<ApiClient, 'listCampaigns'>>;
   /** Preselects the `'specific'` filter to this territory -- how `DashboardScreen`'s "Ver no mapa" opens this screen (wired in Task 26). */
   readonly initialTerritoryId?: string;
+  /**
+   * Opens the map on one of the publisher's campaigns: every territory of it
+   * framed together, with their blocks markable -- how the dashboard's
+   * Campaigns tab opens this screen.
+   */
+  readonly initialCampaignId?: string;
   /** Injected so a fixed "now" can drive the block colours; defaults to the real clock. */
   readonly now?: Date;
 }
@@ -48,15 +76,14 @@ export function MapScreen({
   session,
   apiClient,
   initialTerritoryId,
+  initialCampaignId,
   now,
 }: MapScreenProps): React.JSX.Element {
   const effectiveNow = now ?? new Date();
   const [territories, setTerritories] = useState<Territory[]>([]);
-  const [filter, setFilter] = useState<MapFilter>(
-    initialTerritoryId !== undefined
-      ? { mode: 'specific', territoryId: initialTerritoryId }
-      : { mode: 'all' },
-  );
+  /** The publisher's active campaigns; `null` until the first answer (or when there is no way to ask). */
+  const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
+  const [filter, setFilter] = useState<MapFilter>(() => initialFilter(initialTerritoryId, initialCampaignId));
   // Once the real territory list arrives, replace the placeholder above with
   // `defaultFilter` -- but only once, and only when the caller did not ask
   // for a specific territory, so the publisher's own later taps on the
@@ -79,20 +106,46 @@ export function MapScreen({
   /** What the publisher typed in the search box -- narrows the chip list and suggestions. */
   const [search, setSearch] = useState('');
 
-  useEffect(() => {
+  /**
+   * Fetches the territories and the publisher's campaigns. Called on mount,
+   * and again when the server says a territory is no longer theirs -- the
+   * map must stop offering what the server now refuses.
+   */
+  const loadMap = useCallback((): void => {
     apiClient
       .listTerritories(session.token)
       .then(setTerritories)
       // `withOfflineFallback` (App.tsx) already absorbed "no signal with a
       // cache to show"; reaching here means there is truly nothing to draw.
       .catch(() => setBanner('Não foi possível carregar os territórios. Verifique a conexão.'));
+    // Without the list no campaign territory is offered for marking, which
+    // errs on the side the server enforces anyway.
+    if (apiClient.listCampaigns === undefined) {
+      setCampaigns([]);
+      return;
+    }
+    apiClient
+      .listCampaigns(session.token)
+      .then(setCampaigns)
+      .catch(() => setCampaigns([]));
   }, [apiClient, session.token]);
 
+  useEffect(loadMap, [loadMap]);
+
+  const myCampaigns = campaigns ?? NO_CAMPAIGNS;
+
   useEffect(() => {
-    if (filterInitialized || initialTerritoryId !== undefined || territories.length === 0) return;
+    if (
+      filterInitialized ||
+      initialTerritoryId !== undefined ||
+      initialCampaignId !== undefined ||
+      territories.length === 0
+    ) {
+      return;
+    }
     setFilter(defaultFilter(territories, session.user.id));
     setFilterInitialized(true);
-  }, [territories, filterInitialized, initialTerritoryId, session.user.id]);
+  }, [territories, filterInitialized, initialTerritoryId, initialCampaignId, session.user.id]);
 
   const territoriesWithOverrides = useMemo(
     (): Territory[] =>
@@ -108,8 +161,8 @@ export function MapScreen({
   );
 
   const visible = useMemo(
-    () => visibleTerritories(territoriesWithOverrides, filter, session.user.id),
-    [territoriesWithOverrides, filter, session.user.id],
+    () => visibleTerritories(territoriesWithOverrides, filter, session.user.id, myCampaigns),
+    [territoriesWithOverrides, filter, session.user.id, myCampaigns],
   );
 
   const selectedTerritory = useMemo(
@@ -120,8 +173,16 @@ export function MapScreen({
     [territories, filter],
   );
 
+  const selectedTerritoryCampaign =
+    selectedTerritory === null ? undefined : myCampaignHolding(selectedTerritory, myCampaigns);
+
+  const selectedCampaign =
+    filter.mode === 'campaign'
+      ? myCampaigns.find((campaign) => campaign.id === filter.campaignId) ?? null
+      : null;
+
   function handleBlockTap(territory: Territory, block: Block): void {
-    if (isTerritoryAssignedToMe(territory, session.user.id)) {
+    if (canMarkBlocksOf(territory, session.user.id, myCampaigns)) {
       setConfirmTarget({ territory, block });
     } else {
       // Outside a territory designated to this publisher: read-only info,
@@ -153,6 +214,9 @@ export function MapScreen({
         setBanner(
           'Sem conexão com o servidor: a marcação não foi registrada. Tente de novo quando houver internet.',
         );
+      } else if (error instanceof ApiErrorException && error.code === TERRITORY_NOT_ASSIGNED) {
+        setBanner(NO_LONGER_ASSIGNED_MESSAGE);
+        loadMap();
       } else if (error instanceof ApiErrorException) {
         // The server's own words -- "território não designado", "quadra não
         // encontrada" -- say more than anything this screen could guess.
@@ -180,6 +244,7 @@ export function MapScreen({
       <FilterControl
         filter={filter}
         territories={territories}
+        campaigns={myCampaigns}
         search={search}
         onSearchChange={setSearch}
         onChange={(newFilter) => {
@@ -190,9 +255,13 @@ export function MapScreen({
         <TerritoryMapView
           territories={visible}
           myUserId={session.user.id}
+          myCampaigns={myCampaigns}
           // The overview shows names over the demarcations; the blocks and
-          // their numbers appear once a single territory is picked.
-          showBlocks={filter.mode === 'specific'}
+          // their numbers appear once a single territory or a campaign is
+          // picked. A campaign keeps the names too: it draws several
+          // territories' blocks at once.
+          showBlocks={showsBlocks(filter)}
+          showTerritoryLabels={filter.mode !== 'specific'}
           now={effectiveNow}
           onBlockTap={handleBlockTap}
           onTerritoryTap={(territory) =>
@@ -217,6 +286,13 @@ export function MapScreen({
                       <Text style={styles.badgeMineText}>Designado a você</Text>
                     </View>
                   ) : null}
+                  {selectedTerritoryCampaign !== undefined ? (
+                    <View style={[styles.badge, styles.badgeMine]}>
+                      <Text style={styles.badgeMineText}>
+                        Campanha: {selectedTerritoryCampaign.name}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
               </View>
               <Pressable
@@ -231,6 +307,13 @@ export function MapScreen({
               </Pressable>
             </View>
           </View>
+        )}
+        {filter.mode === 'campaign' && (
+          <CampaignCard
+            campaign={selectedCampaign}
+            loaded={campaigns !== null}
+            onShowAll={() => setFilter({ mode: 'all' })}
+          />
         )}
       </View>
       {confirmTarget !== null && (
@@ -315,9 +398,68 @@ export function MapScreen({
   );
 }
 
+const NO_CAMPAIGNS: readonly Campaign[] = [];
+
+function initialFilter(territoryId?: string, campaignId?: string): MapFilter {
+  if (campaignId !== undefined) return { mode: 'campaign', campaignId };
+  if (territoryId !== undefined) return { mode: 'specific', territoryId };
+  return { mode: 'all' };
+}
+
+/**
+ * The floating card of campaign mode: which campaign is on the map, how many
+ * territories it holds and since when. Once the campaign list has arrived and
+ * this one is not in it, says so instead of showing an empty map in silence.
+ */
+function CampaignCard({
+  campaign,
+  loaded,
+  onShowAll,
+}: {
+  readonly campaign: Campaign | null;
+  readonly loaded: boolean;
+  readonly onShowAll: () => void;
+}): React.JSX.Element | null {
+  if (campaign === null && !loaded) return null;
+  const count = campaign?.territoryIds.length ?? 0;
+  return (
+    <View style={styles.bottomCard}>
+      <View style={styles.bottomCardHeader}>
+        <View style={styles.bottomCardInfo}>
+          {campaign === null ? (
+            <Text style={styles.readOnlyHint}>
+              Esta campanha não está mais ativa para você — ela pode ter sido concluída.
+            </Text>
+          ) : (
+            <>
+              <Text style={styles.bottomCardTitle}>{campaign.name}</Text>
+              <Text style={styles.badgeText}>
+                {count} {count === 1 ? 'território' : 'territórios'} · desde{' '}
+                {formatDate(campaign.startedAt)}
+              </Text>
+            </>
+          )}
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          onPress={onShowAll}
+          style={({ pressed }) => [
+            styles.clearSelectionButton,
+            pressed && styles.clearSelectionButtonPressed,
+          ]}
+        >
+          <Text style={styles.clearSelectionText}>Ver todos</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 interface FilterControlProps {
   readonly filter: MapFilter;
   readonly territories: Territory[];
+  /** The publisher's active campaigns -- one chip each, so the campaign view is one tap away again. */
+  readonly campaigns: readonly Campaign[];
   readonly search: string;
   readonly onSearchChange: (search: string) => void;
   readonly onChange: (filter: MapFilter) => void;
@@ -351,7 +493,8 @@ function FilterChip({
 
 /**
  * The search box plus the chip row: "Meu(s) território(s)" / "Todos" / one
- * chip per individual territory.
+ * chip per active campaign of the publisher / one chip per individual
+ * territory.
  *
  * The search narrows the chips and displays instant suggestions.
  * An explicit Clear button (✕) ensures reliable clearing on Android.
@@ -359,6 +502,7 @@ function FilterChip({
 function FilterControl({
   filter,
   territories,
+  campaigns,
   search,
   onSearchChange,
   onChange,
@@ -409,6 +553,14 @@ function FilterControl({
           active={filter.mode === 'all'}
           onPress={() => onChange({ mode: 'all' })}
         />
+        {campaigns.map((campaign) => (
+          <FilterChip
+            key={campaign.id}
+            label={`Campanha: ${campaign.name}`}
+            active={filter.mode === 'campaign' && filter.campaignId === campaign.id}
+            onPress={() => onChange({ mode: 'campaign', campaignId: campaign.id })}
+          />
+        ))}
         {matches.map((territory) => (
           <FilterChip
             key={territory.id}

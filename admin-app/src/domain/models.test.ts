@@ -294,7 +294,7 @@ describe('Assignment', () => {
       completedAt: new Date('2025-09-01T09:00:00Z'),
     };
 
-    expect(assignment.publisher.name).toBe('Irmão Costa');
+    expect(assignment.publisher?.name).toBe('Irmão Costa');
   });
 });
 
@@ -316,7 +316,7 @@ describe('AssignmentWithTerritory', () => {
     };
     const filters: AssignmentHistoryFilters = { publisherId: 'publisher-gone', page: 2 };
 
-    expect(page.items[0].publisher.name).toBe('Irmão Costa');
+    expect(page.items[0].publisher?.name).toBe('Irmão Costa');
     expect(page.items[0].territory.name).toBe('Centro - N3');
     expect(filters.page).toBe(2);
   });

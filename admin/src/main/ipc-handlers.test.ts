@@ -501,6 +501,82 @@ describe('workLogs:markWorked', () => {
   })
 })
 
+describe('campaigns', () => {
+  it('forwards each campaign channel to its API client call, through the session', async () => {
+    const campaign = {
+      id: 'camp-1',
+      name: 'Celebração',
+      createdAt: new Date(),
+      territories: [],
+      designations: []
+    }
+    const api = fakeApi({
+      listCampaigns: vi.fn(async () => [campaign]),
+      createCampaign: vi.fn(async () => campaign),
+      updateCampaign: vi.fn(async () => campaign),
+      deleteCampaign: vi.fn(async () => undefined),
+      designateCampaign: vi.fn(async () => campaign),
+      setCampaignPublishers: vi.fn(async () => campaign),
+      completeCampaign: vi.fn(async () => campaign)
+    })
+    const session = fakeSession()
+    registerIpcHandlers({
+      session,
+      api,
+      geocoder: fakeGeocoder,
+      dialog: { showSaveDialog: vi.fn() }
+    })
+
+    await invoke(IPC_CHANNELS.campaignsList)
+    await invoke(IPC_CHANNELS.campaignsCreate, { name: 'Celebração', territoryIds: ['terr-1'] })
+    await invoke(IPC_CHANNELS.campaignsUpdate, 'camp-1', { name: 'Outra' })
+    await invoke(IPC_CHANNELS.campaignsDelete, 'camp-1')
+    await invoke(IPC_CHANNELS.campaignsDesignate, 'camp-1', ['pub-1', 'pub-2'])
+    await invoke(IPC_CHANNELS.campaignsSetPublishers, 'camp-1', ['pub-2'])
+    await invoke(IPC_CHANNELS.campaignsComplete, 'camp-1')
+
+    expect(api.createCampaign).toHaveBeenCalledWith({
+      name: 'Celebração',
+      territoryIds: ['terr-1']
+    })
+    expect(api.updateCampaign).toHaveBeenCalledWith('camp-1', { name: 'Outra' })
+    expect(api.deleteCampaign).toHaveBeenCalledWith('camp-1')
+    expect(api.designateCampaign).toHaveBeenCalledWith('camp-1', ['pub-1', 'pub-2'])
+    expect(api.setCampaignPublishers).toHaveBeenCalledWith('camp-1', ['pub-2'])
+    expect(api.completeCampaign).toHaveBeenCalledWith('camp-1')
+    expect(session.run).toHaveBeenCalledTimes(7)
+  })
+
+  it('propagates a refused designation as a serialized error with the server message', async () => {
+    const api = fakeApi({
+      designateCampaign: vi.fn(async () => {
+        throw new ApiErrorException(
+          409,
+          'territory_in_campaign',
+          'O território Centro - N5 já está na campanha Visitas.'
+        )
+      })
+    })
+    registerIpcHandlers({
+      session: fakeSession(),
+      api,
+      geocoder: fakeGeocoder,
+      dialog: { showSaveDialog: vi.fn() }
+    })
+
+    const error = await invoke(IPC_CHANNELS.campaignsDesignate, 'camp-1', ['pub-1']).catch(
+      (thrown: Error) => thrown
+    )
+
+    expect(JSON.parse((error as Error).message)).toEqual({
+      name: 'ApiErrorException',
+      message: 'O território Centro - N5 já está na campanha Visitas.',
+      code: 'territory_in_campaign',
+      statusCode: 409
+    })
+  })
+})
+
 describe('publishers:delete', () => {
   it('forwards the publisher id to the API client, through the session', async () => {
     const api = fakeApi({ deletePublisher: vi.fn(async () => undefined) })

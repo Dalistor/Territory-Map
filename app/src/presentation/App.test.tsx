@@ -119,6 +119,7 @@ function fakeApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
     activate: jest.fn(),
     listTerritories: jest.fn().mockResolvedValue([]),
+    listCampaigns: jest.fn().mockResolvedValue([]),
     listWorkedTerritories: jest.fn().mockResolvedValue([]),
     listWorkHistory: jest.fn().mockResolvedValue([]),
     markBlockWorked: jest.fn(),
@@ -148,13 +149,21 @@ describe('App', () => {
     const apiClient = fakeApiClient({ listTerritories })
     const getSession = jest.fn().mockResolvedValue(SESSION)
     const saveTerritories = jest.fn().mockResolvedValue(undefined)
+    const campaigns = [
+      { id: 'campaign-1', name: 'Campanha', startedAt: new Date(), territoryIds: ['territory-1'] },
+    ]
+    const saveCampaigns = jest.fn().mockResolvedValue(undefined)
+    apiClient.listCampaigns = jest.fn().mockResolvedValue(campaigns)
 
-    await render(<App dependencies={{ apiClient, getSession, saveTerritories }} />)
+    await render(<App dependencies={{ apiClient, getSession, saveTerritories, saveCampaigns }} />)
 
     expect(await screen.findByText('Nenhuma quadra trabalhada ainda')).toBeTruthy()
     expect(screen.queryByLabelText('Código de acesso')).toBeNull()
     expect(listTerritories).toHaveBeenCalledWith(SESSION.token)
     expect(saveTerritories).toHaveBeenCalledWith([])
+    // The campaigns are what open a campaign territory offline, so they are
+    // cached on the same successful launch as the territories.
+    expect(saveCampaigns).toHaveBeenCalledWith(campaigns)
   })
 
   it('a saved session the server rejects clears it and returns to the ActivationScreen', async () => {
@@ -281,6 +290,18 @@ describe('withOfflineFallback', () => {
     const wrapped = withOfflineFallback(apiClient, getCachedTerritories)
 
     await expect(wrapped.listTerritories('token')).resolves.toBe(cached)
+  })
+
+  it('falls back to the cached campaigns on a NetworkException, so the Campaigns tab opens offline', async () => {
+    const cached = [
+      { id: 'campaign-1', name: 'Campanha', startedAt: new Date(), territoryIds: ['territory-1'] },
+    ]
+    const listCampaigns = jest.fn().mockRejectedValue(new NetworkException('offline'))
+    const apiClient = fakeApiClient({ listCampaigns })
+
+    const wrapped = withOfflineFallback(apiClient, jest.fn(), jest.fn().mockResolvedValue(cached))
+
+    await expect(wrapped.listCampaigns('token')).resolves.toBe(cached)
   })
 
   it('rethrows the NetworkException when there is no cache to fall back to', async () => {

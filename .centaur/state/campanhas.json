@@ -1,0 +1,396 @@
+{
+  "schema": 1,
+  "contract": "campanhas@1",
+  "rules": {
+    "CMP-01": {
+      "implementation": "implementada",
+      "sources": [
+        {
+          "path": "server/app/services/campaign.py",
+          "start": 1,
+          "end": 280,
+          "role": "Regras de campanha"
+        },
+        {
+          "path": "server/app/models/territory_assignment.py",
+          "start": 1,
+          "end": 123,
+          "role": "Linha de campanha e CHECK"
+        },
+        {
+          "path": "server/migrations/versions/20261022_1030_f4a9c2d71e36_add_campaigns.py",
+          "start": 1,
+          "end": 117,
+          "role": "Esquema"
+        },
+        {
+          "path": "server/app/routers/admin_campaigns.py",
+          "start": 1,
+          "end": 181,
+          "role": "Rotas admin"
+        },
+        {
+          "path": "admin/src/renderer/screens/CampaignsScreen.tsx",
+          "start": 1,
+          "end": 661,
+          "role": "Página Campanhas"
+        }
+      ],
+      "evidence": [
+        "ev-db6e0acdd6744f43952a1a8854954768"
+      ],
+      "delivery": {
+        "stage": "local"
+      },
+      "specs": [
+        "master/0017"
+      ],
+      "notes": ""
+    },
+    "CMP-02": {
+      "implementation": "implementada",
+      "sources": [
+        {
+          "path": "server/app/services/campaign.py",
+          "start": 1,
+          "end": 280,
+          "role": "Regras de campanha"
+        },
+        {
+          "path": "server/app/models/territory_assignment.py",
+          "start": 1,
+          "end": 123,
+          "role": "Linha de campanha e CHECK"
+        },
+        {
+          "path": "server/migrations/versions/20261022_1030_f4a9c2d71e36_add_campaigns.py",
+          "start": 1,
+          "end": 117,
+          "role": "Esquema"
+        },
+        {
+          "path": "server/app/routers/admin_campaigns.py",
+          "start": 1,
+          "end": 181,
+          "role": "Rotas admin"
+        },
+        {
+          "path": "admin/src/renderer/screens/CampaignsScreen.tsx",
+          "start": 1,
+          "end": 661,
+          "role": "Página Campanhas"
+        }
+      ],
+      "evidence": [
+        "ev-dfa4b59be8fd44a981e1f86a6186fc47"
+      ],
+      "delivery": {
+        "stage": "local"
+      },
+      "specs": [
+        "master/0017"
+      ],
+      "notes": ""
+    },
+    "CMP-03": {
+      "implementation": "implementada",
+      "sources": [
+        {
+          "path": "server/app/services/campaign.py",
+          "start": 1,
+          "end": 280,
+          "role": "Regras de campanha"
+        },
+        {
+          "path": "server/app/models/territory_assignment.py",
+          "start": 1,
+          "end": 123,
+          "role": "Linha de campanha e CHECK"
+        },
+        {
+          "path": "server/migrations/versions/20261022_1030_f4a9c2d71e36_add_campaigns.py",
+          "start": 1,
+          "end": 117,
+          "role": "Esquema"
+        },
+        {
+          "path": "server/app/routers/admin_campaigns.py",
+          "start": 1,
+          "end": 181,
+          "role": "Rotas admin"
+        },
+        {
+          "path": "admin/src/renderer/screens/CampaignsScreen.tsx",
+          "start": 1,
+          "end": 661,
+          "role": "Página Campanhas"
+        }
+      ],
+      "evidence": [
+        "ev-093b888dcc9d40e4893ef277af439986"
+      ],
+      "delivery": {
+        "stage": "local"
+      },
+      "specs": [
+        "master/0017"
+      ],
+      "notes": ""
+    },
+    "CMP-04": {
+      "implementation": "implementada",
+      "sources": [
+        {
+          "path": "server/app/services/campaign.py",
+          "start": 1,
+          "end": 280,
+          "role": "Regras de campanha"
+        },
+        {
+          "path": "server/app/models/territory_assignment.py",
+          "start": 1,
+          "end": 123,
+          "role": "Linha de campanha e CHECK"
+        },
+        {
+          "path": "server/migrations/versions/20261022_1030_f4a9c2d71e36_add_campaigns.py",
+          "start": 1,
+          "end": 117,
+          "role": "Esquema"
+        },
+        {
+          "path": "server/app/routers/admin_campaigns.py",
+          "start": 1,
+          "end": 181,
+          "role": "Rotas admin"
+        },
+        {
+          "path": "admin/src/renderer/screens/CampaignsScreen.tsx",
+          "start": 1,
+          "end": 661,
+          "role": "Página Campanhas"
+        }
+      ],
+      "evidence": [
+        "ev-f99d929765604fea97368bd5cd6b6b5a"
+      ],
+      "delivery": {
+        "stage": "local"
+      },
+      "specs": [
+        "master/0017"
+      ],
+      "notes": ""
+    },
+    "CMP-05": {
+      "implementation": "implementada",
+      "sources": [
+        {
+          "path": "server/app/services/campaign.py",
+          "start": 1,
+          "end": 280,
+          "role": "Regras de campanha"
+        },
+        {
+          "path": "server/app/models/territory_assignment.py",
+          "start": 1,
+          "end": 123,
+          "role": "Linha de campanha e CHECK"
+        },
+        {
+          "path": "server/migrations/versions/20261022_1030_f4a9c2d71e36_add_campaigns.py",
+          "start": 1,
+          "end": 117,
+          "role": "Esquema"
+        },
+        {
+          "path": "server/app/routers/admin_campaigns.py",
+          "start": 1,
+          "end": 181,
+          "role": "Rotas admin"
+        },
+        {
+          "path": "admin/src/renderer/screens/CampaignsScreen.tsx",
+          "start": 1,
+          "end": 661,
+          "role": "Página Campanhas"
+        }
+      ],
+      "evidence": [
+        "ev-203384729c4d422fa70735da8c453250"
+      ],
+      "delivery": {
+        "stage": "local"
+      },
+      "specs": [
+        "master/0017"
+      ],
+      "notes": ""
+    },
+    "CMP-06": {
+      "implementation": "implementada",
+      "sources": [
+        {
+          "path": "server/app/services/campaign.py",
+          "start": 1,
+          "end": 280,
+          "role": "Regras de campanha"
+        },
+        {
+          "path": "server/app/models/territory_assignment.py",
+          "start": 1,
+          "end": 123,
+          "role": "Linha de campanha e CHECK"
+        },
+        {
+          "path": "server/migrations/versions/20261022_1030_f4a9c2d71e36_add_campaigns.py",
+          "start": 1,
+          "end": 117,
+          "role": "Esquema"
+        },
+        {
+          "path": "server/app/routers/admin_campaigns.py",
+          "start": 1,
+          "end": 181,
+          "role": "Rotas admin"
+        },
+        {
+          "path": "admin/src/renderer/screens/CampaignsScreen.tsx",
+          "start": 1,
+          "end": 661,
+          "role": "Página Campanhas"
+        }
+      ],
+      "evidence": [
+        "ev-d066db17631a4a8ab869e2b7145e7667"
+      ],
+      "delivery": {
+        "stage": "local"
+      },
+      "specs": [
+        "master/0017"
+      ],
+      "notes": ""
+    },
+    "CMP-07": {
+      "implementation": "implementada",
+      "sources": [
+        {
+          "path": "server/app/services/work_log.py",
+          "start": 1,
+          "end": 284,
+          "role": "Permissão de marcação"
+        },
+        {
+          "path": "server/app/repositories/territory_assignment.py",
+          "start": 1,
+          "end": 326,
+          "role": "campaign_line_admits"
+        }
+      ],
+      "evidence": [
+        "ev-c48f50b606054da8bf52101c3a387234"
+      ],
+      "delivery": {
+        "stage": "local"
+      },
+      "specs": [
+        "master/0017"
+      ],
+      "notes": ""
+    },
+    "CMP-08": {
+      "implementation": "implementada",
+      "sources": [
+        {
+          "path": "app/src/domain/assignment.ts",
+          "start": 1,
+          "end": 46,
+          "role": "canMarkBlocksOf"
+        },
+        {
+          "path": "app/src/presentation/screens/DashboardScreen.tsx",
+          "start": 1,
+          "end": 675,
+          "role": "Aba Campanhas"
+        },
+        {
+          "path": "app/src/presentation/screens/MapScreen.tsx",
+          "start": 1,
+          "end": 853,
+          "role": "Modo campanha"
+        }
+      ],
+      "evidence": [
+        "ev-322e6467a63a441ab01801d227b157c2"
+      ],
+      "delivery": {
+        "stage": "local"
+      },
+      "specs": [
+        "master/0017"
+      ],
+      "notes": "Mapa MapLibre sem verificação em emulador (JDK 17 ausente); evidência por testes Jest com o mapa nativo mockado."
+    },
+    "CMP-09": {
+      "implementation": "implementada",
+      "sources": [
+        {
+          "path": "admin-app/src/presentation/screens/CampaignsScreen.tsx",
+          "start": 1,
+          "end": 114,
+          "role": "Consulta"
+        },
+        {
+          "path": "admin-app/src/presentation/screens/AssignmentPanel.tsx",
+          "start": 1,
+          "end": 862,
+          "role": "Linha de campanha sem ações"
+        }
+      ],
+      "evidence": [
+        "ev-756c30735a804205bd6afeaeb9bbceae"
+      ],
+      "delivery": {
+        "stage": "local"
+      },
+      "specs": [
+        "master/0017"
+      ],
+      "notes": "Sem verificação em emulador (JDK 17 ausente)."
+    },
+    "CMP-10": {
+      "implementation": "implementada",
+      "sources": [
+        {
+          "path": "admin/src/main/excel-export.ts",
+          "start": 1,
+          "end": 399,
+          "role": "Planilha"
+        },
+        {
+          "path": "admin/src/main/docx-handler.ts",
+          "start": 1,
+          "end": 406,
+          "role": "S-13-T"
+        },
+        {
+          "path": "server/app/routers/history_dto.py",
+          "start": 1,
+          "end": 84,
+          "role": "DTO de histórico"
+        }
+      ],
+      "evidence": [
+        "ev-149df431614a4415a7f1cea85c1aa5a0"
+      ],
+      "delivery": {
+        "stage": "local"
+      },
+      "specs": [
+        "master/0017"
+      ],
+      "notes": ""
+    }
+  }
+}

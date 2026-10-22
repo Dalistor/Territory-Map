@@ -21,6 +21,16 @@ function assignment(publisherName: string, startedAt: Date, completedAt?: Date):
   }
 }
 
+/** A campaign's line on the card: no publisher, the campaign in its place. */
+function campaignLine(campaignName: string, startedAt: Date, completedAt?: Date): Assignment {
+  return {
+    id: `a-campaign-${startedAt.getTime()}`,
+    campaign: { id: `c-${campaignName}`, name: campaignName },
+    startedAt,
+    ...(completedAt !== undefined && { completedAt })
+  }
+}
+
 const JANUARY = new Date(Date.UTC(2026, 0, 10))
 const MARCH = new Date(Date.UTC(2026, 2, 20))
 const JUNE = new Date(Date.UTC(2026, 5, 1))
@@ -57,6 +67,21 @@ describe('buildAssignmentsWorkbook', () => {
     expect(sheet.getRow(3).getCell(1).value).toBe('Maria')
     expect(sheet.getRow(3).getCell(2).value).toEqual(MARCH)
     expect(sheet.getRow(3).getCell(3).type).toBe(ValueType.Null)
+  })
+
+  it('writes a campaign line with "Campanha: <nome>" where the publisher would go', () => {
+    const input: TerritoryAssignments[] = [
+      {
+        territory: territory('Centro - N6'),
+        assignments: [campaignLine('Celebração', MARCH), assignment('João', JANUARY, MARCH)]
+      }
+    ]
+
+    const sheet = buildAssignmentsWorkbook(input).worksheets[0]
+
+    expect(sheet.getRow(3).getCell(1).value).toBe('João')
+    expect(sheet.getRow(4).getCell(1).value).toBe('Campanha: Celebração')
+    expect(sheet.getRow(4).getCell(2).value).toEqual(MARCH)
   })
 
   it('orders the sheets by the territory number, not by the order received', () => {
@@ -294,6 +319,23 @@ describe('buildS13TWorkbook', () => {
     // Footer note exists at the end
     const noteCell = sheet.getRow(sheet.rowCount).getCell(1)
     expect(noteCell.value).toContain('Ao iniciar uma nova folha')
+  })
+
+  it('writes a campaign line in a S-13-T slot as "Campanha: <nome>"', () => {
+    const workbook = buildS13TWorkbook({
+      serviceYear: 2026,
+      territories: [
+        {
+          territory: t1,
+          assignments: [campaignLine('Celebração', dec2025), assignment('João', sept2025, nov2025)]
+        }
+      ]
+    })
+    const sheet = workbook.worksheets[0]
+
+    expect(sheet.getCell('C5').value).toBe('João')
+    expect(sheet.getCell('E5').value).toBe('Campanha: Celebração')
+    expect(sheet.getCell('E6').value).toEqual(dec2025)
   })
 
   it('configures landscape orientation and print setup for S-13-T', () => {

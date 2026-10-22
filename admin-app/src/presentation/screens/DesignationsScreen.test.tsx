@@ -401,6 +401,30 @@ describe('DesignationsScreen', () => {
     expect(within(row).getByText('Nunca trabalhado')).toBeOnTheScreen();
   });
 
+  it('shows "Campanha: <nome>" in the leader place of a territory in an active campaign, with no complete shortcut', async () => {
+    const api = makeApi({
+      listTerritoriesWithBlocks: jest.fn(async () => [
+        makeTerritory({
+          id: 'territory-1',
+          name: 'Centro',
+          assignedPublisher: null,
+          campaign: { id: 'campaign-1', name: 'Celebração' },
+        }),
+        makeTerritory({ id: 'territory-2', name: 'Vila Nova' }),
+      ]),
+    });
+
+    await renderScreen(api);
+
+    const row = await screen.findByTestId('territory-row-territory-1');
+    expect(within(row).getByText('Campanha: Celebração')).toBeOnTheScreen();
+    expect(within(row).getByText('Em campanha')).toBeOnTheScreen();
+    expect(within(row).queryByText('Sem dirigente')).not.toBeOnTheScreen();
+    expect(screen.queryByLabelText('Marcar Centro como concluído')).not.toBeOnTheScreen();
+    // A territory out in a campaign is in the field: it counts as designated.
+    expect(screen.getByText('1 de 2 territórios designados')).toBeOnTheScreen();
+  });
+
   it('summarises how many of the territories have a publisher on them', async () => {
     const api = makeApi({
       listTerritoriesWithBlocks: jest.fn(async () => [

@@ -10,6 +10,7 @@ from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, Field, model_validator
 
+from app.schemas.campaign import CampaignBriefOut
 from app.schemas.common import OutSchema
 from app.schemas.territory import TerritoryBriefOut
 from app.schemas.user import UserBriefOut
@@ -54,10 +55,15 @@ class AssignmentOut(OutSchema):
     reason as `WorkLogOut.user`: it lets the admin tell two people with the same first
     name apart, and `UserBriefOut` carries only the identity, never the account's
     internal state.
+
+    A row held by a campaign names no publisher: `user` is null and `campaign` names
+    the campaign instead -- the people are the campaign's, and they can change while the
+    line is open. Exactly one of the two is filled on every row.
     """
 
     id: UUID
-    user: UserBriefOut
+    user: UserBriefOut | None = None
+    campaign: CampaignBriefOut | None = None
     started_at: datetime
     completed_at: datetime | None = None
 

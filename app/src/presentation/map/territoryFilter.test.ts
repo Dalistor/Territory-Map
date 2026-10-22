@@ -1,4 +1,4 @@
-import type { Territory } from '../../domain/models'
+import type { Campaign, Territory } from '../../domain/models'
 import { defaultFilter, searchTerritories, visibleTerritories } from './territoryFilter'
 
 function makeTerritory(overrides: Partial<Territory> = {}): Territory {
@@ -12,6 +12,26 @@ function makeTerritory(overrides: Partial<Territory> = {}): Territory {
 }
 
 describe('visibleTerritories', () => {
+  it("in 'campaign' mode, returns every territory of that campaign, and nothing once it is gone", () => {
+    const campaign: Campaign = {
+      id: 'campaign-1',
+      name: 'Campanha de Celebração',
+      startedAt: new Date('2026-10-01T12:00:00Z'),
+      territoryIds: ['territory-1', 'territory-3']
+    }
+    const first = makeTerritory({ id: 'territory-1' })
+    const outside = makeTerritory({ id: 'territory-2' })
+    const third = makeTerritory({ id: 'territory-3' })
+    const filter = { mode: 'campaign', campaignId: 'campaign-1' } as const
+
+    expect(visibleTerritories([first, outside, third], filter, 'user-1', [campaign])).toEqual([
+      first,
+      third
+    ])
+    // Concluded between opening the tab and opening the map.
+    expect(visibleTerritories([first, outside, third], filter, 'user-1', [])).toEqual([])
+  })
+
   it("in 'assigned' mode, returns only the territories assigned to the given user", () => {
     const mine = makeTerritory({ id: 'territory-1', assignedUser: { id: 'user-1', name: 'Maria' } })
     const someoneElses = makeTerritory({

@@ -1,6 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Territory } from '../domain/models';
-import { clearCache, getCachedTerritories, saveTerritories } from './territory-cache';
+import type { Campaign, Territory } from '../domain/models';
+import {
+  clearCache,
+  getCachedCampaigns,
+  getCachedTerritories,
+  saveCampaigns,
+  saveTerritories,
+} from './territory-cache';
 
 /**
  * The real `@react-native-async-storage/async-storage` module talks to native
@@ -77,6 +83,16 @@ const TERRITORIES: Territory[] = [
   },
 ];
 
+const CAMPAIGNS: Campaign[] = [
+  {
+    id: 'campaign-1',
+    name: 'Campanha de Celebração',
+    // Same trap as `lastWorkedAt`: a `Date` that comes back as a string.
+    startedAt: new Date('2026-10-01T12:00:00.000Z'),
+    territoryIds: ['territory-1', 'territory-2'],
+  },
+];
+
 beforeEach(async () => {
   await AsyncStorage.clear();
 });
@@ -126,13 +142,27 @@ describe('territory-cache', () => {
     });
   });
 
+  describe('saveCampaigns + getCachedCampaigns', () => {
+    it('returns null when no campaigns were saved yet, and exactly the saved list afterwards', async () => {
+      // The campaign list is what opens a campaign territory for marking, so
+      // it has to survive the trip offline with its dates intact.
+      await expect(getCachedCampaigns()).resolves.toBeNull();
+
+      await saveCampaigns(CAMPAIGNS);
+
+      await expect(getCachedCampaigns()).resolves.toEqual(CAMPAIGNS);
+    });
+  });
+
   describe('clearCache', () => {
-    it('getCachedTerritories returns null after a cache that had been saved is cleared', async () => {
+    it('getCachedTerritories and getCachedCampaigns return null after a saved cache is cleared', async () => {
       await saveTerritories(TERRITORIES);
+      await saveCampaigns(CAMPAIGNS);
 
       await clearCache();
 
       await expect(getCachedTerritories()).resolves.toBeNull();
+      await expect(getCachedCampaigns()).resolves.toBeNull();
     });
   });
 });

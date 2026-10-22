@@ -20,6 +20,8 @@ Planejamentos de implementações complexas, decompostos em tasks para subagente
 | [0014](0014/README.md) | Melhorias de UI nos admins e último trabalho do território | 2026-09-05 | Concluída | 13 tasks |
 | [0015](0015/README.md) | Consultas administrativas e redesign dos admins | 2026-09-19 | Em andamento | 21 tasks |
 | [0016](0016/README.md) | Atualização automática in-app dos apps Android via VPS | 2026-10-09 | Concluída | 8 tasks |
+| [0017](0017/README.md) | Campanhas: vários territórios designados a vários publicadores | 2026-10-22 | Em revisão | 9 tasks |
+| [0018](0018/README.md) | Polimento de layout, UX e UI dos três clientes | 2026-10-22 | Pendente | 4 tasks |
 
 ---
 

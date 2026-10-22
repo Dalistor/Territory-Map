@@ -30,6 +30,9 @@ import type {
   AssignmentWithTerritory,
   Block,
   BlockStatusOverride,
+  Campaign,
+  CampaignBrief,
+  CampaignDesignation,
   Congregation,
   LatLng,
   LastWorkSummary,
@@ -117,6 +120,9 @@ export interface ApiClient {
   listWorkLogs(blockId: string): Promise<WorkLog[]>;
   markWorked(blockId: string, publisherId: string, workedAt: Date): Promise<WorkLog>;
   deleteWorkLog(logId: string): Promise<void>;
+  /** Read-only: managing campaigns stays on the desktop admin. */
+  listCampaigns(): Promise<Campaign[]>;
+  getCampaign(campaignId: string): Promise<Campaign>;
 }
 
 export interface CreateApiClientOptions {
@@ -263,12 +269,54 @@ function parsePublisher(json: Record<string, unknown>): Publisher {
  * assignment still in force, the one that lets that publisher mark blocks.
  */
 function parseAssignment(json: Record<string, unknown>, territoryId: string): Assignment {
+  const user = json.user as Record<string, unknown> | null | undefined;
   return {
     id: json.id as string,
     territoryId,
-    publisher: parsePublisherBrief(json.user as Record<string, unknown>),
+    publisher: user ? parsePublisherBrief(user) : null,
+    campaign: parseOptionalCampaignBrief(json.campaign),
     startedAt: new Date(json.started_at as string),
     completedAt: parseOptionalDate(json.completed_at),
+  };
+}
+
+/**
+ * A campaign named inside another resource (`CampaignBriefOut`): on a card
+ * line it replaces the `user`, and on a territory it says which active
+ * campaign holds it. Absent and `null` both mean "no campaign".
+ */
+function parseOptionalCampaignBrief(value: unknown): CampaignBrief | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  return { id: value.id as string, name: value.name as string };
+}
+
+function parseCampaignDesignation(json: Record<string, unknown>): CampaignDesignation {
+  const publishers = (json.publishers as Record<string, unknown>[] | undefined) ?? [];
+  return {
+    id: json.id as string,
+    startedAt: new Date(json.started_at as string),
+    completedAt: parseOptionalDate(json.completed_at),
+    publishers: publishers.map(parsePublisherBrief),
+  };
+}
+
+/** `CampaignOut`, with its periods kept in the server's newest-first order. */
+function parseCampaign(json: Record<string, unknown>): Campaign {
+  const territories = (json.territories as Record<string, unknown>[] | undefined) ?? [];
+  const designations = (json.designations as Record<string, unknown>[] | undefined) ?? [];
+  const current = json.current_designation as Record<string, unknown> | null | undefined;
+  return {
+    id: json.id as string,
+    name: json.name as string,
+    createdAt: new Date(json.created_at as string),
+    territories: territories.map(territory => ({
+      id: territory.id as string,
+      name: territory.name as string,
+    })),
+    currentDesignation: current ? parseCampaignDesignation(current) : null,
+    designations: designations.map(parseCampaignDesignation),
   };
 }
 
@@ -304,7 +352,7 @@ function parseAssignmentHistoryPage(
     const filtered = json
       .map(parseAssignmentWithTerritory)
       .filter(assignment => {
-        if (filters.publisherId !== undefined && assignment.publisher.id !== filters.publisherId) {
+        if (filters.publisherId !== undefined && assignment.publisher?.id !== filters.publisherId) {
           return false;
         }
         if (filters.territoryId !== undefined && assignment.territory.id !== filters.territoryId) {
@@ -363,6 +411,7 @@ function parseTerritory(json: Record<string, unknown>): Territory {
     rotationDays: (json.rotation_days as number | null | undefined) ?? null,
     lastWork: lastWork ? parseLastWork(lastWork) : null,
     blocks: blocks.map(block => parseBlock(block, id)),
+    campaign: parseOptionalCampaignBrief(json.campaign),
   };
 }
 
@@ -533,6 +582,13 @@ export function createApiClient(options: CreateApiClientOptions = {}): ApiClient
      */
     async deleteWorkLog(logId) {
       await request('DELETE', `/admin/work-logs/${logId}`);
+    },
+
+    listCampaigns: () => list('/admin/campaigns', parseCampaign),
+
+    async getCampaign(campaignId) {
+      const json = await request('GET', `/admin/campaigns/${campaignId}`);
+      return parseCampaign(json as Record<string, unknown>);
     },
   };
 }

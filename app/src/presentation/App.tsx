@@ -43,7 +43,9 @@ import {
 import { clearSession as clearSessionDefault, getSession as getSessionDefault } from '../data/session-store';
 import {
   clearCache as clearCacheDefault,
+  getCachedCampaigns as getCachedCampaignsDefault,
   getCachedTerritories as getCachedTerritoriesDefault,
+  saveCampaigns as saveCampaignsDefault,
   saveTerritories as saveTerritoriesDefault,
 } from '../data/territory-cache';
 import { fetchLatestRelease as fetchLatestReleaseDefault } from '../data/update-client';
@@ -52,7 +54,7 @@ import {
   isUpdateMandatory,
   type AppRelease,
 } from '../domain/appUpdate';
-import type { Session, Territory } from '../domain/models';
+import type { Campaign, Session, Territory } from '../domain/models';
 import ActivationScreen from './screens/ActivationScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
 import { MapScreen } from './screens/MapScreen';
@@ -66,6 +68,8 @@ export interface AppDependencies {
   readonly clearSession: () => Promise<void>;
   readonly getCachedTerritories: () => Promise<Territory[] | null>;
   readonly saveTerritories: (territories: Territory[]) => Promise<void>;
+  readonly getCachedCampaigns: () => Promise<Campaign[] | null>;
+  readonly saveCampaigns: (campaigns: Campaign[]) => Promise<void>;
   readonly clearCache: () => Promise<void>;
   readonly checkForUpdates: () => Promise<AppRelease | null>;
   readonly getAppVersion: () => Promise<{ versionCode: number; versionName: string }>;
@@ -80,38 +84,70 @@ export interface AppProps {
 type RootStackParamList = {
   Activation: undefined;
   Dashboard: undefined;
-  Map: { territoryId?: string };
+  Map: { territoryId?: string; campaignId?: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 /**
- * Wraps `listTerritories` so a `NetworkException` falls back to the last
- * cached answer instead of failing the caller -- `DashboardScreen` and
- * `MapScreen` both call `listTerritories` on mount, and neither knows (nor
- * should need to know) about the cache; this is the one seam where "no
- * signal" gets absorbed before it reaches them. An `ApiErrorException` is a
- * real answer from the server, not a connectivity gap, so it is never
- * swallowed here.
+ * Runs `read` and, on a `NetworkException` only, answers with the last
+ * cached value instead -- when there is one. Anything else, including an
+ * `ApiErrorException` (a real answer from the server), is rethrown.
+ */
+async function readWithCacheFallback<T>(
+  read: () => Promise<T>,
+  getCached: () => Promise<T | null>,
+): Promise<T> {
+  try {
+    return await read();
+  } catch (error) {
+    if (error instanceof NetworkException) {
+      const cached = await getCached();
+      if (cached !== null) return cached;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Wraps `listTerritories` and `listCampaigns` so a `NetworkException` falls
+ * back to the last cached answer instead of failing the caller --
+ * `DashboardScreen` and `MapScreen` both call them on mount, and neither
+ * knows (nor should need to know) about the cache; this is the one seam
+ * where "no signal" gets absorbed before it reaches them. An
+ * `ApiErrorException` is a real answer from the server, not a connectivity
+ * gap, so it is never swallowed here.
  */
 export function withOfflineFallback(
   apiClient: ApiClient,
   getCachedTerritories: () => Promise<Territory[] | null>,
+  getCachedCampaigns: () => Promise<Campaign[] | null> = async () => null,
 ): ApiClient {
   return {
     ...apiClient,
-    async listTerritories(token) {
-      try {
-        return await apiClient.listTerritories(token);
-      } catch (error) {
-        if (error instanceof NetworkException) {
-          const cached = await getCachedTerritories();
-          if (cached !== null) return cached;
-        }
-        throw error;
-      }
-    },
+    listTerritories: (token) =>
+      readWithCacheFallback(() => apiClient.listTerritories(token), getCachedTerritories),
+    listCampaigns: (token) =>
+      readWithCacheFallback(() => apiClient.listCampaigns(token), getCachedCampaigns),
   };
+}
+
+/**
+ * Refreshes the cached campaign list at launch. Best effort: the token was
+ * already proven good by `listTerritories`, so a failure here (no signal
+ * mid-launch, a server without the route yet) only means the campaigns stay
+ * as last cached -- never a reason to drop the session.
+ */
+async function refreshCampaignCache(
+  apiClient: ApiClient,
+  token: string,
+  saveCampaigns: (campaigns: Campaign[]) => Promise<void>,
+): Promise<void> {
+  try {
+    await saveCampaigns(await apiClient.listCampaigns(token));
+  } catch {
+    // Kept as cached; see above.
+  }
 }
 
 type BootstrapState =
@@ -127,6 +163,8 @@ export default function App({ dependencies }: AppProps): React.JSX.Element {
       clearSession: dependencies?.clearSession ?? clearSessionDefault,
       getCachedTerritories: dependencies?.getCachedTerritories ?? getCachedTerritoriesDefault,
       saveTerritories: dependencies?.saveTerritories ?? saveTerritoriesDefault,
+      getCachedCampaigns: dependencies?.getCachedCampaigns ?? getCachedCampaignsDefault,
+      saveCampaigns: dependencies?.saveCampaigns ?? saveCampaignsDefault,
       clearCache: dependencies?.clearCache ?? clearCacheDefault,
       checkForUpdates:
         dependencies?.checkForUpdates ?? (() => fetchLatestReleaseDefault('app')),
@@ -207,6 +245,7 @@ export default function App({ dependencies }: AppProps): React.JSX.Element {
       try {
         const territories = await deps.apiClient.listTerritories(session.token);
         await deps.saveTerritories(territories);
+        await refreshCampaignCache(deps.apiClient, session.token, deps.saveCampaigns);
         if (!cancelled) setState({ status: 'dashboard', session });
       } catch (error) {
         if (error instanceof ApiErrorException) {
@@ -246,7 +285,7 @@ export default function App({ dependencies }: AppProps): React.JSX.Element {
   };
 
   const offlineApiClient = useMemo(
-    () => withOfflineFallback(deps.apiClient, deps.getCachedTerritories),
+    () => withOfflineFallback(deps.apiClient, deps.getCachedTerritories, deps.getCachedCampaigns),
     [deps],
   );
 
@@ -299,6 +338,9 @@ export default function App({ dependencies }: AppProps): React.JSX.Element {
                       navigation.navigate('Map', { territoryId: territory.id })
                     }
                     onOpenFullMap={() => navigation.navigate('Map', {})}
+                    onOpenCampaign={(campaign) =>
+                      navigation.navigate('Map', { campaignId: campaign.id })
+                    }
                   />
                 )}
               </Stack.Screen>
@@ -308,6 +350,7 @@ export default function App({ dependencies }: AppProps): React.JSX.Element {
                     session={state.session}
                     apiClient={offlineApiClient}
                     initialTerritoryId={route.params?.territoryId}
+                    initialCampaignId={route.params?.campaignId}
                   />
                 )}
               </Stack.Screen>

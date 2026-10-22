@@ -20,6 +20,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { compareTerritoriesByNumber } from '../../domain/models';
+import {
+  territoryIsHeld,
+  territoryLeaderLabel,
+} from '../../domain/territoryMap';
 import type { Block, LatLng, Territory } from '../../domain/models';
 import { AssignmentsMapView } from '../map/AssignmentsMapView';
 import {
@@ -36,9 +40,6 @@ import BlocksScreen from './BlocksScreen';
 import type { BlocksScreenApi } from './BlocksScreen';
 import { formatDate } from './BlockWorkSection';
 
-/** What a row says when nobody is responsible for the territory. */
-const NO_LEADER_LABEL = 'Sem dirigente';
-
 /**
  * How many blocks the territory has, as the row says it. The count is what
  * tells the admin whether a territory has been drawn out yet at all -- a
@@ -50,6 +51,15 @@ export function blockCountLabel(count: number): string {
     return 'Sem quadras';
   }
   return count === 1 ? '1 quadra' : `${count} quadras`;
+}
+
+/**
+ * The letter in the row's avatar: the dirigente's or the campaign's initial,
+ * or a dash when nobody holds the territory.
+ */
+function leaderInitial(territory: Territory): string {
+  const holder = territory.campaign?.name ?? territory.assignedPublisher?.name;
+  return holder ? holder.charAt(0).toUpperCase() : '—';
 }
 
 /**
@@ -176,15 +186,15 @@ export function DesignationsScreen({
     [territories],
   );
 
-  const assignedCount = territories.filter(
-    territory => territory.assignedPublisher !== null,
-  ).length;
+  // A territory out in a campaign counts as designated: it is in the field,
+  // just held by the campaign instead of one dirigente.
+  const assignedCount = territories.filter(territoryIsHeld).length;
 
   const visibleTerritories = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase('pt-BR');
     if (normalizedSearch === '') return ordered;
     return ordered.filter(territory =>
-      [territory.name, territory.assignedPublisher?.name ?? NO_LEADER_LABEL]
+      [territory.name, territoryLeaderLabel(territory)]
         .join(' ')
         .toLocaleLowerCase('pt-BR')
         .includes(normalizedSearch),
@@ -435,7 +445,7 @@ export function DesignationsScreen({
                       <View
                         style={[
                           styles.statusBadge,
-                          territory.assignedPublisher !== null
+                          territoryIsHeld(territory)
                             ? styles.statusBadgeWorking
                             : styles.statusBadgeIdle,
                         ]}
@@ -443,7 +453,7 @@ export function DesignationsScreen({
                         <View
                           style={[
                             styles.statusDot,
-                            territory.assignedPublisher !== null
+                            territoryIsHeld(territory)
                               ? styles.statusDotWorking
                               : styles.statusDotIdle,
                           ]}
@@ -451,14 +461,16 @@ export function DesignationsScreen({
                         <Text
                           style={[
                             styles.statusBadgeText,
-                            territory.assignedPublisher !== null
+                            territoryIsHeld(territory)
                               ? styles.statusBadgeTextWorking
                               : styles.statusBadgeTextIdle,
                           ]}
                         >
-                          {territory.assignedPublisher !== null
-                            ? 'Em andamento'
-                            : 'Disponível'}
+                          {territory.campaign
+                            ? 'Em campanha'
+                            : territoryIsHeld(territory)
+                              ? 'Em andamento'
+                              : 'Disponível'}
                         </Text>
                       </View>
                     </View>
@@ -467,25 +479,23 @@ export function DesignationsScreen({
                       <View
                         style={[
                           styles.leaderAvatar,
-                          territory.assignedPublisher === null &&
+                          !territoryIsHeld(territory) &&
                             styles.leaderAvatarEmpty,
                         ]}
                       >
                         <Text style={styles.leaderAvatarText}>
-                          {territory.assignedPublisher
-                            ? territory.assignedPublisher.name.charAt(0).toUpperCase()
-                            : '—'}
+                          {leaderInitial(territory)}
                         </Text>
                       </View>
                       <View style={styles.leaderInfo}>
                         <Text
                           style={[
                             styles.leader,
-                            territory.assignedPublisher === null &&
+                            !territoryIsHeld(territory) &&
                               styles.leaderAbsent,
                           ]}
                         >
-                          {territory.assignedPublisher?.name ?? NO_LEADER_LABEL}
+                          {territoryLeaderLabel(territory)}
                         </Text>
                       </View>
                     </View>

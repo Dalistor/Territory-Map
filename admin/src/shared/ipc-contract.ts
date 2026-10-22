@@ -22,6 +22,7 @@ import type {
   AssignmentHistoryQuery,
   Block,
   BlockStatusOverride,
+  Campaign,
   Congregation,
   Publisher,
   Territory,
@@ -83,6 +84,22 @@ export interface AssignmentUpdateInput {
   readonly clearCompletedAt?: boolean
 }
 
+export interface CampaignCreateInput {
+  readonly name: string
+  /** At least one -- a campaign groups territories. */
+  readonly territoryIds: string[]
+}
+
+/**
+ * A field left out is untouched. On an active campaign, a new list of
+ * territories takes effect at once: an added territory has its dirigente
+ * replaced today, a removed one has its campaign line closed today.
+ */
+export interface CampaignUpdateInput {
+  readonly name?: string
+  readonly territoryIds?: string[]
+}
+
 /**
  * What every error becomes before it crosses the IPC boundary.
  *
@@ -133,6 +150,13 @@ export const IPC_CHANNELS = {
   exportS13TDocx: 'export:s13tDocx',
   importS13TSelectAndPreview: 'import:s13tSelectAndPreview',
   importS13TExecute: 'import:s13tExecute',
+  campaignsList: 'campaigns:list',
+  campaignsCreate: 'campaigns:create',
+  campaignsUpdate: 'campaigns:update',
+  campaignsDelete: 'campaigns:delete',
+  campaignsDesignate: 'campaigns:designate',
+  campaignsSetPublishers: 'campaigns:setPublishers',
+  campaignsComplete: 'campaigns:complete',
   workLogsListFor: 'workLogs:listFor',
   workLogsDelete: 'workLogs:delete',
   workLogsMarkWorked: 'workLogs:markWorked',
@@ -252,6 +276,29 @@ export interface IpcApi {
     complete(territoryId: string): Promise<Assignment>
     /** Erases one history line — the admin correcting a wrong record. */
     delete(territoryId: string, assignmentId: string): Promise<void>
+  }
+  /**
+   * Every write resolves with the whole campaign as the server left it, so a
+   * screen redraws from the reply. Refusals (`campaign_active`,
+   * `territory_in_campaign`, `campaign_without_publishers`, `duplicate_name`)
+   * reach the renderer as serialized errors carrying the server's message.
+   */
+  readonly campaigns: {
+    /** Every campaign of the congregation, active or not, ordered by name. */
+    list(): Promise<Campaign[]>
+    create(input: CampaignCreateInput): Promise<Campaign>
+    update(campaignId: string, input: CampaignUpdateInput): Promise<Campaign>
+    /** Refused with a 409 `campaign_active` while the campaign is out. */
+    delete(campaignId: string): Promise<void>
+    /**
+     * Opens a period for these publishers, replacing the dirigente of every
+     * territory of the campaign with a campaign line on its S-13 card.
+     */
+    designate(campaignId: string, publisherIds: string[]): Promise<Campaign>
+    /** Replaces who works the open period. 404 when the campaign is not out. */
+    setPublishers(campaignId: string, publisherIds: string[]): Promise<Campaign>
+    /** Closes the open period and every line it holds, freeing the territories. */
+    complete(campaignId: string): Promise<Campaign>
   }
   readonly exports: {
     /**

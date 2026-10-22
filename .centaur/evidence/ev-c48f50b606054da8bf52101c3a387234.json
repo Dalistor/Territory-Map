@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "id": "ev-c48f50b606054da8bf52101c3a387234",
+  "contract": "campanhas@1",
+  "rule": "CMP-07",
+  "contract_hash": "a484c3a45dcb7540aa8086feb80bc26b5ceba94c17f342b364468b8cff648ebb",
+  "method": "test",
+  "command": [
+    "uv",
+    "--directory",
+    "server",
+    "run",
+    "pytest",
+    "-q",
+    "tests/services/test_work_log_service.py",
+    "tests/integration/test_campaign_integration.py",
+    "tests/routers/test_admin_campaigns_routes.py"
+  ],
+  "result": "passed",
+  "exit_code": 0,
+  "at": "2026-10-22T14:03:32.716167+00:00",
+  "revision": "805eb691596b820c1e19fa4e94e3a05e343905ef",
+  "summary": "Designados da campanha marcam qualquer quadra dela; fora dela 403; reenvio confirmado",
+  "reference": "Comando executado no checkout; saída exibida no terminal",
+  "files": {
+    "server/app/repositories/territory_assignment.py": "1ad2ff923089d9da7a34eb24ca0613f17f58f8cbe4b83156fa388b965d42bfac",
+    "server/app/routers/app_client.py": "d22fe10647f3f4c4e17df769d8a0165757c303a083438dc76c37a0f509d1183f",
+    "server/app/services/work_log.py": "15cff38242ae9f948fa6dcec434a995ccfc0b507dccd4d0d52cec333bb58cc8b",
+    "server/tests/integration/test_campaign_integration.py": "4758d5966c1a7a6251e443ec75993af47ad1ac5dfc06e99063484b529f22a735",
+    "server/tests/services/test_work_log_service.py": "bf901754f715c3e07c5690835bdf91ce61e3c8a30f05b53321a9c31ad93a51dc"
+  },
+  "sources_stable": true
+}

@@ -149,7 +149,9 @@ export function TerritoryBlocksTab({
         </label>
         <div className="territory-blocks-bulk">
           <span className="territory-blocks-bulk-hint">
-            {leader === undefined ? (
+            {territory.campaign !== undefined ? (
+              `Na campanha "${territory.campaign.name}": marque em nome de um publicador pelo histórico de cada quadra.`
+            ) : leader === undefined ? (
               'Sem dirigente: designe o território para marcar em nome dele.'
             ) : (
               <>

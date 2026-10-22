@@ -4,7 +4,7 @@
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { ApiErrorException, NetworkException } from '../../data/api-client';
-import type { Session, Territory } from '../../domain/models';
+import type { Campaign, Session, Territory } from '../../domain/models';
 import type { TerritoryMapViewProps } from '../map/TerritoryMapView';
 import { MapScreen } from './MapScreen';
 
@@ -219,16 +219,39 @@ describe('MapScreen marking a block as worked', () => {
   it('shows the reason when the server refuses the visit', async () => {
     const markBlockWorked = jest
       .fn()
-      .mockRejectedValue(
-        new ApiErrorException(403, 'territory_not_assigned', 'território não designado'),
-      );
+      .mockRejectedValue(new ApiErrorException(404, 'block_not_found', 'quadra não encontrada'));
     await renderWithMarker(markBlockWorked);
     await screen.findByText('Santa Helena - N 7');
 
     await act(async () => mapProps.current?.onBlockTap?.(territories[0], block));
     await fireEvent.press(await screen.findByText('Confirmar'));
 
-    expect(screen.getByText(/território não designado/)).toBeTruthy();
+    expect(screen.getByText(/quadra não encontrada/)).toBeTruthy();
+    expect(mapProps.current?.territories[0].blocks[0].lastWorkedAt).toBeUndefined();
+  });
+
+  it('when the territory stopped being theirs meanwhile (403), says so and reloads the map', async () => {
+    // The designation or the campaign was concluded between loading the map
+    // and tapping the block: the map must stop offering what the server now
+    // refuses.
+    const listTerritories = jest.fn().mockResolvedValue(territories);
+    const listCampaigns = jest.fn().mockResolvedValue([]);
+    const markBlockWorked = jest
+      .fn()
+      .mockRejectedValue(
+        new ApiErrorException(403, 'territory_not_assigned', 'território não designado'),
+      );
+    await render(
+      <MapScreen session={session} apiClient={{ listTerritories, listCampaigns, markBlockWorked }} />,
+    );
+    await screen.findByText('Santa Helena - N 7');
+
+    await act(async () => mapProps.current?.onBlockTap?.(territories[0], block));
+    await fireEvent.press(await screen.findByText('Confirmar'));
+
+    expect(screen.getByText(/não está mais designado a você/)).toBeTruthy();
+    expect(listTerritories).toHaveBeenCalledTimes(2);
+    expect(listCampaigns).toHaveBeenCalledTimes(2);
     expect(mapProps.current?.territories[0].blocks[0].lastWorkedAt).toBeUndefined();
   });
 
@@ -243,5 +266,65 @@ describe('MapScreen marking a block as worked', () => {
     expect(screen.getByText(/não está designado a você/)).toBeTruthy();
     expect(screen.queryByText('Confirmar')).toBeNull();
     expect(markBlockWorked).not.toHaveBeenCalled();
+  });
+});
+
+describe('MapScreen in campaign mode', () => {
+  const campaign: Campaign = {
+    id: 'campaign-1',
+    name: 'Campanha de Celebração',
+    startedAt: new Date(2026, 9, 1, 9, 0),
+    territoryIds: ['t2', 't3'],
+  };
+
+  function renderCampaign(markBlockWorked: jest.Mock = jest.fn().mockResolvedValue(undefined)) {
+    return render(
+      <MapScreen
+        session={session}
+        apiClient={{
+          listTerritories: jest.fn().mockResolvedValue(territories),
+          listCampaigns: jest.fn().mockResolvedValue([campaign]),
+          markBlockWorked,
+        }}
+        initialCampaignId="campaign-1"
+      />,
+    );
+  }
+
+  it('draws every territory of the campaign, with their blocks, and names the campaign', async () => {
+    await renderCampaign();
+
+    expect(await screen.findByText('2 territórios · desde 01/10/2026')).toBeTruthy();
+    expect(mapProps.current?.territories.map((t) => t.id)).toEqual(['t2', 't3']);
+    expect(mapProps.current?.showBlocks).toBe(true);
+  });
+
+  it('lets the publisher mark a block of a campaign territory nobody holds individually', async () => {
+    const markBlockWorked = jest.fn().mockResolvedValue(undefined);
+    await renderCampaign(markBlockWorked);
+    await screen.findByText('2 territórios · desde 01/10/2026');
+
+    // 't2' has no assigned publisher: only the campaign opens it.
+    await act(async () => mapProps.current?.onBlockTap?.(territories[1], block));
+    await fireEvent.press(await screen.findByText('Confirmar'));
+
+    expect(markBlockWorked).toHaveBeenCalledWith('token-1', 'b1', expect.any(String), expect.any(Date));
+  });
+
+  it('says the campaign is no longer active when it is not among the publisher\'s campaigns', async () => {
+    await render(
+      <MapScreen
+        session={session}
+        apiClient={{
+          listTerritories: jest.fn().mockResolvedValue(territories),
+          listCampaigns: jest.fn().mockResolvedValue([]),
+          markBlockWorked: jest.fn(),
+        }}
+        initialCampaignId="campaign-1"
+      />,
+    );
+
+    expect(await screen.findByText(/não está mais ativa para você/)).toBeTruthy();
+    expect(mapProps.current?.territories).toEqual([]);
   });
 });

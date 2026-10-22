@@ -12,7 +12,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { LatLngTuple } from 'leaflet'
 import type { S13TImportPreview } from '../../shared/ipc-contract'
 import type { Territory } from '../../shared/models'
-import { compareTerritoriesByNumber, getServiceYear } from '../../shared/models'
+import {
+  campaignHolderLabel,
+  compareTerritoriesByNumber,
+  getServiceYear
+} from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
 import { AssignmentsMap } from '../map/AssignmentsMap'
 import { Dialog } from '../components/Dialog'
@@ -40,6 +44,11 @@ function formatDate(date: Date): string {
 }
 
 type SituationFilter = 'all' | 'assigned' | 'free'
+
+/** Out with somebody: a dirigente, or the publishers of an active campaign. */
+function territoryIsOut(territory: Territory): boolean {
+  return territory.assignedUser !== undefined || territory.campaign !== undefined
+}
 type SortKey = 'territory' | 'withdrawn' | 'last-work'
 
 /**
@@ -212,9 +221,7 @@ export function DesignationsScreen({
       await load()
     })
 
-  const assignedCount = territories.filter(
-    (territory) => territory.assignedUser !== undefined
-  ).length
+  const assignedCount = territories.filter(territoryIsOut).length
   const unassignedCount = territories.length - assignedCount
   const coveragePercent =
     territories.length > 0 ? Math.round((assignedCount / territories.length) * 100) : 0
@@ -226,12 +233,11 @@ export function DesignationsScreen({
   const visibleTerritories = useMemo(
     () =>
       sortTerritories(territories, sortKey, sortDirection).filter((territory) => {
-        if (situation === 'assigned' && territory.assignedUser === undefined) return false
-        if (situation === 'free' && territory.assignedUser !== undefined) return false
+        if (situation === 'assigned' && !territoryIsOut(territory)) return false
+        if (situation === 'free' && territoryIsOut(territory)) return false
         if (normalizedSearch === '') return true
-        return (
-          territory.name.toLocaleLowerCase().includes(normalizedSearch) ||
-          (territory.assignedUser?.name.toLocaleLowerCase().includes(normalizedSearch) ?? false)
+        return [territory.name, territory.assignedUser?.name, territory.campaign?.name].some(
+          (text) => text?.toLocaleLowerCase().includes(normalizedSearch) ?? false
         )
       }),
     [territories, sortKey, sortDirection, situation, normalizedSearch]
@@ -284,7 +290,11 @@ export function DesignationsScreen({
       key: 'leader',
       header: 'Dirigente atual',
       cell: (territory) =>
-        territory.assignedUser !== undefined ? (
+        territory.campaign !== undefined ? (
+          <span className="territory-campaign-label">
+            {campaignHolderLabel(territory.campaign)}
+          </span>
+        ) : territory.assignedUser !== undefined ? (
           <span className="territory-leader-badge">
             <span className="avatar avatar-sm" aria-hidden="true">
               {territory.assignedUser.name.charAt(0).toUpperCase()}
@@ -315,7 +325,7 @@ export function DesignationsScreen({
       key: 'status',
       header: 'Situação',
       cell: (territory) =>
-        territory.assignedUser === undefined ? (
+        !territoryIsOut(territory) ? (
           <span className="status-badge status-idle">Livre</span>
         ) : (
           <span className="status-badge status-working">Em andamento</span>
@@ -421,7 +431,7 @@ export function DesignationsScreen({
             <SearchField
               label="Buscar territórios"
               value={search}
-              placeholder="Nome, número ou dirigente"
+              placeholder="Nome, número, dirigente ou campanha"
               onChange={setSearch}
               disabled={isLoading}
             />

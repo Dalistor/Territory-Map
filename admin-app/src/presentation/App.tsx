@@ -53,6 +53,8 @@ import DesignationsScreen from './screens/DesignationsScreen';
 import PublishersScreen from './screens/PublishersScreen';
 import PublisherHistoryScreen from './screens/PublisherHistoryScreen';
 import HistoryScreen from './screens/HistoryScreen';
+import CampaignsScreen from './screens/CampaignsScreen';
+import CampaignDetailScreen from './screens/CampaignDetailScreen';
 import TerritoryDetailScreen from './screens/TerritoryDetailScreen';
 import SetupScreen from './screens/SetupScreen';
 import TabIcon, { type TabIconName } from './components/TabIcon';
@@ -151,6 +153,7 @@ export type RootStackParamList = {
   MainTabs: undefined;
   TerritoryDetail: { readonly territoryId: string };
   PublisherDetail: { readonly publisherId: string; readonly publisherName: string };
+  CampaignDetail: { readonly campaignId: string; readonly campaignName: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -158,6 +161,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 export type PrimaryTabParamList = {
   Territories: undefined;
   Publishers: undefined;
+  Campaigns: undefined;
   History: undefined;
 };
 
@@ -438,6 +442,19 @@ export default function App(props: AppProps): React.JSX.Element {
               />
             )}
           </Stack.Screen>
+          {/* Read only: campaigns are managed on the desktop (spec 0017). */}
+          <Stack.Screen
+            name="CampaignDetail"
+            options={({ route }) => ({ title: route.params.campaignName })}
+          >
+            {({ route }) => (
+              <CampaignDetailScreen
+                api={api}
+                campaignId={route.params.campaignId}
+                session={guardedSession}
+              />
+            )}
+          </Stack.Screen>
         </Stack.Navigator>
       </NavigationContainer>
       <UpdateModal
@@ -462,7 +479,7 @@ interface PrimaryTabsProps {
 }
 
 /**
- * The three destinations deliberately live under one tab navigator. Future
+ * The four destinations deliberately live under one tab navigator. Future
  * consultation screens replace their own placeholders without changing the
  * application's setup/sign-out boundary or the detail stack above it.
  */
@@ -506,6 +523,20 @@ function PrimaryTabs({ api, onSignOut, renderDesignations, session }: PrimaryTab
               navigation.getParent()?.navigate('PublisherDetail', {
                 publisherId: publisher.id,
                 publisherName: publisher.name,
+              });
+            }}
+          />
+        )}
+      </Tabs.Screen>
+      <Tabs.Screen name="Campaigns" options={primaryTabOptions('Campanhas', 'campaigns', onSignOut)}>
+        {({ navigation }) => (
+          <CampaignsScreen
+            api={api}
+            session={session}
+            onOpenCampaign={campaign => {
+              navigation.getParent()?.navigate('CampaignDetail', {
+                campaignId: campaign.id,
+                campaignName: campaign.name,
               });
             }}
           />

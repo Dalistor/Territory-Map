@@ -35,6 +35,7 @@ function fakeApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
     activate: jest.fn(),
     listTerritories: jest.fn(),
+    listCampaigns: jest.fn(),
     listWorkedTerritories: jest.fn(),
     listWorkHistory: jest.fn(),
     markBlockWorked: jest.fn(),

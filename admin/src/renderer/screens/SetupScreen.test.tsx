@@ -61,6 +61,15 @@ function fakeApi(overrides: Partial<IpcApi['session']> = {}): IpcApi {
       delete: vi.fn(),
       markWorked: vi.fn()
     },
+    campaigns: {
+      list: vi.fn().mockResolvedValue([]),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      designate: vi.fn(),
+      setPublishers: vi.fn(),
+      complete: vi.fn()
+    },
     geo: {
       geocodeCity: vi.fn()
     }

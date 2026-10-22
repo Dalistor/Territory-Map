@@ -1,7 +1,7 @@
 import React from 'react'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native'
 import type { ApiClient } from '../../data/api-client'
-import type { Session, Territory, WorkedTerritory } from '../../domain/models'
+import type { Campaign, Session, Territory, WorkedTerritory } from '../../domain/models'
 import { DashboardScreen } from './DashboardScreen'
 
 function makeSession(overrides: Partial<Session> = {}): Session {
@@ -52,6 +52,7 @@ describe('DashboardScreen', () => {
         session={makeSession()}
         apiClient={makeApiClient()}
         onOpenMap={jest.fn()}
+        onOpenCampaign={jest.fn()}
         onOpenFullMap={onOpenFullMap}
       />
     )
@@ -77,7 +78,7 @@ describe('DashboardScreen', () => {
     })
 
     render(
-      <DashboardScreen session={makeSession()} apiClient={apiClient} onOpenMap={jest.fn()} onOpenFullMap={jest.fn()} />
+      <DashboardScreen session={makeSession()} apiClient={apiClient} onOpenMap={jest.fn()} onOpenCampaign={jest.fn()} onOpenFullMap={jest.fn()} />
     )
 
     await waitFor(
@@ -111,6 +112,7 @@ describe('DashboardScreen', () => {
         session={session}
         apiClient={apiClient}
         onOpenMap={onOpenMap}
+        onOpenCampaign={jest.fn()}
         onOpenFullMap={jest.fn()}
       />
     )
@@ -136,7 +138,7 @@ describe('DashboardScreen', () => {
     })
 
     render(
-      <DashboardScreen session={makeSession()} apiClient={apiClient} onOpenMap={jest.fn()} onOpenFullMap={jest.fn()} />
+      <DashboardScreen session={makeSession()} apiClient={apiClient} onOpenMap={jest.fn()} onOpenCampaign={jest.fn()} onOpenFullMap={jest.fn()} />
     )
 
     await waitFor(
@@ -153,7 +155,7 @@ describe('DashboardScreen', () => {
 
   it('shows "Nenhuma quadra trabalhada ainda" instead of an empty list when nothing was worked yet', async () => {
     render(
-      <DashboardScreen session={makeSession()} apiClient={makeApiClient()} onOpenMap={jest.fn()} onOpenFullMap={jest.fn()} />
+      <DashboardScreen session={makeSession()} apiClient={makeApiClient()} onOpenMap={jest.fn()} onOpenCampaign={jest.fn()} onOpenFullMap={jest.fn()} />
     )
 
     await waitFor(
@@ -173,7 +175,7 @@ describe('DashboardScreen', () => {
     })
 
     render(
-      <DashboardScreen session={session} apiClient={apiClient} onOpenMap={jest.fn()} onOpenFullMap={jest.fn()} />
+      <DashboardScreen session={session} apiClient={apiClient} onOpenMap={jest.fn()} onOpenCampaign={jest.fn()} onOpenFullMap={jest.fn()} />
     )
 
     await waitFor(
@@ -203,7 +205,7 @@ describe('DashboardScreen', () => {
     }
 
     render(
-      <DashboardScreen session={session} apiClient={apiClient} onOpenMap={jest.fn()} onOpenFullMap={jest.fn()} />
+      <DashboardScreen session={session} apiClient={apiClient} onOpenMap={jest.fn()} onOpenCampaign={jest.fn()} onOpenFullMap={jest.fn()} />
     )
 
     await waitFor(
@@ -213,7 +215,7 @@ describe('DashboardScreen', () => {
       { timeout: 3000 }
     )
 
-    fireEvent.press(screen.getByText('Histórico de Trabalho'))
+    fireEvent.press(screen.getByText('Histórico'))
 
     await waitFor(
       () => {
@@ -223,5 +225,63 @@ describe('DashboardScreen', () => {
       },
       { timeout: 3000 }
     )
+  })
+
+  describe('Campanhas tab', () => {
+    const celebration: Campaign = {
+      id: 'campaign-1',
+      name: 'Campanha de Celebração',
+      startedAt: new Date(2026, 9, 1, 9, 0),
+      territoryIds: ['territory-3', 'territory-5', 'territory-8']
+    }
+
+    async function renderWithCampaigns(campaigns: Campaign[], onOpenCampaign = jest.fn()) {
+      const apiClient = {
+        ...makeApiClient({
+          listTerritories: jest
+            .fn()
+            .mockResolvedValue([
+              makeTerritory({ id: 'territory-3', name: 'Centro - N3' }),
+              makeTerritory({ id: 'territory-5', name: 'Vila Nova - N5' }),
+              makeTerritory({ id: 'territory-8', name: 'Jardim - N8' })
+            ])
+        }),
+        listCampaigns: jest.fn().mockResolvedValue(campaigns)
+      }
+      await render(
+        <DashboardScreen
+          session={makeSession()}
+          apiClient={apiClient}
+          onOpenMap={jest.fn()}
+          onOpenCampaign={onOpenCampaign}
+          onOpenFullMap={jest.fn()}
+        />
+      )
+      await fireEvent.press(screen.getByText('Campanhas'))
+    }
+
+    it('lists each active campaign with its territory count, territory names and start date', async () => {
+      await renderWithCampaigns([celebration])
+
+      expect(await screen.findByText('Campanha de Celebração')).toBeTruthy()
+      expect(screen.getByText('3 territórios · desde 01/10/2026')).toBeTruthy()
+      expect(screen.getByText('Centro - N3, Vila Nova - N5, Jardim - N8')).toBeTruthy()
+    })
+
+    it('explains what a campaign is when the publisher is in none', async () => {
+      await renderWithCampaigns([])
+
+      expect(await screen.findByText('Você não está em nenhuma campanha agora')).toBeTruthy()
+      expect(screen.getByText(/designa um grupo de territórios a vários publicadores/)).toBeTruthy()
+    })
+
+    it('opens the campaign on the map', async () => {
+      const onOpenCampaign = jest.fn()
+      await renderWithCampaigns([celebration], onOpenCampaign)
+
+      await fireEvent.press(await screen.findByLabelText('Ver Campanha de Celebração no mapa'))
+
+      expect(onOpenCampaign).toHaveBeenCalledWith(celebration)
+    })
   })
 })

@@ -1,7 +1,7 @@
 // The pure rules the S-13 card reads: which line is the one in force, and in
 // what order the card shows them. The server is the authority on what an
 // assignment *is* -- these functions only decide how a list of them is read.
-import type { Assignment } from './models';
+import type { Assignment, CampaignBrief } from './models';
 
 /**
  * `true` only while the assignment has no completion date. That is the whole
@@ -42,4 +42,32 @@ export function sortAssignments(assignments: Assignment[]): Assignment[] {
     }
     return Number(assignmentIsOpen(b)) - Number(assignmentIsOpen(a));
   });
+}
+
+/** How a campaign is named wherever a dirigente would otherwise be. */
+export function campaignLabel(campaign: CampaignBrief): string {
+  return `Campanha: ${campaign.name}`;
+}
+
+/**
+ * `true` for a line written by a campaign rather than by an individual
+ * designation. Such a line belongs to the campaign: the server refuses to
+ * edit, complete or delete it through the card (409 `campaign_assignment`),
+ * so the card offers no action on it.
+ */
+export function isCampaignAssignment(assignment: Assignment): boolean {
+  return assignment.campaign !== null && assignment.campaign !== undefined;
+}
+
+/**
+ * Who held the territory on this line, as the card reads it: the
+ * publisher's name, or "Campanha: <nome>" on a campaign line.
+ */
+export function assignmentHolderLabel(assignment: Assignment): string {
+  if (assignment.campaign) {
+    return campaignLabel(assignment.campaign);
+  }
+  // By contract exactly one of the two is set; the dash only keeps a
+  // malformed row readable instead of crashing the card.
+  return assignment.publisher?.name ?? '—';
 }

@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_session
 from app.repositories.block import BlockRepository
 from app.repositories.block_work_log import BlockWorkLogRepository
+from app.repositories.territory_assignment import TerritoryAssignmentRepository
 from app.repositories.user import UserRepository
 from app.routers.admin_territories import AdminCongregation, Blocks, block_out, to_points
 from app.routers.auth import utc_now
@@ -46,6 +47,7 @@ def get_work_log_service(session: DbSession) -> WorkLogService:
         work_logs=BlockWorkLogRepository(session),
         blocks=BlockRepository(session),
         users=UserRepository(session),
+        assignments=TerritoryAssignmentRepository(session),
         now_provider=utc_now,
     )
 

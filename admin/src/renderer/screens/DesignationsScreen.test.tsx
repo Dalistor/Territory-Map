@@ -135,6 +135,16 @@ function makeApi(overrides: DeepPartialIpcApi = {}): IpcApi {
       markWorked: vi.fn(),
       ...overrides.workLogs
     },
+    campaigns: {
+      list: vi.fn().mockResolvedValue([]),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      designate: vi.fn(),
+      setPublishers: vi.fn(),
+      complete: vi.fn(),
+      ...overrides.campaigns
+    },
     geo: {
       geocodeCity: vi.fn(),
       ...overrides.geo
@@ -640,6 +650,46 @@ describe('DesignationsScreen assignment history panel', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Designação não encontrada.')
     expect(screen.getByRole('table', { name: 'Territórios' })).toBeInTheDocument()
+  })
+
+  it('a territory in an active campaign names the campaign and offers no action on its line', async () => {
+    const inCampaign = makeTerritory({
+      name: 'Centro',
+      campaign: { id: 'c1', name: 'Celebração' },
+      assignedSince: new Date('2026-06-01T12:00:00Z')
+    })
+    const campaignLine: Assignment = {
+      id: 'a-campaign',
+      campaign: { id: 'c1', name: 'Celebração' },
+      startedAt: new Date('2026-06-01T12:00:00Z')
+    }
+    vi.stubGlobal(
+      'api',
+      apiWithHistory({
+        territories: {
+          listWithBlocks: vi.fn().mockResolvedValue([inCampaign])
+        } as unknown as IpcApi['territories'],
+        assignments: {
+          listFor: vi.fn().mockResolvedValue([campaignLine, closed])
+        } as unknown as IpcApi['assignments']
+      })
+    )
+
+    const panel = await openPanel()
+
+    const history = within(panel).getByRole('table', { name: /histórico de designações/i })
+    const [, current, past] = await within(history).findAllByRole('row')
+    expect(current).toHaveTextContent('Campanha: Celebração')
+    expect(within(current).queryByRole('button')).toBeNull()
+    expect(within(past).getByRole('button', { name: 'Apagar designação de Ana' })).toBeEnabled()
+    expect(
+      within(panel).queryByRole('button', { name: /marcar como concluído/i })
+    ).not.toBeInTheDocument()
+    expect(within(panel).getByRole('button', { name: 'Designar' })).toBeDisabled()
+    expect(within(panel).getByText(/conclua a campanha ou tire o território dela/)).toBeVisible()
+    expect(
+      within(screen.getByRole('table', { name: 'Territórios' })).getByText('Campanha: Celebração')
+    ).toBeInTheDocument()
   })
 
   it('a territory with no assignment shows "Sem dirigente", offers no completion, and still designates', async () => {

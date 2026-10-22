@@ -13,14 +13,20 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import (
+    CampaignAssignmentManagedError,
+    NotFoundError,
+    TerritoryInCampaignError,
+)
 from app.core.geo import LatLng, points_to_wkt
 from app.models.territory import Territory
 from app.models.user import User
+from app.repositories.campaign import CampaignRepository
 from app.repositories.territory import TerritoryRepository
 from app.repositories.territory_assignment import TerritoryAssignmentRepository
 from app.repositories.user import UserRepository
 from app.services.assignment import AssignmentService
+from app.services.campaign import CampaignService
 from sqlalchemy.orm import Session
 
 NOW = datetime(2026, 8, 2, 12, 0, tzinfo=UTC)
@@ -690,3 +696,79 @@ def test_open_started_by_territory_maps_each_open_assignment_to_its_start(
 
     assert started == {out.id: EARLIER}
     assert free.id not in started
+
+
+# -- campaign lines on the card ------------------------------------------------------
+
+
+@pytest.fixture
+def campaigns(session: Session) -> CampaignService:
+    return CampaignService(
+        campaigns=CampaignRepository(session),
+        assignments=TerritoryAssignmentRepository(session),
+        territories=TerritoryRepository(session),
+        users=UserRepository(session),
+        now_provider=lambda: NOW,
+    )
+
+
+@pytest.fixture
+def held_by_campaign(service, campaigns, make_congregation, make_territory, make_user):
+    """A territory whose individual stint was replaced by the open line of a campaign."""
+    congregation = make_congregation()
+    territory = make_territory(congregation.id, "N5")
+    publisher = make_user(congregation.id, "Carla")
+    individual = service.designate(congregation.id, territory.id, publisher.id, now=EARLIER)
+    campaign = campaigns.create(congregation.id, "Celebração", [territory.id])
+    campaigns.designate(congregation.id, campaign.id, [make_user(congregation.id, "Ana").id])
+    line = service.list(congregation.id, territory.id)[0]
+    return congregation, territory, publisher, individual, line
+
+
+def test_designating_a_territory_held_by_a_campaign_is_refused(service, held_by_campaign) -> None:
+    congregation, territory, publisher, _, line = held_by_campaign
+
+    with pytest.raises(TerritoryInCampaignError) as refused:
+        service.designate(congregation.id, territory.id, publisher.id)
+
+    assert "Celebração" in refused.value.message
+    assert "N5" in refused.value.message
+    assert line.completed_at is None
+
+
+def test_the_campaign_line_cannot_be_edited_completed_or_deleted_from_the_card(
+    service, held_by_campaign
+) -> None:
+    """The line belongs to the campaign: closing it alone would split the campaign."""
+    congregation, territory, publisher, _, line = held_by_campaign
+
+    with pytest.raises(CampaignAssignmentManagedError, match="Campanhas"):
+        service.update(congregation.id, line.id, user_id=publisher.id)
+    with pytest.raises(CampaignAssignmentManagedError):
+        service.delete(congregation.id, line.id)
+    with pytest.raises(CampaignAssignmentManagedError):
+        service.complete(congregation.id, territory.id)
+
+    assert line.completed_at is None
+
+
+def test_correcting_an_old_stint_keeps_the_campaign_territory_without_dirigente(
+    service, held_by_campaign
+) -> None:
+    """The projection reads the open row, and a campaign's open row names nobody."""
+    congregation, territory, _, individual, _ = held_by_campaign
+
+    service.update(congregation.id, individual.id, started_at=EARLIER - timedelta(days=1))
+
+    assert territory.assigned_user_id is None
+
+
+def test_the_campaign_holding_each_territory_is_read_in_one_go(
+    service, held_by_campaign, make_territory
+) -> None:
+    congregation, territory, _, _, _ = held_by_campaign
+    make_territory(congregation.id, "Livre")
+
+    held = service.open_campaign_by_territory(congregation.id)
+
+    assert {key: campaign.name for key, campaign in held.items()} == {territory.id: "Celebração"}

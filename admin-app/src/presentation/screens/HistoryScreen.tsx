@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { AssignmentHistoryFilters, AssignmentHistoryPage, AssignmentWithTerritory } from '../../domain/models';
+import { assignmentHolderLabel } from '../../domain/assignment';
 import {
   QueryPagination,
   QueryState,
@@ -228,11 +229,12 @@ export default function HistoryScreen({
 /** A history row is deliberately static: this surface consults, it does not edit assignments. */
 function AssignmentCard({ assignment }: { readonly assignment: AssignmentWithTerritory }): React.JSX.Element {
   const ongoing = assignment.completedAt === null;
+  const holder = assignmentHolderLabel(assignment);
   return (
-    <View accessibilityLabel={`${assignment.territory.name}, ${assignment.publisher.name}`} style={styles.assignmentCard}>
+    <View accessibilityLabel={`${assignment.territory.name}, ${holder}`} style={styles.assignmentCard}>
       <View style={styles.assignmentContent}>
         <Text style={styles.assignmentTitle}>{assignment.territory.name}</Text>
-        <Text style={styles.assignmentPublisher}>{assignment.publisher.name}</Text>
+        <Text style={styles.assignmentPublisher}>{holder}</Text>
         <Text style={styles.assignmentDates}>{assignmentDetails(assignment).join(' · ')}</Text>
       </View>
       <Text style={[styles.assignmentStatus, ongoing ? styles.assignmentStatusOngoing : styles.assignmentStatusReturned]}>

@@ -112,6 +112,21 @@ class FakeUserRepository:
         return self.users.get(user_id)
 
 
+class FakeTerritoryAssignmentRepository:
+    """In-memory stand-in for `TerritoryAssignmentRepository`, limited to the campaign check.
+
+    Holds the pairs (territory, publisher) for which the territory's open line is a
+    campaign's whose open period lists the publisher -- the one question the work log
+    asks of the card.
+    """
+
+    def __init__(self) -> None:
+        self.campaign_holders: set[tuple[UUID, UUID]] = set()
+
+    def campaign_line_admits(self, territory_id: UUID, user_id: UUID) -> bool:
+        return (territory_id, user_id) in self.campaign_holders
+
+
 def draw_block(
     blocks: FakeBlockRepository,
     congregation_id: UUID,
@@ -169,15 +184,22 @@ def users() -> FakeUserRepository:
 
 
 @pytest.fixture
+def assignments() -> FakeTerritoryAssignmentRepository:
+    return FakeTerritoryAssignmentRepository()
+
+
+@pytest.fixture
 def service(
     work_logs: FakeBlockWorkLogRepository,
     blocks: FakeBlockRepository,
     users: FakeUserRepository,
+    assignments: FakeTerritoryAssignmentRepository,
 ) -> WorkLogService:
     return WorkLogService(
         work_logs=work_logs,
         blocks=blocks,
         users=users,
+        assignments=assignments,
         now_provider=lambda: NOW,
     )
 
@@ -412,6 +434,37 @@ def test_marking_a_block_of_a_territory_designated_to_someone_else_is_refused(
 
     assert work_logs.list_by_block(other_block.id) == []
     assert other_block.last_worked_at is None
+
+
+def test_a_publisher_of_the_campaign_holding_the_territory_may_mark_its_blocks(
+    service: WorkLogService,
+    assignments: FakeTerritoryAssignmentRepository,
+    blocks: FakeBlockRepository,
+    congregation_id: UUID,
+    user: User,
+) -> None:
+    """A campaign's line names nobody in `assigned_user_id`; its publishers come from it."""
+    campaign_block = draw_block(blocks, congregation_id, number=2)
+    assignments.campaign_holders.add((campaign_block.territory_id, user.id))
+
+    log, created = service.mark_worked(uuid4(), campaign_block.id, user, NOW, NOW)
+
+    assert created is True
+    assert log.user_name == user.name
+
+
+def test_a_publisher_outside_the_campaign_is_refused_on_its_blocks(
+    service: WorkLogService,
+    assignments: FakeTerritoryAssignmentRepository,
+    blocks: FakeBlockRepository,
+    congregation_id: UUID,
+    user: User,
+) -> None:
+    campaign_block = draw_block(blocks, congregation_id, number=2)
+    assignments.campaign_holders.add((campaign_block.territory_id, uuid4()))
+
+    with pytest.raises(TerritoryNotAssignedError):
+        service.mark_worked(uuid4(), campaign_block.id, user, NOW, NOW)
 
 
 def test_a_resend_is_confirmed_even_after_the_territorys_designation_changed(

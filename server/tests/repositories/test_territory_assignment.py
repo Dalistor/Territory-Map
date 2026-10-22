@@ -1,10 +1,15 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+import pytest
+from app.models.campaign import Campaign
+from app.models.campaign_designation import CampaignDesignation
 from app.models.territory import Territory
 from app.models.territory_assignment import TerritoryAssignment
 from app.repositories.territory_assignment import TerritoryAssignmentRepository
 from geoalchemy2 import WKTElement
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 
 def make_territory(session, congregation_id, name: str) -> Territory:
@@ -215,3 +220,109 @@ def test_lista_paginada_desempata_por_id_sem_repetir_ou_pular_linhas(session, ma
     assert [assignment.id for assignment in first_page] == assignment_ids[:0:-1]
     assert [assignment.id for assignment in second_page] == assignment_ids[:1]
     assert total == second_total == 3
+
+
+def open_campaign_period(session, congregation_id, name: str = "Celebração"):
+    """A campaign with an open designation period, written straight through the models."""
+
+    campaign = Campaign(congregation_id=congregation_id, name=name)
+    session.add(campaign)
+    session.flush()
+    period = CampaignDesignation(
+        campaign_id=campaign.id, started_at=datetime(2026, 10, 1, tzinfo=UTC)
+    )
+    session.add(period)
+    session.flush()
+    return period
+
+
+def test_linha_sem_publicador_e_sem_campanha_e_recusada_pelo_banco(session, make_congregation):
+    """The CHECK is what keeps the card from ever holding a row that names nobody."""
+
+    congregation = make_congregation()
+    territory = make_territory(session, congregation.id, "Centro")
+    session.add(
+        TerritoryAssignment(territory_id=territory.id, started_at=datetime(2026, 10, 1, tzinfo=UTC))
+    )
+
+    with pytest.raises(IntegrityError, match="ck_territory_assignments_author"):
+        session.flush()
+
+
+def test_linha_de_campanha_dispensa_publicador(session, make_congregation):
+    congregation = make_congregation()
+    territory = make_territory(session, congregation.id, "Centro")
+    period = open_campaign_period(session, congregation.id)
+
+    line = TerritoryAssignment(
+        territory_id=territory.id,
+        campaign_designation_id=period.id,
+        started_at=datetime(2026, 10, 1, tzinfo=UTC),
+    )
+    session.add(line)
+    session.flush()
+
+    assert line.user_id is None
+    assert line.campaign_designation.campaign.name == "Celebração"
+
+
+def test_linha_de_campanha_e_designacao_individual_nao_ficam_abertas_juntas(
+    session, make_congregation
+):
+    """`uq_territory_assignments_open` counts the campaign line like any other open row."""
+
+    congregation = make_congregation()
+    territory = make_territory(session, congregation.id, "Centro")
+    add_assignment(session, territory, started_at=datetime(2026, 9, 1, tzinfo=UTC))
+    period = open_campaign_period(session, congregation.id)
+    session.add(
+        TerritoryAssignment(
+            territory_id=territory.id,
+            campaign_designation_id=period.id,
+            started_at=datetime(2026, 10, 1, tzinfo=UTC),
+        )
+    )
+
+    with pytest.raises(IntegrityError, match="uq_territory_assignments_open"):
+        session.flush()
+
+
+def test_campanha_tem_no_maximo_um_periodo_aberto(session, make_congregation):
+
+    congregation = make_congregation()
+    period = open_campaign_period(session, congregation.id)
+    session.add(
+        CampaignDesignation(
+            campaign_id=period.campaign_id, started_at=datetime(2026, 10, 2, tzinfo=UTC)
+        )
+    )
+
+    with pytest.raises(IntegrityError, match="uq_campaign_designations_open"):
+        session.flush()
+
+
+def test_apagar_a_campanha_leva_as_linhas_dela_no_cartao(session, make_congregation):
+    """CASCADE from campaign to period to card line: the row only means something with it."""
+
+    congregation = make_congregation()
+    territory = make_territory(session, congregation.id, "Centro")
+    period = open_campaign_period(session, congregation.id)
+    line = TerritoryAssignment(
+        territory_id=territory.id,
+        campaign_designation_id=period.id,
+        started_at=datetime(2026, 10, 1, tzinfo=UTC),
+    )
+    session.add(line)
+    session.flush()
+    line_id = line.id
+
+    session.delete(period.campaign)
+    session.flush()
+    session.expunge_all()
+
+    assert (
+        session.scalars(
+            select(TerritoryAssignment).where(TerritoryAssignment.id == line_id)
+        ).one_or_none()
+        is None
+    )

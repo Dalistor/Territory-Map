@@ -8,7 +8,9 @@ import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { ApiClient } from '../../data/api-client';
 import { isTerritoryAssignedToMe } from '../../domain/assignment';
+import { formatDate } from '../../domain/lastWorked';
 import type {
+  Campaign,
   PublisherWorkHistoryItem,
   Session,
   Territory,
@@ -26,11 +28,16 @@ import { colors, radius, shadows, spacing } from '../theme';
 const LOAD_ERROR_MESSAGE =
   'Não foi possível carregar os dados. Verifique a conexão e abra a tela de novo.';
 
+const CAMPAIGNS_ERROR_MESSAGE =
+  'Não foi possível carregar as campanhas. Verifique a conexão e abra a tela de novo.';
+
 export interface DashboardScreenProps {
   readonly session: Session;
   readonly apiClient: Pick<ApiClient, 'listWorkedTerritories' | 'listTerritories'> &
-    Partial<Pick<ApiClient, 'listWorkHistory'>>;
+    Partial<Pick<ApiClient, 'listWorkHistory' | 'listCampaigns'>>;
   readonly onOpenMap: (territory: Territory) => void;
+  /** Opens the map on every territory of this campaign, with their blocks markable. */
+  readonly onOpenCampaign: (campaign: Campaign) => void;
   /**
    * Opens the map with no preselected territory (the map's own default
    * filter decides what shows). Always available -- "Ver no mapa" only
@@ -40,19 +47,25 @@ export interface DashboardScreenProps {
   readonly onOpenFullMap: () => void;
 }
 
-type DashboardTab = 'overview' | 'history';
+type DashboardTab = 'overview' | 'campaigns' | 'history';
 
 export function DashboardScreen({
   session,
   apiClient,
   onOpenMap,
+  onOpenCampaign,
   onOpenFullMap,
 }: DashboardScreenProps) {
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [workedTerritories, setWorkedTerritories] = useState<WorkedTerritory[]>([]);
   const [workHistory, setWorkHistory] = useState<PublisherWorkHistoryItem[]>([]);
-  const [assignedTerritories, setAssignedTerritories] = useState<Territory[]>([]);
+  const [territories, setTerritories] = useState<Territory[]>([]);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [campaignsError, setCampaignsError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const assignedTerritories = territories.filter((territory) =>
+    isTerritoryAssignedToMe(territory, session.user.id),
+  );
 
   useEffect(() => {
     apiClient
@@ -75,13 +88,18 @@ export function DashboardScreen({
   useEffect(() => {
     apiClient
       .listTerritories(session.token)
-      .then((territories) => {
-        setAssignedTerritories(
-          territories.filter((territory) => isTerritoryAssignedToMe(territory, session.user.id)),
-        );
-      })
+      .then(setTerritories)
       .catch(() => setLoadError(LOAD_ERROR_MESSAGE));
-  }, [apiClient, session.token, session.user.id]);
+  }, [apiClient, session.token]);
+
+  useEffect(() => {
+    if (typeof apiClient.listCampaigns !== 'function') return;
+    apiClient
+      .listCampaigns(session.token)
+      .then(setCampaigns)
+      // Kept inside the Campaigns tab: the rest of the dashboard still works.
+      .catch(() => setCampaignsError(CAMPAIGNS_ERROR_MESSAGE));
+  }, [apiClient, session.token]);
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
@@ -136,36 +154,134 @@ export function DashboardScreen({
       <PrimaryButton title="Abrir mapa" onPress={onOpenFullMap} />
 
       {/* Tab Switcher */}
-      <View style={styles.tabBar}>
-        <Pressable
-          accessibilityRole="button"
+      <View style={styles.tabBar} accessibilityRole="tablist">
+        <TabButton
+          label="Meus Territórios"
+          active={activeTab === 'overview'}
           onPress={() => setActiveTab('overview')}
-          style={[styles.tabButton, activeTab === 'overview' && styles.tabButtonActive]}
-        >
-          <Text style={[styles.tabText, activeTab === 'overview' && styles.tabTextActive]}>
-            Meus Territórios
-          </Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
+        />
+        <TabButton
+          label="Campanhas"
+          active={activeTab === 'campaigns'}
+          onPress={() => setActiveTab('campaigns')}
+        />
+        <TabButton
+          label="Histórico"
+          active={activeTab === 'history'}
           onPress={() => setActiveTab('history')}
-          style={[styles.tabButton, activeTab === 'history' && styles.tabButtonActive]}
-        >
-          <Text style={[styles.tabText, activeTab === 'history' && styles.tabTextActive]}>
-            Histórico de Trabalho
-          </Text>
-        </Pressable>
+        />
       </View>
 
-      {activeTab === 'overview' ? (
+      {activeTab === 'overview' && (
         <>
           <WorkedTerritoriesSection territories={workedTerritories} />
           <AssignedTerritoriesSection territories={assignedTerritories} onOpenMap={onOpenMap} />
         </>
-      ) : (
+      )}
+      {activeTab === 'campaigns' && (
+        <CampaignsSection
+          campaigns={campaigns}
+          territories={territories}
+          error={campaignsError}
+          onOpenCampaign={onOpenCampaign}
+        />
+      )}
+      {activeTab === 'history' && (
         <WorkHistorySection history={workHistory} workedTerritories={workedTerritories} />
       )}
     </ScrollView>
+  );
+}
+
+/** One segment of the tab bar; the active one is raised and announced as selected. */
+function TabButton({
+  label,
+  active,
+  onPress,
+}: {
+  readonly label: string;
+  readonly active: boolean;
+  readonly onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="tab"
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      style={[styles.tabButton, active && styles.tabButtonActive]}
+    >
+      <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+/**
+ * The publisher's active campaigns: territories handed to a group of
+ * publishers at once, any of whom may mark their blocks. Each card names the
+ * campaign, how many territories it holds (and which, when the map has them)
+ * and since when, and opens the map on all of them.
+ */
+function CampaignsSection({
+  campaigns,
+  territories,
+  error,
+  onOpenCampaign,
+}: {
+  readonly campaigns: Campaign[];
+  readonly territories: Territory[];
+  readonly error: string | null;
+  readonly onOpenCampaign: (campaign: Campaign) => void;
+}) {
+  const nameOf = new Map(territories.map((territory) => [territory.id, territory.name]));
+  return (
+    <>
+      <Text style={styles.heading}>Campanhas</Text>
+      <View style={styles.card}>
+        {error !== null && campaigns.length === 0 ? (
+          <Text style={styles.emptyText}>{error}</Text>
+        ) : campaigns.length === 0 ? (
+          <View style={styles.emptyBlock}>
+            <Text style={styles.emptyTitle}>Você não está em nenhuma campanha agora</Text>
+            <Text style={styles.emptyExplanation}>
+              Numa campanha, quem cuida dos territórios designa um grupo de territórios a vários
+              publicadores ao mesmo tempo, e todos podem marcar as quadras de qualquer um deles.
+              Quando você for incluído numa, ela aparece aqui.
+            </Text>
+          </View>
+        ) : (
+          campaigns.map((campaign, index) => {
+            const count = campaign.territoryIds.length;
+            const names = campaign.territoryIds
+              .map((id) => nameOf.get(id))
+              .filter((name): name is string => name !== undefined);
+            return (
+              <View key={campaign.id} style={[styles.row, index > 0 && styles.rowDivided]}>
+                <View style={styles.territoryRowInfo}>
+                  <Text style={styles.rowTitle}>{campaign.name}</Text>
+                  <Text style={styles.rowSubtitle}>
+                    {count} {count === 1 ? 'território' : 'territórios'} · desde{' '}
+                    {formatDate(campaign.startedAt)}
+                  </Text>
+                  {names.length > 0 && (
+                    <Text style={styles.rowSubtitle} numberOfLines={2}>
+                      {names.join(', ')}
+                    </Text>
+                  )}
+                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Ver ${campaign.name} no mapa`}
+                  onPress={() => onOpenCampaign(campaign)}
+                  style={({ pressed }) => [styles.mapButton, pressed && styles.mapButtonPressed]}
+                >
+                  <Text style={styles.mapButtonText}>Ver no mapa</Text>
+                </Pressable>
+              </View>
+            );
+          })
+        )}
+      </View>
+    </>
   );
 }
 
@@ -401,8 +517,10 @@ const styles = StyleSheet.create({
   },
   tabButton: {
     flex: 1,
+    minHeight: 44,
     paddingVertical: 10,
     alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: radius.sm,
   },
   tabButtonActive: {
@@ -439,6 +557,22 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.lg,
     textAlign: 'center',
     fontSize: 14,
+  },
+  emptyBlock: {
+    paddingVertical: spacing.lg,
+    gap: spacing.sm,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    textAlign: 'center',
+  },
+  emptyExplanation: {
+    color: colors.textSecondary,
+    lineHeight: 20,
+    fontSize: 14,
+    textAlign: 'center',
   },
   row: {
     flexDirection: 'row',

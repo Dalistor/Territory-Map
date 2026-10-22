@@ -18,9 +18,9 @@
 //      `HomeScreen` learns who it is.
 //
 // Once authenticated, `AuthenticatedApp` below owns the in-app navigation:
-// a permanent sidebar (spec 0006) with the four sections -- Mapa (Home),
-// Territórios (the existing Designações workspace), Publicadores and
-// Histórico completo -- plus sign-out in its
+// a permanent sidebar (spec 0006) with the five sections -- Mapa (Home),
+// Territórios (the existing Designações workspace), Campanhas (spec 0017),
+// Publicadores and Histórico completo -- plus sign-out in its
 // footer, and a content
 // area beside it where the current route renders. The editors and the block
 // history are still pushed screens ("← Voltar") opened from Home, rendered
@@ -43,6 +43,7 @@ import PublishersScreen from './screens/PublishersScreen'
 import BlockHistorySheet from './screens/BlockHistorySheet'
 import DesignationsScreen from './screens/DesignationsScreen'
 import HistoryScreen from './screens/HistoryScreen'
+import CampaignsScreen from './screens/CampaignsScreen'
 import TerritorySettingsScreen from './screens/TerritorySettingsScreen'
 import { Icon, type IconName } from './components/Icon'
 
@@ -146,11 +147,12 @@ type Route =
   | { readonly kind: 'territory-settings'; readonly territory: Territory }
   | { readonly kind: 'designations' }
   | { readonly kind: 'history' }
+  | { readonly kind: 'campaigns' }
   | { readonly kind: 'publishers' }
   | { readonly kind: 'block-history'; readonly territory: Territory; readonly block: Block }
 
-/** The four sidebar sections. Pushed screens (editors, block history) open from Home, so they keep "Mapa" lit. */
-type Section = 'home' | 'territories' | 'publishers' | 'history'
+/** The sidebar sections. Pushed screens (editors, block history) open from Home, so they keep "Mapa" lit. */
+type Section = 'home' | 'territories' | 'campaigns' | 'publishers' | 'history'
 
 function sectionOf(route: Route): Section {
   switch (route.kind) {
@@ -158,6 +160,8 @@ function sectionOf(route: Route): Section {
       return 'territories'
     case 'history':
       return 'history'
+    case 'campaigns':
+      return 'campaigns'
     case 'publishers':
       return 'publishers'
     default:
@@ -228,7 +232,7 @@ function AuthenticatedApp({ congregation, onSignedOut }: AuthenticatedAppProps):
     label: string,
     destination: Extract<
       Route,
-      { kind: 'home' | 'designations' | 'history' | 'publishers' }
+      { kind: 'home' | 'designations' | 'campaigns' | 'history' | 'publishers' }
     >['kind']
   ): React.JSX.Element => (
     <button
@@ -265,6 +269,7 @@ function AuthenticatedApp({ congregation, onSignedOut }: AuthenticatedAppProps):
         <div className="sidebar-nav">
           {sectionButton('home', 'map', 'Mapa', 'home')}
           {sectionButton('territories', 'list', 'Territórios', 'designations')}
+          {sectionButton('campaigns', 'flag', 'Campanhas', 'campaigns')}
           {sectionButton('publishers', 'users', 'Publicadores', 'publishers')}
           {sectionButton('history', 'history', 'Histórico completo', 'history')}
         </div>
@@ -327,6 +332,8 @@ function AuthenticatedApp({ congregation, onSignedOut }: AuthenticatedAppProps):
         return <DesignationsScreen fallbackCenter={fallbackCenter} />
       case 'history':
         return <HistoryScreen />
+      case 'campaigns':
+        return <CampaignsScreen fallbackCenter={fallbackCenter} />
       case 'publishers':
         return <PublishersScreen />
       case 'block-history':

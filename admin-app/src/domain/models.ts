@@ -111,6 +111,20 @@ export interface Territory {
   readonly lastWork?: LastWorkSummary | null;
   /** Empty on the listing endpoint, populated on the detail one. */
   readonly blocks: Block[];
+  /**
+   * The active campaign this territory is in, `null` (or absent) when none.
+   * While it is set, `assignedPublisher` is `null` by contract: the campaign,
+   * not one dirigente, is who holds the territory, and designating it
+   * individually is refused by the server until the campaign is completed on
+   * the desktop.
+   */
+  readonly campaign?: CampaignBrief | null;
+}
+
+/** Just the identity of a campaign, as it is named where a dirigente would be. */
+export interface CampaignBrief {
+  readonly id: string;
+  readonly name: string;
 }
 
 /**
@@ -122,7 +136,17 @@ export interface Territory {
 export interface Assignment {
   readonly id: string;
   readonly territoryId: string;
-  readonly publisher: PublisherBrief;
+  /**
+   * Who held the territory in an individual designation. `null` on a
+   * campaign line -- exactly one of `publisher` and `campaign` is set.
+   */
+  readonly publisher: PublisherBrief | null;
+  /**
+   * The campaign that held the territory in this period, `null` (or absent)
+   * on an individual designation. A campaign line is managed on the desktop
+   * only: this app shows it and offers no action on it.
+   */
+  readonly campaign?: CampaignBrief | null;
   readonly startedAt: Date;
   readonly completedAt: Date | null;
 }
@@ -154,6 +178,34 @@ export interface AssignmentHistoryPage {
   readonly total: number;
   readonly page: number;
   readonly pageSize: number;
+}
+
+/**
+ * One period of a campaign (`CampaignDesignationOut`): since when, until when,
+ * and which publishers work it. A `null` `completedAt` means the period is
+ * open -- the campaign is active right now.
+ */
+export interface CampaignDesignation {
+  readonly id: string;
+  readonly startedAt: Date;
+  readonly completedAt: Date | null;
+  readonly publishers: PublisherBrief[];
+}
+
+/**
+ * A campaign as the admin reads it (`CampaignOut`): territories grouped and
+ * handed to several publishers at once. This app only consults it -- creating,
+ * editing, designating, completing and deleting stay on the desktop.
+ */
+export interface Campaign {
+  readonly id: string;
+  readonly name: string;
+  readonly createdAt: Date;
+  readonly territories: TerritoryBrief[];
+  /** The open period, or `null` when the campaign is not out. */
+  readonly currentDesignation: CampaignDesignation | null;
+  /** Every period, newest first. */
+  readonly designations: CampaignDesignation[];
 }
 
 /** A record that a block was worked: who, and when (`BlockWorkLogOut`). */

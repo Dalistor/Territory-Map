@@ -48,9 +48,9 @@ import {
   type LngLatBounds,
   type PressEventWithFeatures,
 } from '@maplibre/maplibre-react-native';
-import { isTerritoryAssignedToMe } from '../../domain/assignment';
+import { canMarkBlocksOf } from '../../domain/assignment';
 import { blockColorCategory, type BlockColorCategory } from '../../domain/blockColor';
-import type { Block, LatLng, Territory } from '../../domain/models';
+import type { Block, Campaign, LatLng, Territory } from '../../domain/models';
 
 const OSM_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 const OSM_ATTRIBUTION = '© OpenStreetMap contributors';
@@ -122,6 +122,9 @@ function boundsOf(territories: readonly Territory[]): LngLatBounds | null {
   return [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)];
 }
 
+/** A stable default, so the memoized outlines are not rebuilt on every render. */
+const NO_CAMPAIGNS: readonly Campaign[] = [];
+
 interface BlockLookup {
   readonly territory: Territory;
   readonly block: Block;
@@ -132,6 +135,12 @@ export interface TerritoryMapViewProps {
   readonly territories: Territory[];
   /** The publisher looking at the map -- decides which outlines read as "mine". */
   readonly myUserId: string;
+  /**
+   * The publisher's active campaigns. A territory of one of them reads as
+   * "mine" too: it is one they may mark blocks in, same as an individual
+   * designation (`canMarkBlocksOf`).
+   */
+  readonly myCampaigns?: readonly Campaign[];
   /** Injected so a fixed "now" can drive `blockColorCategory`; defaults to the real clock. */
   readonly now?: Date;
   /**
@@ -146,6 +155,8 @@ export interface TerritoryMapViewProps {
    * box -- and only then pays for the detail.
    */
   readonly showBlocks?: boolean;
+  /** Whether each territory's name badge is drawn. Defaults to the overview (`!showBlocks`). */
+  readonly showTerritoryLabels?: boolean;
   readonly onBlockTap?: (territory: Territory, block: Block) => void;
   /** Fired when a territory's outline or name label is tapped -- how the overview drills into the detail. */
   readonly onTerritoryTap?: (territory: Territory) => void;
@@ -154,8 +165,10 @@ export interface TerritoryMapViewProps {
 export function TerritoryMapView({
   territories,
   myUserId,
+  myCampaigns = NO_CAMPAIGNS,
   now,
   showBlocks = false,
+  showTerritoryLabels = !showBlocks,
   onBlockTap,
   onTerritoryTap,
 }: TerritoryMapViewProps): React.JSX.Element {
@@ -228,33 +241,35 @@ export function TerritoryMapView({
         type: 'Feature' as const,
         properties: {
           territoryId: territory.id,
-          color: isTerritoryAssignedToMe(territory, myUserId)
+          color: canMarkBlocksOf(territory, myUserId, myCampaigns)
             ? MY_TERRITORY_COLOR
             : OTHER_TERRITORY_COLOR,
         },
         geometry: { type: 'Polygon' as const, coordinates: [closedRing(territory.boundary)] },
       })),
     }),
-    [drawableTerritories, myUserId],
+    [drawableTerritories, myUserId, myCampaigns],
   );
 
   /**
    * One name badge per territory, over its centroid -- the same thing the
    * admin's Designations map draws.
    *
-   * Overview only. In the detail the territory is already named by the
-   * active chip above the map, so the badge would just sit on top of the
-   * block numbers it is competing with -- and those are what the publisher
-   * came here to read.
+   * Shown unless `showTerritoryLabels` is off. In the single-territory
+   * detail the territory is already named by the active chip above the map,
+   * so the badge would just sit on top of the block numbers it is competing
+   * with -- and those are what the publisher came here to read. A campaign
+   * draws several territories with their blocks at once, and there the name
+   * is the only way to tell which group of blocks belongs to which.
    */
   const territoryLabelMarkers = useMemo(
     () =>
-      (showBlocks ? [] : drawableTerritories).map((territory) => ({
+      (showTerritoryLabels ? drawableTerritories : []).map((territory) => ({
         territory,
-        mine: isTerritoryAssignedToMe(territory, myUserId),
+        mine: canMarkBlocksOf(territory, myUserId, myCampaigns),
         center: averageCentroid(territory.boundary),
       })),
-    [drawableTerritories, showBlocks, myUserId],
+    [drawableTerritories, showTerritoryLabels, myUserId, myCampaigns],
   );
 
   const blockFeatureProperties = useMemo(

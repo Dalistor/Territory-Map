@@ -15,6 +15,7 @@ from app.models.block_work_log import BlockWorkLog
 from app.models.user import User
 from app.repositories.block import BlockRepository
 from app.repositories.block_work_log import BlockWorkLogRepository
+from app.repositories.territory_assignment import TerritoryAssignmentRepository
 from app.repositories.user import UserRepository
 
 #: How far back a reported `worked_at` may reach. Long enough to absorb any real
@@ -44,11 +45,13 @@ class WorkLogService:
         work_logs: BlockWorkLogRepository,
         blocks: BlockRepository,
         users: UserRepository,
+        assignments: TerritoryAssignmentRepository,
         now_provider: Callable[[], datetime],
     ) -> None:
         self._work_logs = work_logs
         self._blocks = blocks
         self._users = users
+        self._assignments = assignments
         self._now_provider = now_provider
 
     def mark_worked(
@@ -196,13 +199,21 @@ class WorkLogService:
     def _refuse_unassigned_territory(self, block: Block, user: User) -> None:
         """Reject a first-time marking outside the territory designated to this publisher.
 
-        A territory has at most one publisher designated to it at a time, so this is a
-        plain identity check. It only ever runs for a genuinely new visit -- a resend
-        of an already-stored log returns before reaching here, on purpose: the visit
-        was accepted under whatever designation held at the time, and a later change
-        by the admin must not retroactively undo it.
+        Two ways in, and only two. A territory designated individually has one
+        publisher, read off the `assigned_user_id` projection -- a plain identity check.
+        A territory held by an active campaign has no one in that column; its open card
+        line belongs to the campaign's period, and every publisher of that period may
+        mark. That second question is asked of the card only when the first failed, so
+        the ordinary marking still costs no extra query.
+
+        It only ever runs for a genuinely new visit -- a resend of an already-stored log
+        returns before reaching here, on purpose: the visit was accepted under whatever
+        designation or campaign held at the time, and a later change by the admin must
+        not retroactively undo it.
         """
-        if block.territory.assigned_user_id != user.id:
+        if block.territory.assigned_user_id == user.id:
+            return
+        if not self._assignments.campaign_line_admits(block.territory_id, user.id):
             raise TerritoryNotAssignedError
 
     def _user_of_congregation(self, congregation_id: UUID, user_id: UUID) -> User:

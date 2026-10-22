@@ -457,6 +457,23 @@ describe('createApiClient', () => {
       expect(territory.assignedUser).toBeUndefined()
     })
 
+    it('listTerritories parses the active campaign of a territory, with no assigned user', async () => {
+      const { client } = makeClient(
+        jsonResponse(200, [
+          {
+            ...TERRITORY_JSON,
+            assigned_user: null,
+            campaign: { id: 'camp-1', name: 'Celebração' }
+          }
+        ])
+      )
+
+      const [territory] = await client.listTerritories()
+
+      expect(territory.assignedUser).toBeUndefined()
+      expect(territory.campaign).toEqual({ id: 'camp-1', name: 'Celebração' })
+    })
+
     it('listTerritories parses rotation_days into rotationDays', async () => {
       const { client } = makeClient(jsonResponse(200, [{ ...TERRITORY_JSON, rotation_days: 60 }]))
 
@@ -522,6 +539,24 @@ describe('createApiClient', () => {
       page: 2,
       page_size: 10
     }
+
+    it('parses a campaign line (user null) with the campaign and no publisher', async () => {
+      const { client } = makeClient(
+        jsonResponse(200, [
+          {
+            ...ASSIGNMENT_JSON,
+            user: null,
+            campaign: { id: 'camp-1', name: 'Celebração' },
+            completed_at: null
+          }
+        ])
+      )
+
+      const [assignment] = await client.listAssignments('terr-1')
+
+      expect(assignment.publisher).toBeUndefined()
+      expect(assignment.campaign).toEqual({ id: 'camp-1', name: 'Celebração' })
+    })
 
     it('listAllAssignments GETs the history endpoint and parses its page', async () => {
       const { client, fetchImpl } = makeClient(jsonResponse(200, ASSIGNMENT_HISTORY_PAGE_JSON))
@@ -657,6 +692,143 @@ describe('createApiClient', () => {
       const [url, init] = fetchImpl.mock.calls[0]
       expect(url).toBe(`${BASE_URL}/admin/territories/terr-1/assignments/asg-1`)
       expect(init.method).toBe('DELETE')
+    })
+  })
+
+  describe('campaigns', () => {
+    const PERIOD_JSON = {
+      id: 'period-1',
+      started_at: '2026-10-01T12:00:00Z',
+      completed_at: null,
+      publishers: [{ id: 'pub-1', name: 'Ana' }]
+    }
+    const CAMPAIGN_JSON = {
+      id: 'camp-1',
+      name: 'Celebração',
+      created_at: '2026-09-30T12:00:00Z',
+      territories: [{ id: 'terr-1', name: 'Centro - N5' }],
+      current_designation: PERIOD_JSON,
+      designations: [PERIOD_JSON]
+    }
+    const PARSED_PERIOD = {
+      id: 'period-1',
+      startedAt: new Date('2026-10-01T12:00:00Z'),
+      completedAt: undefined,
+      publishers: [{ id: 'pub-1', name: 'Ana' }]
+    }
+    const PARSED_CAMPAIGN = {
+      id: 'camp-1',
+      name: 'Celebração',
+      createdAt: new Date('2026-09-30T12:00:00Z'),
+      territories: [{ id: 'terr-1', name: 'Centro - N5' }],
+      currentDesignation: PARSED_PERIOD,
+      designations: [PARSED_PERIOD]
+    }
+
+    it('listCampaigns GETs /admin/campaigns and parses territories and periods', async () => {
+      const { client, fetchImpl } = makeClient(jsonResponse(200, [CAMPAIGN_JSON]))
+
+      const campaigns = await client.listCampaigns()
+
+      const [url, init] = fetchImpl.mock.calls[0]
+      expect(url).toBe(`${BASE_URL}/admin/campaigns`)
+      expect(init.method).toBe('GET')
+      expect(campaigns).toEqual([PARSED_CAMPAIGN])
+    })
+
+    it('parses a campaign that is not out with no current designation', async () => {
+      const { client } = makeClient(
+        jsonResponse(200, [{ ...CAMPAIGN_JSON, current_designation: null, designations: [] }])
+      )
+
+      const [campaign] = await client.listCampaigns()
+
+      expect(campaign.currentDesignation).toBeUndefined()
+      expect(campaign.designations).toEqual([])
+    })
+
+    it('createCampaign POSTs the name and the territory ids', async () => {
+      const { client, fetchImpl } = makeClient(jsonResponse(201, CAMPAIGN_JSON))
+
+      await client.createCampaign({ name: 'Celebração', territoryIds: ['terr-1'] })
+
+      const [url, init] = fetchImpl.mock.calls[0]
+      expect(url).toBe(`${BASE_URL}/admin/campaigns`)
+      expect(init.method).toBe('POST')
+      expect(JSON.parse(init.body as string)).toEqual({
+        name: 'Celebração',
+        territory_ids: ['terr-1']
+      })
+    })
+
+    it('updateCampaign PATCHes only the fields given', async () => {
+      const { client, fetchImpl } = makeClient(jsonResponse(200, CAMPAIGN_JSON))
+
+      await client.updateCampaign('camp-1', { territoryIds: ['terr-1', 'terr-2'] })
+
+      const [url, init] = fetchImpl.mock.calls[0]
+      expect(url).toBe(`${BASE_URL}/admin/campaigns/camp-1`)
+      expect(init.method).toBe('PATCH')
+      expect(JSON.parse(init.body as string)).toEqual({ territory_ids: ['terr-1', 'terr-2'] })
+    })
+
+    it.each([
+      [
+        'designateCampaign',
+        'POST',
+        '/admin/campaigns/camp-1/designations',
+        (client: ReturnType<typeof createApiClient>) =>
+          client.designateCampaign('camp-1', ['pub-1'])
+      ],
+      [
+        'setCampaignPublishers',
+        'PUT',
+        '/admin/campaigns/camp-1/designations/current/publishers',
+        (client: ReturnType<typeof createApiClient>) =>
+          client.setCampaignPublishers('camp-1', ['pub-1'])
+      ]
+    ])('%s sends the publishers as user_ids to %s %s', async (_name, method, path, call) => {
+      const { client, fetchImpl } = makeClient(jsonResponse(200, CAMPAIGN_JSON))
+
+      const campaign = await call(client)
+
+      const [url, init] = fetchImpl.mock.calls[0]
+      expect(url).toBe(`${BASE_URL}${path}`)
+      expect(init.method).toBe(method)
+      expect(JSON.parse(init.body as string)).toEqual({ user_ids: ['pub-1'] })
+      expect(campaign).toEqual(PARSED_CAMPAIGN)
+    })
+
+    it('completeCampaign POSTs .../designations/current/complete with no body', async () => {
+      const { client, fetchImpl } = makeClient(jsonResponse(200, CAMPAIGN_JSON))
+
+      await client.completeCampaign('camp-1')
+
+      const [url, init] = fetchImpl.mock.calls[0]
+      expect(url).toBe(`${BASE_URL}/admin/campaigns/camp-1/designations/current/complete`)
+      expect(init.method).toBe('POST')
+      expect(init.body).toBeUndefined()
+    })
+
+    it('deleteCampaign surfaces the 409 campaign_active with the server message', async () => {
+      const { client, fetchImpl } = makeClient(
+        jsonResponse(409, {
+          code: 'campaign_active',
+          detail: 'Conclua a campanha antes de apagá-la.'
+        })
+      )
+
+      const error = await client.deleteCampaign('camp-1').catch((e) => e)
+
+      const [url, init] = fetchImpl.mock.calls[0]
+      expect(url).toBe(`${BASE_URL}/admin/campaigns/camp-1`)
+      expect(init.method).toBe('DELETE')
+      expect(error).toBeInstanceOf(ApiErrorException)
+      expect(error).toMatchObject({
+        statusCode: 409,
+        code: 'campaign_active',
+        detail: 'Conclua a campanha antes de apagá-la.'
+      })
     })
   })
 

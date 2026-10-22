@@ -1,0 +1,344 @@
+{
+  "schema": 1,
+  "id": "campanhas",
+  "version": 1,
+  "title": "Campanhas: vários territórios, vários publicadores",
+  "scope": "master",
+  "status": "approved",
+  "intent": "O admin agrupa territórios numa campanha e a designa a vários publicadores ao mesmo tempo; enquanto ela está ativa, qualquer designado marca quadras em qualquer território dela, e o publicador vê a campanha numa aba própria do app, abrindo todos os territórios dela no mapa.",
+  "extends": [],
+  "boundaries": [
+    "congregation_id sempre derivado do token; campanha, território e publicador de outra congregação respondem o mesmo 404",
+    "Router -> service -> repository -> model no servidor; renderer do Electron só fala com window.api; presentation -> domain <- data nos dois apps Android",
+    "Sem pacote compartilhado entre admin/, app/ e admin-app/",
+    "O app do publicador continua só lendo e marcando quadra; nunca cria, edita ou apaga campanha",
+    "O app admin Android só consulta campanhas; criar, editar, designar, concluir e apagar campanha é exclusivo do admin desktop",
+    "Marcar quadra continua exigindo o servidor, sem fila offline; o cache de leitura do app continua valendo",
+    "Histórico de designações preserva o nome copiado na linha, sem FK para users",
+    "Migrações sempre por Alembic"
+  ],
+  "autonomy": [
+    "Nomes de tabelas, colunas, índices, DTOs, rotas e componentes, dentro das convenções do AGENTS.md",
+    "Organização interna de services, repositórios e telas",
+    "Textos de interface, desde que digam o escopo e as consequências antes de ações destrutivas"
+  ],
+  "decisions": [],
+  "rules": [
+    {
+      "id": "CMP-01",
+      "kind": "functional",
+      "description": "O admin desktop cria, renomeia e apaga campanhas da congregação, cada uma com nome e uma lista de territórios.",
+      "acceptance": [
+        "Criar campanha com nome e territórios a faz aparecer na página Campanhas com seus territórios",
+        "Nome é único dentro da congregação; repetir responde erro que diz o que fazer",
+        "Apagar uma campanha ativa é recusado com mensagem pedindo para concluí-la antes; apagar campanha não ativa remove a campanha e mantém o histórico de trabalho das quadras"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "CMP-02",
+      "kind": "functional",
+      "description": "O admin designa a campanha a um ou mais publicadores; designar abre um período da campanha (campaign_designation) com data de início, e a lista de publicadores pode mudar enquanto ele estiver aberto.",
+      "acceptance": [
+        "Designar exige ao menos um publicador e grava started_at pelo relógio do servidor",
+        "Adicionar ou remover publicador de uma campanha ativa vale na próxima requisição do app",
+        "Uma campanha tem no máximo um período aberto por vez"
+      ],
+      "depends_on": [
+        "campanhas/CMP-01"
+      ]
+    },
+    {
+      "id": "CMP-03",
+      "kind": "functional",
+      "description": "Designar a campanha substitui a designação individual dos territórios dela: a designação individual aberta de cada território é concluída com a data de hoje e o território passa a ter uma linha no cartão S-13 ligada ao período da campanha.",
+      "acceptance": [
+        "Depois de designar, o cartão S-13 de cada território da campanha mostra a designação anterior concluída hoje e uma linha aberta identificada pelo nome da campanha",
+        "Territory.assigned_user_id fica nulo nos territórios da campanha ativa",
+        "A interface avisa, antes de confirmar, quais territórios têm dirigente que será substituído"
+      ],
+      "depends_on": [
+        "campanhas/CMP-02"
+      ]
+    },
+    {
+      "id": "CMP-04",
+      "kind": "functional",
+      "description": "Um território pertence a no máximo uma campanha ativa e, enquanto ela está ativa, não recebe designação individual.",
+      "acceptance": [
+        "Designar campanha com território que está em outra campanha ativa responde 409 nomeando o território e a campanha",
+        "Designar individualmente um território de campanha ativa responde 409 dizendo para concluir ou tirar o território da campanha",
+        "A garantia vale no banco (índice único parcial de designação aberta), não só no service"
+      ],
+      "depends_on": [
+        "campanhas/CMP-03"
+      ]
+    },
+    {
+      "id": "CMP-05",
+      "kind": "functional",
+      "description": "Concluir a campanha encerra o período e todas as linhas abertas dos territórios dela com a mesma data; os territórios ficam sem dirigente e os publicadores perdem na hora o direito de marcar ali.",
+      "acceptance": [
+        "Após concluir, POST /app/blocks/{id}/worked de um designado da campanha numa quadra dela responde 403 territory_not_assigned",
+        "A campanha concluída aparece como histórico com datas de início e conclusão e pode ser designada de novo, abrindo novo período"
+      ],
+      "depends_on": [
+        "campanhas/CMP-03"
+      ]
+    },
+    {
+      "id": "CMP-06",
+      "kind": "functional",
+      "description": "Alterar os territórios de uma campanha ativa tem efeito imediato: território adicionado segue CMP-03 e CMP-04; território removido tem sua linha da campanha concluída com a data de hoje.",
+      "acceptance": [
+        "Adicionar território a campanha ativa conclui a designação individual dele e abre a linha da campanha",
+        "Remover território de campanha ativa conclui a linha da campanha e deixa o território sem dirigente"
+      ],
+      "depends_on": [
+        "campanhas/CMP-04"
+      ]
+    },
+    {
+      "id": "CMP-07",
+      "kind": "functional",
+      "description": "Todo publicador designado ao período aberto de uma campanha pode marcar como trabalhada qualquer quadra de qualquer território dela pelo app; a regra individual (território designado a ele) continua valendo fora de campanhas.",
+      "acceptance": [
+        "Dois publicadores da mesma campanha marcam quadras do mesmo território e os dois registros ficam no histórico com seus nomes",
+        "Publicador fora da campanha toma 403 territory_not_assigned numa quadra dela",
+        "Reenvio de log_id já aceito continua confirmado sem reavaliar campanha"
+      ],
+      "depends_on": [
+        "campanhas/CMP-03"
+      ]
+    },
+    {
+      "id": "CMP-08",
+      "kind": "functional",
+      "description": "No app do publicador, a tela inicial tem uma aba Campanhas que lista as campanhas ativas designadas a ele; abrir uma leva ao mapa com todos os territórios da campanha e suas quadras marcáveis.",
+      "acceptance": [
+        "Publicador sem campanha ativa vê na aba um estado vazio que explica o que é campanha",
+        "Abrir uma campanha mostra no mapa todos os territórios dela enquadrados, e tocar numa quadra deles permite marcá-la",
+        "As campanhas entram no cache de leitura: abrem sem rede; marcar sem rede avisa e não marca"
+      ],
+      "depends_on": [
+        "campanhas/CMP-07"
+      ]
+    },
+    {
+      "id": "CMP-09",
+      "kind": "functional",
+      "description": "O app admin Android mostra as campanhas em modo de consulta: lista, territórios, publicadores designados e período; o território de campanha ativa exibe a campanha no lugar do dirigente.",
+      "acceptance": [
+        "A lista de territórios mostra 'Campanha: <nome>' em vez de dirigente para território de campanha ativa",
+        "Nenhum botão de criar, editar, designar, concluir ou apagar campanha existe no app admin",
+        "Designar individualmente um território de campanha ativa pelo app admin mostra a mensagem do 409 do servidor"
+      ],
+      "depends_on": [
+        "campanhas/CMP-04"
+      ]
+    },
+    {
+      "id": "CMP-10",
+      "kind": "functional",
+      "description": "Históricos e exportações tratam a linha de campanha: cartão S-13, Histórico completo, planilha por território e S-13-T mostram o nome da campanha onde haveria um dirigente.",
+      "acceptance": [
+        "Exportar Excel e S-13-T com território que passou por campanha gera arquivo sem erro, com a linha 'Campanha: <nome>'",
+        "O Histórico completo e o histórico por publicador não quebram com linhas sem user_id"
+      ],
+      "depends_on": [
+        "campanhas/CMP-03"
+      ]
+    }
+  ],
+  "specification": {
+    "actors": [
+      "Responsável pelos territórios (admin desktop)",
+      "Responsável pelos territórios em campo (app admin)",
+      "Publicador (app)"
+    ],
+    "exclusions": [
+      "Criar ou gerenciar campanha pelo app admin Android ou pelo app do publicador",
+      "Território em duas campanhas ativas ao mesmo tempo",
+      "Fila offline de marcações"
+    ],
+    "use_cases": [
+      {
+        "id": "UC-01",
+        "title": "Montar e designar uma campanha",
+        "actor": "Responsável pelos territórios (admin desktop)",
+        "preconditions": [
+          "Admin autenticado",
+          "Territórios e publicadores cadastrados"
+        ],
+        "main_flow": [
+          "Criar campanha com nome",
+          "Escolher territórios",
+          "Designar a publicadores",
+          "Confirmar o aviso de substituição dos dirigentes"
+        ],
+        "alternatives": [
+          "Território em outra campanha ativa: recusar com o nome da campanha",
+          "Nenhum publicador escolhido: impedir confirmação"
+        ],
+        "postconditions": [
+          "Período aberto",
+          "Designações individuais concluídas hoje",
+          "Designados podem marcar"
+        ],
+        "rules": [
+          "CMP-01",
+          "CMP-02",
+          "CMP-03",
+          "CMP-04"
+        ]
+      },
+      {
+        "id": "UC-02",
+        "title": "Trabalhar uma campanha em campo",
+        "actor": "Publicador (app)",
+        "preconditions": [
+          "App ativado",
+          "Publicador designado ao período aberto"
+        ],
+        "main_flow": [
+          "Abrir aba Campanhas",
+          "Escolher campanha",
+          "Ver todos os territórios no mapa",
+          "Marcar quadra"
+        ],
+        "alternatives": [
+          "Sem rede: avisar e não marcar",
+          "Campanha concluída entre a abertura e a marcação: 403 com mensagem"
+        ],
+        "postconditions": [
+          "BlockWorkLog com o nome do publicador"
+        ],
+        "rules": [
+          "CMP-07",
+          "CMP-08"
+        ]
+      },
+      {
+        "id": "UC-03",
+        "title": "Concluir a campanha",
+        "actor": "Responsável pelos territórios (admin desktop)",
+        "preconditions": [
+          "Campanha ativa"
+        ],
+        "main_flow": [
+          "Marcar campanha como concluída",
+          "Confirmar"
+        ],
+        "alternatives": [],
+        "postconditions": [
+          "Período e linhas dos territórios concluídos",
+          "Territórios sem dirigente"
+        ],
+        "rules": [
+          "CMP-05"
+        ]
+      }
+    ],
+    "data_model": {
+      "entities": [
+        {
+          "name": "Territory",
+          "attributes": [
+            "... existentes",
+            "assigned_user_id (projeção: nulo durante campanha ativa)"
+          ],
+          "invariants": [
+            "Sem mudança de esquema"
+          ]
+        },
+        {
+          "name": "Campaign",
+          "attributes": [
+            "id",
+            "congregation_id",
+            "name",
+            "created_at"
+          ],
+          "invariants": [
+            "(congregation_id, name) único"
+          ]
+        },
+        {
+          "name": "CampaignTerritory",
+          "attributes": [
+            "campaign_id",
+            "territory_id"
+          ],
+          "invariants": [
+            "CASCADE ao apagar campanha ou território"
+          ]
+        },
+        {
+          "name": "CampaignDesignation",
+          "attributes": [
+            "id",
+            "campaign_id",
+            "started_at",
+            "completed_at"
+          ],
+          "invariants": [
+            "No máximo um aberto por campanha (índice único parcial)"
+          ]
+        },
+        {
+          "name": "CampaignDesignationPublisher",
+          "attributes": [
+            "campaign_designation_id",
+            "user_id (sem FK)",
+            "user_name"
+          ],
+          "invariants": [
+            "Nome copiado na escrita, como nas tabelas de histórico"
+          ]
+        },
+        {
+          "name": "TerritoryAssignment",
+          "attributes": [
+            "... existentes",
+            "campaign_designation_id (nullable, FK CASCADE)"
+          ],
+          "invariants": [
+            "user_id/user_name obrigatórios quando campaign_designation_id é nulo (CHECK)",
+            "uq_territory_assignments_open continua: uma designação aberta por território, individual ou de campanha"
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "from": "Campaign",
+          "to": "Territory",
+          "cardinality": "N:N",
+          "invariants": [
+            "Território em no máximo uma campanha ativa (garantido pela designação aberta)"
+          ]
+        },
+        {
+          "from": "Campaign",
+          "to": "CampaignDesignation",
+          "cardinality": "1:N",
+          "invariants": [
+            "Um período aberto por vez"
+          ]
+        },
+        {
+          "from": "CampaignDesignation",
+          "to": "TerritoryAssignment",
+          "cardinality": "1:N",
+          "invariants": [
+            "Uma linha por território da campanha durante o período"
+          ]
+        }
+      ]
+    }
+  },
+  "approval": {
+    "by": "Dalistor (dono do projeto)",
+    "at": "2026-10-22",
+    "reference": "Pedido na sessão de 2026-10-22 ('Agora é possível criar uma campanha...') e respostas: Campanha substitui; Início e conclusão; Não sobreposição; Campanhas só leitura no app admin"
+  }
+}

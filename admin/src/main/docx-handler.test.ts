@@ -113,6 +113,28 @@ describe('buildS13TDocx and parseS13TDocx round-trip', () => {
     expect(parsedT2?.assignments.length).toBe(0)
   })
 
+  it('writes a campaign line in its slot as "Campanha: <nome>"', async () => {
+    const campaignLine: Assignment = {
+      id: 'asg-campaign',
+      campaign: { id: 'camp-1', name: 'Celebração' },
+      startedAt: dec2025
+    }
+    const buffer = await buildS13TDocx({
+      serviceYear: 2026,
+      territories: [
+        { territory: t1, assignments: [campaignLine, assignment('João', sept2025, nov2025)] }
+      ]
+    })
+
+    const parsed = await parseS13TDocx(buffer)
+    const parsedT1 = parsed.territories.find((t) => t.territoryNumberOrName === 'Setor 1')
+
+    expect(parsedT1?.assignments.map((line) => line.publisherName)).toEqual([
+      'João',
+      'Campanha: Celebração'
+    ])
+  })
+
   it('correctly parses multi-table docx with 20+ territories and multiline cells', async () => {
     // Generate a docx with 25 territories so it spans multiple prototype rows
     const manyTerritories: TerritoryAssignments[] = Array.from({ length: 25 }, (_, i) => ({

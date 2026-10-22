@@ -93,6 +93,7 @@ def test_territory_out_carries_the_boundary_and_the_blocks_inside_it():
         "rotation_days",
         "last_work",
         "assigned_since",
+        "campaign",
     }
     assert dto.blocks[0].number == 1
 

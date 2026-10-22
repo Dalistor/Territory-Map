@@ -22,7 +22,7 @@ export function isUpdateMandatory(currentCode: number, minVersionCode: number): 
 
 export function parseAppRelease(payload: Record<string, unknown>): AppRelease {
   return {
-    app: String(payload.app),
+    app: String(payload.app) as AppRelease['app'],
     versionCode: Number(payload.version_code),
     versionName: String(payload.version_name),
     minVersionCode: typeof payload.min_version_code === 'number' ? payload.min_version_code : 1,

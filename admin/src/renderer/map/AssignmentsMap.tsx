@@ -13,7 +13,7 @@ import { useMemo } from 'react'
 import { MapContainer, TileLayer, Polygon, Marker, useMapEvents } from 'react-leaflet'
 import { DivIcon, type LatLngTuple } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import type { Territory } from '../../shared/models'
+import { campaignHolderLabel, type Territory } from '../../shared/models'
 import type { LatLng } from '../../shared/geo'
 
 /** Brasília -- the fallback centre when there is nothing to draw yet. */
@@ -40,6 +40,12 @@ export interface AssignmentsMapProps {
   readonly initialView?: { center: LatLngTuple; zoom: number }
   /** Reports every pan/zoom so the caller can remember it (e.g. across a remount). */
   readonly onViewChange?: (view: { center: LatLngTuple; zoom: number }) => void
+  /**
+   * When given, the outlines show this selection (solid when in it, faint and
+   * dashed when not) instead of who holds each territory -- the campaign
+   * editor picks territories this way.
+   */
+  readonly selectedIds?: ReadonlySet<string>
 }
 
 /**
@@ -110,10 +116,16 @@ function escapeHtml(text: string): string {
  * assigned publisher's name (or "Sem dirigente"). Inline styles in the html,
  * the same way `numberIcon` does it in `TerritoryMap`.
  */
+function holderText(territory: Territory): string | undefined {
+  if (territory.campaign !== undefined) return campaignHolderLabel(territory.campaign)
+  return territory.assignedUser?.name
+}
+
 function assignmentIcon(territory: Territory): DivIcon {
+  const holder = holderText(territory)
   const leaderLine =
-    territory.assignedUser !== undefined
-      ? `<div style="font-size:12px;color:#263238;">${escapeHtml(territory.assignedUser.name)}</div>`
+    holder !== undefined
+      ? `<div style="font-size:12px;color:#263238;">${escapeHtml(holder)}</div>`
       : `<div style="font-size:12px;color:#78909c;font-style:italic;">Sem dirigente</div>`
   return new DivIcon({
     className: 'assignments-map-label',
@@ -146,7 +158,8 @@ export function AssignmentsMap({
   onTerritoryTap,
   fallbackCenter,
   initialView,
-  onViewChange
+  onViewChange,
+  selectedIds
 }: AssignmentsMapProps): React.JSX.Element {
   const center = useMemo(
     () => initialView?.center ?? initialCenter(territories, fallbackCenter),
@@ -166,15 +179,25 @@ export function AssignmentsMap({
           key={territory.id}
           positions={toLatLngTuples(territory.boundary)}
           pathOptions={
-            territory.assignedUser !== undefined
-              ? { color: ASSIGNED_COLOR, weight: 2, fill: true, fillOpacity: 0.08 }
-              : {
-                  color: UNASSIGNED_COLOR,
-                  weight: 2,
-                  fill: true,
-                  fillOpacity: 0.05,
-                  dashArray: '6 6'
-                }
+            selectedIds !== undefined
+              ? selectedIds.has(territory.id)
+                ? { color: ASSIGNED_COLOR, weight: 3, fill: true, fillOpacity: 0.2 }
+                : {
+                    color: UNASSIGNED_COLOR,
+                    weight: 1,
+                    fill: true,
+                    fillOpacity: 0.03,
+                    dashArray: '4 4'
+                  }
+              : holderText(territory) !== undefined
+                ? { color: ASSIGNED_COLOR, weight: 2, fill: true, fillOpacity: 0.08 }
+                : {
+                    color: UNASSIGNED_COLOR,
+                    weight: 2,
+                    fill: true,
+                    fillOpacity: 0.05,
+                    dashArray: '6 6'
+                  }
           }
           eventHandlers={{ click: () => onTerritoryTap?.(territory) }}
         />

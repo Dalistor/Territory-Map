@@ -60,6 +60,15 @@ describe('territoryLeaderLabel', () => {
   it('says nobody is in charge when there is no assignment', () => {
     expect(territoryLeaderLabel(makeTerritory())).toBe(NO_LEADER_LABEL);
   });
+
+  it('names the active campaign in the dirigente place, and paints it as held', () => {
+    const territory = makeTerritory({
+      campaign: { id: 'c1', name: 'Celebração' },
+    });
+
+    expect(territoryLeaderLabel(territory)).toBe('Campanha: Celebração');
+    expect(territoryColor(territory)).toBe(ASSIGNED_TERRITORY_COLOR);
+  });
 });
 
 describe('averageCentroid', () => {

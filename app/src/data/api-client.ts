@@ -18,6 +18,8 @@ import Config from 'react-native-config';
 import type {
   Block,
   BlockStatusOverride,
+  Campaign,
+  CampaignBrief,
   Congregation,
   LatLng,
   PublisherBrief,
@@ -86,6 +88,8 @@ export interface ApiClient {
   activate(accessCode: string): Promise<Session>;
   /** `GET /app/territories` -- the whole congregation map, with blocks nested inside. */
   listTerritories(token: string): Promise<Territory[]>;
+  /** `GET /app/campaigns` -- the active campaigns this publisher is designated to, with their territory ids. */
+  listCampaigns(token: string): Promise<Campaign[]>;
   /** `GET /app/worked-territories` -- territories this publisher has worked, most recent first. */
   listWorkedTerritories(token: string): Promise<WorkedTerritory[]>;
   /** `GET /app/work-history` -- detailed log of blocks this publisher has worked, most recent first. */
@@ -166,9 +170,24 @@ function parseBlock(json: Record<string, unknown>): Block {
   };
 }
 
+function parseCampaignBrief(json: Record<string, unknown>): CampaignBrief {
+  return { id: json.id as string, name: json.name as string };
+}
+
+function parseCampaign(json: Record<string, unknown>): Campaign {
+  return {
+    id: json.id as string,
+    name: json.name as string,
+    startedAt: new Date(json.started_at as string),
+    territoryIds: (json.territory_ids as string[] | undefined) ?? [],
+  };
+}
+
 function parseTerritory(json: Record<string, unknown>): Territory {
   const blocks = (json.blocks as Record<string, unknown>[] | undefined) ?? [];
   const assignedUser = json.assigned_user as Record<string, unknown> | null | undefined;
+  // Absent (a server from before campaigns) and `null` both mean "no campaign holds it".
+  const campaign = json.campaign as Record<string, unknown> | null | undefined;
   return {
     id: json.id as string,
     name: json.name as string,
@@ -176,6 +195,7 @@ function parseTerritory(json: Record<string, unknown>): Territory {
     blocks: blocks.map(parseBlock),
     assignedUser: assignedUser ? parsePublisherBrief(assignedUser) : undefined,
     rotationDays: parseOptionalNumber(json.rotation_days),
+    campaign: campaign ? parseCampaignBrief(campaign) : undefined,
   };
 }
 
@@ -263,6 +283,11 @@ export function createApiClient(options: CreateApiClientOptions = {}): ApiClient
         unknown
       >[];
       return json.map(parseTerritory);
+    },
+
+    async listCampaigns(token) {
+      const json = (await request('GET', '/app/campaigns', token)) as Record<string, unknown>[];
+      return json.map(parseCampaign);
     },
 
     async listWorkedTerritories(token) {

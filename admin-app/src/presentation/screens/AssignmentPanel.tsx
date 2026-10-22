@@ -19,7 +19,9 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import {
+  assignmentHolderLabel,
   assignmentIsOpen,
+  isCampaignAssignment,
   openAssignment as findOpenAssignment,
   sortAssignments,
 } from '../../domain/assignment';
@@ -121,6 +123,22 @@ function deleteConfirmMessage(publisherName: string): string {
 }
 
 /**
+ * Why the card offers no designating while a campaign holds the territory.
+ * The campaign is managed on the desktop only, and the server would refuse an
+ * individual designation anyway (409 `territory_in_campaign`) -- so the panel
+ * says where it is done instead of offering a button that cannot work. Marking
+ * a block is a different route and stays available, which the text says too,
+ * so the admin does not read the lock as covering the whole territory.
+ */
+export function campaignLockMessage(campaignName: string): string {
+  return (
+    `Este território está na campanha "${campaignName}". Para designá-lo a um ` +
+    'dirigente, conclua a campanha no admin do computador. Marcar quadras ' +
+    'continua disponível aqui.'
+  );
+}
+
+/**
  * `assignmentIsOpen`'s complement, narrowed: an assignment is open exactly
  * while it has no `completedAt`, so everything that is *not* open provably has
  * one. Same helper the desktop panel carries, for the same reason.
@@ -206,6 +224,10 @@ export function AssignmentPanel({
   // open" in the type is what keeps the row free of an impossible "and if
   // there is no completion date?" branch.
   const history = sortAssignments(assignments).filter(assignmentIsCompleted);
+  // The card's own open line is the freshest word on it; the territory's
+  // projection covers the moment before the card has loaded.
+  const activeCampaign =
+    (open !== null ? open.campaign : territory.campaign) ?? null;
 
   /**
    * Turns a rejected write into a message the admin can read, never into an
@@ -282,7 +304,11 @@ export function AssignmentPanel({
       'este publicador';
     confirmThen(
       'Designar território',
-      replaceConfirmMessage(territory.name, open.publisher.name, nextName),
+      replaceConfirmMessage(
+        territory.name,
+        assignmentHolderLabel(open),
+        nextName,
+      ),
       'Designar',
       designate,
     );
@@ -304,7 +330,7 @@ export function AssignmentPanel({
     }
     confirmThen(
       'Marcar como concluído',
-      completeConfirmMessage(territory.name, open.publisher.name),
+      completeConfirmMessage(territory.name, assignmentHolderLabel(open)),
       'Concluir',
       () => writeThenRefresh(() => api.completeAssignment(territory.id)),
     );
@@ -314,7 +340,7 @@ export function AssignmentPanel({
     (assignment: Assignment) => {
       confirmThen(
         'Apagar designação',
-        deleteConfirmMessage(assignment.publisher.name),
+        deleteConfirmMessage(assignmentHolderLabel(assignment)),
         'Apagar',
         () =>
           writeThenRefresh(() =>
@@ -327,7 +353,7 @@ export function AssignmentPanel({
 
   const openEditModal = useCallback((assignment: Assignment) => {
     setEditingAssignment(assignment);
-    setEditPublisherId(assignment.publisher.id);
+    setEditPublisherId(assignment.publisher?.id ?? null);
     setEditStartedAt(assignment.startedAt);
     setEditCompletedAt(assignment.completedAt ?? new Date());
     setEditReopen(false);
@@ -373,7 +399,6 @@ export function AssignmentPanel({
     writeThenRefresh,
   ]);
 
-
   // One element, two containers: scrolling or not is the only difference, and
   // branching on the wrapper keeps the card itself written once.
   const Container = scrollable ? ScrollView : View;
@@ -405,18 +430,24 @@ export function AssignmentPanel({
           ) : (
             <View style={styles.currentCard}>
               <Text style={styles.current}>
-                {open.publisher.name} — desde {formatDate(open.startedAt)}
+                {assignmentHolderLabel(open)} — desde{' '}
+                {formatDate(open.startedAt)}
               </Text>
-              <Pressable
-                accessibilityLabel={`Editar designação de ${open.publisher.name}`}
-                accessibilityRole="button"
-                accessibilityState={{ disabled: isWriting, busy: isWriting }}
-                disabled={isWriting}
-                onPress={() => openEditModal(open)}
-                style={styles.editButton}
-              >
-                <Text style={styles.editButtonText}>Editar</Text>
-              </Pressable>
+              {/* A campaign line is the campaign's, managed on the desktop. */}
+              {!isCampaignAssignment(open) && (
+                <Pressable
+                  accessibilityLabel={`Editar designação de ${assignmentHolderLabel(
+                    open,
+                  )}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: isWriting, busy: isWriting }}
+                  disabled={isWriting}
+                  onPress={() => openEditModal(open)}
+                  style={styles.editButton}
+                >
+                  <Text style={styles.editButtonText}>Editar</Text>
+                </Pressable>
+              )}
             </View>
           )}
 
@@ -433,71 +464,91 @@ export function AssignmentPanel({
                 testID="assignment-history-row"
               >
                 <Text style={styles.rowText}>
-                  {assignment.publisher.name} —{' '}
+                  {assignmentHolderLabel(assignment)} —{' '}
                   {formatDate(assignment.startedAt)} a{' '}
                   {formatDate(assignment.completedAt)}
                 </Text>
-                <View style={styles.rowActions}>
-                  <Pressable
-                    accessibilityLabel={`Editar designação de ${assignment.publisher.name}`}
-                    accessibilityRole="button"
-                    accessibilityState={{ disabled: isWriting, busy: isWriting }}
-                    disabled={isWriting}
-                    onPress={() => openEditModal(assignment)}
-                    style={styles.editButton}
-                  >
-                    <Text style={styles.editButtonText}>Editar</Text>
-                  </Pressable>
-                  <Pressable
-                    accessibilityLabel={`Apagar designação de ${assignment.publisher.name}`}
-                    accessibilityRole="button"
-                    accessibilityState={{ disabled: isWriting, busy: isWriting }}
-                    disabled={isWriting}
-                    onPress={() => requestDelete(assignment)}
-                    style={styles.deleteButton}
-                  >
-                    <Text style={styles.deleteButtonText}>Apagar</Text>
-                  </Pressable>
-                </View>
+                {!isCampaignAssignment(assignment) && (
+                  <View style={styles.rowActions}>
+                    <Pressable
+                      accessibilityLabel={`Editar designação de ${assignmentHolderLabel(
+                        assignment,
+                      )}`}
+                      accessibilityRole="button"
+                      accessibilityState={{
+                        disabled: isWriting,
+                        busy: isWriting,
+                      }}
+                      disabled={isWriting}
+                      onPress={() => openEditModal(assignment)}
+                      style={styles.editButton}
+                    >
+                      <Text style={styles.editButtonText}>Editar</Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityLabel={`Apagar designação de ${assignmentHolderLabel(
+                        assignment,
+                      )}`}
+                      accessibilityRole="button"
+                      accessibilityState={{
+                        disabled: isWriting,
+                        busy: isWriting,
+                      }}
+                      disabled={isWriting}
+                      onPress={() => requestDelete(assignment)}
+                      style={styles.deleteButton}
+                    >
+                      <Text style={styles.deleteButtonText}>Apagar</Text>
+                    </Pressable>
+                  </View>
+                )}
               </View>
             ))
           )}
 
-          <Text style={styles.heading}>Designar a…</Text>
-          <PublisherPicker
-            publishers={publishers}
-            selectedPublisherId={selectedPublisherId}
-            onSelect={setSelectedPublisherId}
-            optionTestIdPrefix="designate-"
-          />
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{
-              disabled: selectedPublisherId === null || isWriting,
-              busy: isWriting,
-            }}
-            disabled={selectedPublisherId === null || isWriting}
-            onPress={requestDesignate}
-            style={styles.button}
-          >
-            <Text style={styles.buttonText}>
-              {isWriting ? 'Atualizando…' : 'Designar'}
+          {activeCampaign !== null ? (
+            <Text accessible style={styles.campaignNotice}>
+              {campaignLockMessage(activeCampaign.name)}
             </Text>
-          </Pressable>
+          ) : (
+            <>
+              <Text style={styles.heading}>Designar a…</Text>
+              <PublisherPicker
+                publishers={publishers}
+                selectedPublisherId={selectedPublisherId}
+                onSelect={setSelectedPublisherId}
+                optionTestIdPrefix="designate-"
+              />
 
-          {open !== null && (
-            <Pressable
-              accessibilityRole="button"
-              disabled={isWriting}
-              accessibilityState={{ disabled: isWriting, busy: isWriting }}
-              onPress={requestComplete}
-              style={styles.button}
-            >
-              <Text style={styles.buttonText}>
-                {isWriting ? 'Atualizando…' : 'Marcar como concluído'}
-              </Text>
-            </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{
+                  disabled: selectedPublisherId === null || isWriting,
+                  busy: isWriting,
+                }}
+                disabled={selectedPublisherId === null || isWriting}
+                onPress={requestDesignate}
+                style={styles.button}
+              >
+                <Text style={styles.buttonText}>
+                  {isWriting ? 'Atualizando…' : 'Designar'}
+                </Text>
+              </Pressable>
+
+              {open !== null && (
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isWriting}
+                  accessibilityState={{ disabled: isWriting, busy: isWriting }}
+                  onPress={requestComplete}
+                  style={styles.button}
+                >
+                  <Text style={styles.buttonText}>
+                    {isWriting ? 'Atualizando…' : 'Marcar como concluído'}
+                  </Text>
+                </Pressable>
+              )}
+            </>
           )}
         </>
       )}
@@ -587,7 +638,8 @@ export function AssignmentPanel({
                       onPress={() => setEditReopen(!editReopen)}
                     >
                       <Text style={styles.reopenCheckboxText}>
-                        {editReopen ? '☑' : '☐'} Reabrir designação (tornar em andamento)
+                        {editReopen ? '☑' : '☐'} Reabrir designação (tornar em
+                        andamento)
                       </Text>
                     </Pressable>
                   )}
@@ -646,6 +698,15 @@ const styles = StyleSheet.create({
   },
   muted: {
     color: colors.textSecondary,
+  },
+  campaignNotice: {
+    backgroundColor: colors.warningSurface,
+    borderColor: colors.warningBorder,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    color: colors.warningText,
+    marginTop: spacing.sm,
+    padding: spacing.sm,
   },
   current: {
     color: colors.textPrimary,

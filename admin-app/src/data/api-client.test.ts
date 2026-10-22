@@ -362,6 +362,7 @@ describe('createApiClient', () => {
           id: 'assign-1',
           territoryId: 'terr-1',
           publisher: { id: 'user-1', name: 'Ana' },
+          campaign: null,
           startedAt: new Date('2026-08-01T12:00:00Z'),
           completedAt: null,
         },
@@ -369,10 +370,118 @@ describe('createApiClient', () => {
           id: 'assign-2',
           territoryId: 'terr-1',
           publisher: { id: 'user-2', name: 'Bruno' },
+          campaign: null,
           startedAt: new Date('2026-04-01T12:00:00Z'),
           completedAt: new Date('2026-07-31T12:00:00Z'),
         },
       ]);
+    });
+  });
+
+  describe('campaigns (read only)', () => {
+    const CAMPAIGN_JSON = {
+      id: 'camp-1',
+      name: 'Celebração',
+      created_at: '2026-10-01T12:00:00Z',
+      territories: [{ id: 'terr-1', name: 'Centro - N5' }],
+      current_designation: {
+        id: 'cd-2',
+        started_at: '2026-10-10T12:00:00Z',
+        completed_at: null,
+        publishers: [{ id: 'user-1', name: 'Ana' }],
+      },
+      designations: [
+        {
+          id: 'cd-2',
+          started_at: '2026-10-10T12:00:00Z',
+          completed_at: null,
+          publishers: [{ id: 'user-1', name: 'Ana' }],
+        },
+        {
+          id: 'cd-1',
+          started_at: '2026-09-01T12:00:00Z',
+          completed_at: '2026-09-20T12:00:00Z',
+          publishers: [],
+        },
+      ],
+    };
+
+    it('GETs the campaign list and parses territories, the open period and the history', async () => {
+      const { client, fetchImpl } = makeClient(jsonResponse(200, [CAMPAIGN_JSON]));
+
+      const [campaign] = await client.listCampaigns();
+
+      const [url, init] = fetchImpl.mock.calls[0];
+      expect(url).toBe(`${BASE_URL}/admin/campaigns`);
+      expect(init.method).toBe('GET');
+      expect(campaign).toEqual({
+        id: 'camp-1',
+        name: 'Celebração',
+        createdAt: new Date('2026-10-01T12:00:00Z'),
+        territories: [{ id: 'terr-1', name: 'Centro - N5' }],
+        currentDesignation: {
+          id: 'cd-2',
+          startedAt: new Date('2026-10-10T12:00:00Z'),
+          completedAt: null,
+          publishers: [{ id: 'user-1', name: 'Ana' }],
+        },
+        designations: [
+          {
+            id: 'cd-2',
+            startedAt: new Date('2026-10-10T12:00:00Z'),
+            completedAt: null,
+            publishers: [{ id: 'user-1', name: 'Ana' }],
+          },
+          {
+            id: 'cd-1',
+            startedAt: new Date('2026-09-01T12:00:00Z'),
+            completedAt: new Date('2026-09-20T12:00:00Z'),
+            publishers: [],
+          },
+        ],
+      });
+    });
+
+    it('GETs one campaign by id, reading an inactive one as currentDesignation null', async () => {
+      const { client, fetchImpl } = makeClient(
+        jsonResponse(200, { ...CAMPAIGN_JSON, current_designation: null }),
+      );
+
+      const campaign = await client.getCampaign('camp-1');
+
+      expect(fetchImpl.mock.calls[0][0]).toBe(`${BASE_URL}/admin/campaigns/camp-1`);
+      expect(campaign.currentDesignation).toBeNull();
+    });
+
+    it('reads a campaign line of the card with no publisher, and the campaign on a territory', async () => {
+      const { client } = makeClient(
+        jsonResponse(200, [
+          {
+            id: 'assign-c',
+            user: null,
+            campaign: { id: 'camp-1', name: 'Celebração' },
+            started_at: '2026-10-10T12:00:00Z',
+            completed_at: null,
+          },
+        ]),
+        jsonResponse(200, {
+          id: 'terr-1',
+          name: 'Centro - N5',
+          boundary: [],
+          assigned_user: null,
+          rotation_days: null,
+          campaign: { id: 'camp-1', name: 'Celebração' },
+          blocks: [],
+        }),
+      );
+
+      const [line] = await client.listAssignments('terr-1');
+      const territory = await client.getTerritory('terr-1');
+
+      expect(line.publisher).toBeNull();
+      expect(line.campaign).toEqual({ id: 'camp-1', name: 'Celebração' });
+      expect(territory.assignedPublisher).toBeNull();
+      expect(territory.campaign).toEqual({ id: 'camp-1', name: 'Celebração' });
     });
   });
 
@@ -404,6 +513,7 @@ describe('createApiClient', () => {
             territoryId: 'terr-1',
             territory: { id: 'terr-1', name: 'Centro - N1' },
             publisher: { id: 'user-gone', name: 'Irmão Costa' },
+            campaign: null,
             startedAt: new Date('2026-08-01T12:00:00Z'),
             completedAt: null,
           },
@@ -424,6 +534,7 @@ describe('createApiClient', () => {
             territoryId: 'terr-1',
             territory: { id: 'terr-1', name: 'Centro - N1' },
             publisher: { id: 'user-gone', name: 'Irmão Costa' },
+            campaign: null,
             startedAt: new Date('2026-08-01T12:00:00Z'),
             completedAt: null,
           },
@@ -458,6 +569,7 @@ describe('createApiClient', () => {
             territoryId: 'terr-2',
             territory: { id: 'terr-2', name: 'Jardim - N2' },
             publisher: { id: 'user-gone', name: 'Irmão Costa' },
+            campaign: null,
             startedAt: new Date('2026-08-01T12:00:00Z'),
             completedAt: null,
           },

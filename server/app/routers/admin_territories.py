@@ -31,6 +31,7 @@ from app.core.db import get_session
 from app.core.deps import current_congregation
 from app.core.geo import LatLng
 from app.models.block import Block
+from app.models.campaign import Campaign
 from app.models.congregation import Congregation
 from app.models.territory import Territory
 from app.repositories.block import BlockRepository
@@ -40,6 +41,7 @@ from app.repositories.territory_assignment import TerritoryAssignmentRepository
 from app.repositories.user import UserRepository
 from app.routers.auth import utc_now
 from app.schemas.block import BlockOut
+from app.schemas.campaign import CampaignBriefOut
 from app.schemas.geo import LatLngIn, LatLngOut
 from app.schemas.territory import LastWorkOut, TerritoryCreateIn, TerritoryOut, TerritoryPatchIn
 from app.schemas.user import UserBriefOut
@@ -118,6 +120,7 @@ def territory_out(
     blocks: list[BlockOut] | None = None,
     last_work: tuple[UUID, str, datetime] | None = None,
     assigned_since: datetime | None = None,
+    campaign: Campaign | None = None,
 ) -> TerritoryOut:
     """A territory as the admin reads it, with its blocks only where they are asked for.
 
@@ -128,6 +131,9 @@ def territory_out(
     `rotation_days` travels in both shapes, though: it is one number, and it is what
     decides the colour of every block on the map -- withholding it from the listing
     would make the screen that draws the map ask for each territory one by one.
+
+    `campaign` is the active campaign holding the territory, read alongside
+    `assigned_since` from the open rows of the cards.
     """
     return TerritoryOut(
         id=territory.id,
@@ -147,6 +153,7 @@ def territory_out(
             else None
         ),
         assigned_since=assigned_since,
+        campaign=CampaignBriefOut(id=campaign.id, name=campaign.name) if campaign else None,
     )
 
 
@@ -187,12 +194,14 @@ def list_territories(
     """Every territory of the caller's congregation, and nobody else's."""
     latest_work = territories.latest_work_by_territory(congregation.id)
     assigned_since = assignments.open_started_by_territory(congregation.id)
+    held_by = assignments.open_campaign_by_territory(congregation.id)
     return [
         territory_out(
             territories,
             item,
             last_work=latest_work.get(item.id),
             assigned_since=assigned_since.get(item.id),
+            campaign=held_by.get(item.id),
         )
         for item in territories.list(congregation.id)
     ]
@@ -220,6 +229,7 @@ def get_territory(
         [block_out(blocks, block) for block in drawn],
         last_work=latest_work.get(territory.id),
         assigned_since=assignments.open_started_by_territory(congregation.id).get(territory.id),
+        campaign=assignments.open_campaign_by_territory(congregation.id).get(territory.id),
     )
 
 

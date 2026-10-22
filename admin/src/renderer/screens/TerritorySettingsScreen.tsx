@@ -1,7 +1,7 @@
 // The per-territory settings page (spec 0009, Task 09): the name, the
 // rotation, a read-only summary and the delete action.
 import { Fragment, useMemo, useRef, useState } from 'react'
-import type { Territory } from '../../shared/models'
+import { campaignHolderLabel, type Territory } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
 import type { BlockColorCategory } from '../map/blockColor'
 import { DEFAULT_ROTATION_DAYS, blockColorCategory } from '../map/blockColor'
@@ -242,7 +242,11 @@ export function TerritorySettingsScreen({
             <dt>Quadras nunca trabalhadas</dt>
             <dd data-testid="summary-never-count">{summary.never}</dd>
             <dt>Designado a</dt>
-            <dd data-testid="summary-assigned-user">{current.assignedUser?.name ?? 'Nenhum'}</dd>
+            <dd data-testid="summary-assigned-user">
+              {current.campaign !== undefined
+                ? campaignHolderLabel(current.campaign)
+                : (current.assignedUser?.name ?? 'Nenhum')}
+            </dd>
             <dt>Última visita registrada</dt>
             <dd data-testid="summary-last-visit">
               {summary.lastVisit === null ? 'Nunca trabalhada' : formatDate(summary.lastVisit)}

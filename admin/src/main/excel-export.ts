@@ -4,7 +4,12 @@
 // which is what keeps this file testable without a window or a temp file.
 
 import ExcelJS from 'exceljs'
-import { compareTerritoriesByNumber, type Assignment, type Territory } from '../shared/models'
+import {
+  assignmentHolderName,
+  compareTerritoriesByNumber,
+  type Assignment,
+  type Territory
+} from '../shared/models'
 
 /** A territory together with its whole assignment history. */
 export interface TerritoryAssignments {
@@ -140,7 +145,7 @@ export function buildAssignmentsWorkbook(territories: TerritoryAssignments[]): E
     // time, so it is reversed here rather than at the call site.
     for (const assignment of [...assignments].reverse()) {
       const row = sheet.addRow([
-        assignment.publisher.name,
+        assignmentHolderName(assignment),
         assignment.startedAt,
         assignment.completedAt ?? null
       ])
@@ -151,6 +156,11 @@ export function buildAssignmentsWorkbook(territories: TerritoryAssignments[]): E
   }
 
   return workbook
+}
+
+/** The name written in a dirigente slot of the S-13-T: empty when the slot is unused. */
+function holderOf(assignment: Assignment | undefined): string {
+  return assignment === undefined ? '' : assignmentHolderName(assignment)
 }
 
 export interface S13TExportInput {
@@ -312,13 +322,13 @@ export function buildS13TWorkbook(input: S13TExportInput): ExcelJS.Workbook {
     sheet.addRow([
       territory.name,
       lastCompletedDate,
-      yearAssignments[0]?.publisher.name ?? '',
+      holderOf(yearAssignments[0]),
       '',
-      yearAssignments[1]?.publisher.name ?? '',
+      holderOf(yearAssignments[1]),
       '',
-      yearAssignments[2]?.publisher.name ?? '',
+      holderOf(yearAssignments[2]),
       '',
-      yearAssignments[3]?.publisher.name ?? '',
+      holderOf(yearAssignments[3]),
       ''
     ])
 

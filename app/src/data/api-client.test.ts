@@ -165,6 +165,27 @@ describe('createApiClient', () => {
       expect(territory.blocks[0].lastWorkedAt).toBeUndefined();
     });
 
+    it('parses the campaign holding a territory, and a territory with none (null or absent) as undefined', async () => {
+      const { client } = makeClient(
+        jsonResponse(200, [
+          {
+            ...TERRITORY_JSON,
+            assigned_user: null,
+            campaign: { id: 'campaign-1', name: 'Campanha de Celebração' },
+          },
+          { ...TERRITORY_JSON, id: 'terr-2', campaign: null },
+          { ...TERRITORY_JSON, id: 'terr-3' },
+        ]),
+      );
+
+      const [inCampaign, noCampaign, olderPayload] = await client.listTerritories('app-token');
+
+      expect(inCampaign.campaign).toEqual({ id: 'campaign-1', name: 'Campanha de Celebração' });
+      expect(inCampaign.assignedUser).toBeUndefined();
+      expect(noCampaign.campaign).toBeUndefined();
+      expect(olderPayload.campaign).toBeUndefined();
+    });
+
     it('parses the territory rotation from rotation_days', async () => {
       const { client } = makeClient(
         jsonResponse(200, [{ ...TERRITORY_JSON, rotation_days: 60 }]),
@@ -221,6 +242,37 @@ describe('createApiClient', () => {
       const [territory] = await client.listTerritories('app-token');
 
       expect(territory.blocks[0].statusOverride).toBeUndefined();
+    });
+  });
+
+  describe('listCampaigns', () => {
+    it('GETs /app/campaigns with Authorization: Bearer <token> and returns the parsed list', async () => {
+      const { client, fetchImpl } = makeClient(
+        jsonResponse(200, [
+          {
+            id: 'campaign-1',
+            name: 'Campanha de Celebração',
+            started_at: '2026-10-01T12:00:00Z',
+            territory_ids: ['terr-3', 'terr-5'],
+          },
+        ]),
+      );
+
+      const campaigns = await client.listCampaigns('app-token');
+
+      const [url, init] = fetchImpl.mock.calls[0];
+      expect(url).toBe(`${BASE_URL}/app/campaigns`);
+      expect(init.method).toBe('GET');
+      expect(init.headers.Authorization).toBe('Bearer app-token');
+      expect(init.headers['X-App-Key']).toBe(APP_KEY);
+      expect(campaigns).toEqual([
+        {
+          id: 'campaign-1',
+          name: 'Campanha de Celebração',
+          startedAt: new Date('2026-10-01T12:00:00Z'),
+          territoryIds: ['terr-3', 'terr-5'],
+        },
+      ]);
     });
   });
 

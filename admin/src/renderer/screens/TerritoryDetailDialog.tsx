@@ -6,10 +6,20 @@
 // so the most common corrections never depend on which tab is open. The tabs
 // below are the detail: "Quadras" (marking in the leader's name), "Designações"
 // (designate and the history) and "Mapa".
+//
+// A territory in an active campaign has no dirigente: the header names the
+// campaign instead, and nothing here designates, edits, completes or deletes
+// the campaign's line -- that is the Campanhas page's job, because the line
+// belongs to every territory of the campaign at once.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { LatLngTuple } from 'leaflet'
 import type { Assignment, Publisher, Territory } from '../../shared/models'
-import { assignmentIsOpen } from '../../shared/models'
+import {
+  assignmentHolderName,
+  assignmentIsCampaign,
+  assignmentIsOpen,
+  campaignHolderLabel
+} from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
 import { blockColorCategory, type BlockColorCategory } from '../map/blockColor'
 import { TerritoryMap } from '../map/TerritoryMap'
@@ -61,7 +71,7 @@ function replaceConfirmMessage(
 
 function deleteAssignmentConfirmMessage(assignment: Assignment): string {
   return (
-    `Apagar a designação de ${assignment.publisher.name}?\n\n` +
+    `Apagar a designação de ${assignmentHolderName(assignment)}?\n\n` +
     'O registro sai do histórico como se não tivesse existido. Não há como desfazer.'
   )
 }
@@ -181,9 +191,16 @@ export function TerritoryDetailDialog({
   const activePublishers = publishers.filter((publisher) => publisher.isActive)
   const openAssignment = assignments.find(assignmentIsOpen)
   const history = assignments.filter(assignmentIsCompleted)
+  // The individual designation in force, if any. A campaign's open line is
+  // not one: it cannot be edited or completed from here.
+  const openIndividual =
+    openAssignment !== undefined && !assignmentIsCampaign(openAssignment)
+      ? openAssignment
+      : undefined
+  const activeCampaign = openAssignment?.campaign ?? territory.campaign
 
   const designate = (): Promise<void> => {
-    if (selectedPublisherId === '') return Promise.resolve()
+    if (selectedPublisherId === '' || activeCampaign !== undefined) return Promise.resolve()
     const publisherId = selectedPublisherId
     const run = async (): Promise<void> => {
       await window.api.assignments.designate(territoryId, publisherId)
@@ -192,19 +209,19 @@ export function TerritoryDetailDialog({
     }
     // Only replacing somebody is destructive enough to ask about: the current
     // assignment gets closed with today's date. A free territory loses nothing.
-    if (openAssignment === undefined) return runAction(run)
+    if (openIndividual === undefined) return runAction(run)
     const nextName =
       publishers.find((publisher) => publisher.id === publisherId)?.name ?? 'este publicador'
     return runConfirmed(
-      replaceConfirmMessage(territory, openAssignment.publisher.name, nextName),
+      replaceConfirmMessage(territory, assignmentHolderName(openIndividual), nextName),
       run
     )
   }
 
   const complete = (): Promise<void> => {
-    if (openAssignment === undefined) return Promise.resolve()
+    if (openIndividual === undefined) return Promise.resolve()
     return runConfirmed(
-      completeConfirmMessage(territory, openAssignment.publisher.name),
+      completeConfirmMessage(territory, assignmentHolderName(openIndividual)),
       async () => {
         await window.api.assignments.complete(territoryId)
         await reloadAfterAction()
@@ -220,7 +237,7 @@ export function TerritoryDetailDialog({
 
   function openEdit(assignment: Assignment): void {
     setEditing(assignment)
-    setEditPublisherId(assignment.publisher.id)
+    setEditPublisherId(assignment.publisher?.id ?? '')
     setEditStartedAt(toDateInputValue(assignment.startedAt))
     setEditCompletedAt(assignment.completedAt ? toDateInputValue(assignment.completedAt) : '')
     setEditReopen(false)
@@ -264,16 +281,14 @@ export function TerritoryDetailDialog({
     },
     { recent: 0, overdue: 0, never: 0 }
   )
-  const leader = openAssignment?.publisher ?? territory.assignedUser
+  const leader = openIndividual?.publisher ?? territory.assignedUser
   const since = openAssignment?.startedAt ?? territory.assignedSince
   // A publisher who left the active list still has to be offered when editing
   // a record that names them, or the select would silently show someone else.
+  const editingPublisher = editing?.publisher
   const editOptions =
-    editing !== null && !activePublishers.some((p) => p.id === editing.publisher.id)
-      ? [
-          ...activePublishers,
-          { id: editing.publisher.id, name: editing.publisher.name, isActive: false }
-        ]
+    editingPublisher !== undefined && !activePublishers.some((p) => p.id === editingPublisher.id)
+      ? [...activePublishers, { ...editingPublisher, isActive: false }]
       : activePublishers
 
   return (
@@ -284,7 +299,7 @@ export function TerritoryDetailDialog({
       className="territory-dialog"
       closeLabel="Fechar detalhes"
       titleAside={
-        leader === undefined ? (
+        leader === undefined && activeCampaign === undefined ? (
           <span className="status-badge status-idle">Livre</span>
         ) : (
           <span className="status-badge status-working">Em andamento</span>
@@ -295,7 +310,9 @@ export function TerritoryDetailDialog({
       <section className="territory-dialog-summary" aria-label="Resumo do território">
         <div className="summary-item summary-leader">
           <span className="summary-label">Dirigente atual</span>
-          {leader === undefined ? (
+          {activeCampaign !== undefined ? (
+            <span className="summary-value">{campaignHolderLabel(activeCampaign)}</span>
+          ) : leader === undefined ? (
             <span className="summary-value cell-muted">Sem dirigente</span>
           ) : (
             <span className="summary-value">
@@ -306,14 +323,16 @@ export function TerritoryDetailDialog({
             </span>
           )}
           <div className="summary-actions">
-            {!hasLoaded ? null : openAssignment !== undefined ? (
+            {!hasLoaded ? null : activeCampaign !== undefined ? (
+              <span className="cell-sub">Gerida na página Campanhas</span>
+            ) : openIndividual !== undefined ? (
               <>
                 <button
                   type="button"
                   className="button-small"
                   disabled={isActionPending}
-                  aria-label={`Editar designação de ${openAssignment.publisher.name}`}
-                  onClick={() => openEdit(openAssignment)}
+                  aria-label={`Editar designação de ${assignmentHolderName(openIndividual)}`}
+                  onClick={() => openEdit(openIndividual)}
                 >
                   <Icon name="pencil" />
                   Editar
@@ -411,24 +430,33 @@ export function TerritoryDetailDialog({
           <div className="territory-assignments">
             <section className="designate-card" aria-labelledby="designate-title">
               <h3 id="designate-title">
-                {openAssignment === undefined ? 'Designar a um publicador' : 'Trocar o dirigente'}
+                {openIndividual === undefined ? 'Designar a um publicador' : 'Trocar o dirigente'}
               </h3>
-              {openAssignment !== undefined && (
-                <p className="field-hint">
-                  A designação atual, de {openAssignment.publisher.name}, será encerrada com a data
-                  de hoje.
+              {activeCampaign !== undefined ? (
+                <p className="field-hint" id="designate-campaign-hint">
+                  Este território está na campanha &quot;{activeCampaign.name}&quot;. Para
+                  designá-lo a um publicador, conclua a campanha ou tire o território dela na página
+                  Campanhas.
                 </p>
+              ) : (
+                openIndividual !== undefined && (
+                  <p className="field-hint">
+                    A designação atual, de {assignmentHolderName(openIndividual)}, será encerrada
+                    com a data de hoje.
+                  </p>
+                )
               )}
               <div className="designate-row">
                 <label className="field">
                   <span>Publicador</span>
                   <select
                     value={selectedPublisherId}
+                    disabled={activeCampaign !== undefined}
                     onChange={(event) => setSelectedPublisherId(event.target.value)}
                   >
                     <option value="">Selecione…</option>
                     {activePublishers
-                      .filter((publisher) => publisher.id !== openAssignment?.publisher.id)
+                      .filter((publisher) => publisher.id !== openIndividual?.publisher?.id)
                       .map((publisher) => (
                         <option key={publisher.id} value={publisher.id}>
                           {publisher.name}
@@ -439,7 +467,12 @@ export function TerritoryDetailDialog({
                 <button
                   type="button"
                   className="button-primary"
-                  disabled={selectedPublisherId === '' || isActionPending}
+                  disabled={
+                    selectedPublisherId === '' || isActionPending || activeCampaign !== undefined
+                  }
+                  aria-describedby={
+                    activeCampaign !== undefined ? 'designate-campaign-hint' : undefined
+                  }
                   onClick={() => void designate()}
                 >
                   {isActionPending ? 'Atualizando…' : 'Designar'}
@@ -470,9 +503,10 @@ export function TerritoryDetailDialog({
                         {[...(openAssignment ? [openAssignment] : []), ...history].map(
                           (assignment) => {
                             const end = assignment.completedAt ?? today
+                            const holder = assignmentHolderName(assignment)
                             return (
                               <tr key={assignment.id}>
-                                <td>{assignment.publisher.name}</td>
+                                <td>{holder}</td>
                                 <td>{formatDate(assignment.startedAt)}</td>
                                 <td>
                                   {assignment.completedAt === undefined ? (
@@ -485,28 +519,32 @@ export function TerritoryDetailDialog({
                                 </td>
                                 <td>{daysSince(assignment.startedAt, end)} dias</td>
                                 <td className="cell-actions">
-                                  <div className="row-actions">
-                                    <button
-                                      type="button"
-                                      className="button-small button-quiet"
-                                      disabled={isActionPending}
-                                      aria-label={`Editar designação de ${assignment.publisher.name}`}
-                                      onClick={() => openEdit(assignment)}
-                                    >
-                                      <Icon name="pencil" />
-                                      Editar
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="button-small button-quiet button-danger"
-                                      disabled={isActionPending}
-                                      aria-label={`Apagar designação de ${assignment.publisher.name}`}
-                                      onClick={() => void deleteAssignment(assignment)}
-                                    >
-                                      <Icon name="trash" />
-                                      Apagar
-                                    </button>
-                                  </div>
+                                  {assignmentIsCampaign(assignment) ? (
+                                    <span className="cell-sub">Pela campanha</span>
+                                  ) : (
+                                    <div className="row-actions">
+                                      <button
+                                        type="button"
+                                        className="button-small button-quiet"
+                                        disabled={isActionPending}
+                                        aria-label={`Editar designação de ${holder}`}
+                                        onClick={() => openEdit(assignment)}
+                                      >
+                                        <Icon name="pencil" />
+                                        Editar
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="button-small button-quiet button-danger"
+                                        disabled={isActionPending}
+                                        aria-label={`Apagar designação de ${holder}`}
+                                        onClick={() => void deleteAssignment(assignment)}
+                                      >
+                                        <Icon name="trash" />
+                                        Apagar
+                                      </button>
+                                    </div>
+                                  )}
                                 </td>
                               </tr>
                             )

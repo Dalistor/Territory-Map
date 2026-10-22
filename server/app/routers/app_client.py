@@ -7,6 +7,8 @@ verb. Unmarking, redrawing, renumbering and registering people all live behind
 `current_congregation` in the `/admin/*` routers, which this token cannot satisfy.
 `GET /app/worked-territories` is still the read verb, just a different projection of
 the same log -- the dashboard's "where have I been" next to the map's "where can I go".
+`GET /app/campaigns` is one more read: the active campaigns the publisher is in, by the
+ids of territories the map already carries.
 
 Every route takes the congregation from `current_app_user`, never from the request:
 the publisher's row decides which map they see, so there is no path or body here in
@@ -23,15 +25,19 @@ from sqlalchemy.orm import Session
 from app.core.db import get_session
 from app.core.deps import current_app_user
 from app.models.block import Block
+from app.models.campaign import Campaign
 from app.models.territory import Territory
 from app.models.user import User
 from app.repositories.block import BlockRepository
 from app.repositories.block_work_log import BlockWorkLogRepository
+from app.repositories.campaign import CampaignRepository
 from app.repositories.territory import TerritoryRepository
+from app.repositories.territory_assignment import TerritoryAssignmentRepository
 from app.repositories.user import UserRepository
 from app.routers.auth import utc_now
 from app.routers.history_dto import with_user
 from app.schemas.block import BlockOut
+from app.schemas.campaign import AppCampaignOut, CampaignBriefOut
 from app.schemas.geo import LatLngOut
 from app.schemas.territory import LastWorkOut, TerritoryOut
 from app.schemas.user import UserBriefOut
@@ -41,7 +47,9 @@ from app.schemas.work_log import (
     WorkedTerritoryOut,
     WorkLogOut,
 )
+from app.services.assignment import AssignmentService
 from app.services.block import BlockService
+from app.services.campaign import CampaignService
 from app.services.territory import TerritoryService
 from app.services.work_log import WorkLogService
 
@@ -68,6 +76,28 @@ def get_work_log_service(session: DbSession) -> WorkLogService:
         work_logs=BlockWorkLogRepository(session),
         blocks=BlockRepository(session),
         users=UserRepository(session),
+        assignments=TerritoryAssignmentRepository(session),
+        now_provider=utc_now,
+    )
+
+
+def get_assignment_service(session: DbSession) -> AssignmentService:
+    """Read-only use here: which active campaign holds each territory of the map."""
+    return AssignmentService(
+        assignments=TerritoryAssignmentRepository(session),
+        territories=TerritoryRepository(session),
+        users=UserRepository(session),
+        now_provider=utc_now,
+    )
+
+
+def get_campaign_service(session: DbSession) -> CampaignService:
+    """Read-only use here: the active campaigns of the publisher holding the token."""
+    return CampaignService(
+        campaigns=CampaignRepository(session),
+        assignments=TerritoryAssignmentRepository(session),
+        territories=TerritoryRepository(session),
+        users=UserRepository(session),
         now_provider=utc_now,
     )
 
@@ -76,6 +106,8 @@ AppUser = Annotated[User, Depends(current_app_user)]
 Territories = Annotated[TerritoryService, Depends(get_territory_service)]
 Blocks = Annotated[BlockService, Depends(get_block_service)]
 WorkLogs = Annotated[WorkLogService, Depends(get_work_log_service)]
+Assignments = Annotated[AssignmentService, Depends(get_assignment_service)]
+Campaigns = Annotated[CampaignService, Depends(get_campaign_service)]
 
 
 def _block_out(block: Block, blocks: BlockService) -> BlockOut:
@@ -106,6 +138,7 @@ def _territory_out(
     territories: TerritoryService,
     blocks: BlockService,
     last_work: tuple[UUID, str, datetime] | None = None,
+    campaign: Campaign | None = None,
 ) -> TerritoryOut:
     """One territory with the blocks drawn inside it, ready to be cached offline.
 
@@ -113,6 +146,9 @@ def _territory_out(
     decides the colour of every block on its own, from the cache, with no server to
     ask -- and the threshold that turns a block overdue is per territory. Null means
     the app falls back to its own default cycle.
+
+    `campaign` names the active campaign holding the territory, if any, so the phone
+    can tell a territory it may mark through a campaign from one nobody holds.
     """
     return TerritoryOut(
         id=territory.id,
@@ -133,6 +169,7 @@ def _territory_out(
             if last_work
             else None
         ),
+        campaign=CampaignBriefOut(id=campaign.id, name=campaign.name) if campaign else None,
     )
 
 
@@ -141,6 +178,7 @@ def list_territories(
     user: AppUser,
     territories: Territories,
     blocks: Blocks,
+    assignments: Assignments,
 ) -> list[TerritoryOut]:
     """The congregation's whole map: every territory, with its numbered blocks.
 
@@ -150,6 +188,7 @@ def list_territories(
     goes today, and the phone must be able to show it offline.
     """
     latest_work = territories.latest_work_by_territory(user.congregation_id)
+    held_by = assignments.open_campaign_by_territory(user.congregation_id)
     return [
         _territory_out(
             territory,
@@ -157,6 +196,7 @@ def list_territories(
             territories,
             blocks,
             last_work=latest_work.get(territory.id),
+            campaign=held_by.get(territory.id),
         )
         for territory in territories.list(user.congregation_id)
     ]
@@ -218,4 +258,23 @@ def list_work_history(
             created_at=log.created_at,
         )
         for log, block_number, territory_id, territory_name in work_logs.list_user_history(user)
+    ]
+
+
+@router.get("/campaigns")
+def list_my_campaigns(user: AppUser, campaigns: Campaigns) -> list[AppCampaignOut]:
+    """The active campaigns this publisher is in -- the Campaigns tab of the home screen.
+
+    Only campaigns with an open period listing this publisher come back, so a campaign
+    completed or a name removed from it disappears on the next read. The territories go
+    by id: their outlines and blocks are already in `GET /app/territories`.
+    """
+    return [
+        AppCampaignOut(
+            id=period.campaign.id,
+            name=period.campaign.name,
+            started_at=period.started_at,
+            territory_ids=[territory.id for territory in period.campaign.territories],
+        )
+        for period in campaigns.active_for_publisher(user)
     ]

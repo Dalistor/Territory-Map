@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "id": "ev-756c30735a804205bd6afeaeb9bbceae",
+  "contract": "campanhas@1",
+  "rule": "CMP-09",
+  "contract_hash": "a484c3a45dcb7540aa8086feb80bc26b5ceba94c17f342b364468b8cff648ebb",
+  "method": "test",
+  "command": [
+    "npm",
+    "--prefix",
+    "admin-app",
+    "test",
+    "--",
+    "--silent"
+  ],
+  "result": "passed",
+  "exit_code": 0,
+  "at": "2026-10-22T14:04:03.563619+00:00",
+  "revision": "805eb691596b820c1e19fa4e94e3a05e343905ef",
+  "summary": "App admin consulta campanhas, mostra 'Campanha: <nome>' e não oferece ações de gestão; 409 exibido",
+  "reference": "Comando executado no checkout; saída exibida no terminal",
+  "files": {
+    "admin-app/src/data/api-client.ts": "00e53cd4baff351ac77f2990e6770dc170c42490e2d708d2c0fe586b33aafcc9",
+    "admin-app/src/domain/assignment.ts": "18bbf8a9343278195804ae5287d56147edabb6f9061a718bf5c68e37e45550c5",
+    "admin-app/src/presentation/screens/AssignmentPanel.test.tsx": "7064fb3d3548b63ffe5080cea6cb654243cde2f683d890c0a5b40fe36c297520",
+    "admin-app/src/presentation/screens/AssignmentPanel.tsx": "a59344c995819782aec280ffd730bf330868e5eba082656c2ade635601cc5ac4",
+    "admin-app/src/presentation/screens/CampaignDetailScreen.tsx": "da61038aaaa6cd82b10382bdfeef5c45bd90d8824fe361c763703e93dbdcf27b",
+    "admin-app/src/presentation/screens/CampaignsScreen.test.tsx": "9c162b6e990a797016465161e56a87a727e261bda82799785041f8910dcf4d92",
+    "admin-app/src/presentation/screens/CampaignsScreen.tsx": "11528236c1c0c115d3e54d57f1b521867e8a7af79695a00bfa7f349dcbb073cd",
+    "admin-app/src/presentation/screens/DesignationsScreen.tsx": "1ca9fcca659f578caae6b866724a6265e2968feb3f921c3aed4937a96c932198"
+  },
+  "sources_stable": true
+}

@@ -19,7 +19,8 @@ São quatro partes:
 **O que o app admin não faz, e continua só no desktop.** É recorte de propósito, não pendência:
 desenhar ou editar demarcação de território e de quadra (e apagar qualquer uma das duas); cadastrar,
 desativar ou apagar publicador e gerar código de acesso — ele **lê** a lista para poder escolher um
-dirigente ou o autor de uma marcação, mas não a gerencia; forçar o `status_override` de uma quadra;
+dirigente ou o autor de uma marcação, mas não a gerencia; forçar o `status_override` de uma quadra; criar, editar, designar, concluir ou apagar uma
+**campanha** (spec 0017 — ele só as consulta);
 a página de Histórico da congregação inteira; e todo o import/export S-13/T em DOCX e XLSX.
 
 **Apagar registro de trabalho deixou de estar nessa lista** (spec 0013). Era o caso mais próximo da
@@ -424,6 +425,33 @@ A migration que criou a tabela (`d3ab774c1b2f`) **zera `territories.assigned_use
 backfill: as designações que existiam não tinham data de início, e inventar uma poria data errada
 no que vira histórico. O admin redesigna pela tela, com a data correta.
 
+### Campaign (spec 0017)
+Um grupo de territórios trabalhado por vários publicadores ao mesmo tempo — o caso da campanha
+especial, em que a congregação inteira cobre uma região em vez de cada dirigente cuidar do seu.
+
+| Tabela | Campos | Notas |
+|--------|--------|-------|
+| `campaigns` | `id`, `congregation_id`, `name`, `created_at` | `(congregation_id, name)` único |
+| `campaign_territories` | `campaign_id`, `territory_id` | PK composta, as duas FKs `CASCADE` |
+| `campaign_designations` | `id`, `campaign_id`, `started_at`, `completed_at` | um **período** da campanha; índice único parcial `uq_campaign_designations_open` (no máximo um aberto por campanha) |
+| `campaign_designation_publishers` | `campaign_designation_id`, `user_id` (sem FK), `user_name` | quem está designado no período; nome copiado, como em "O nome na linha, em vez da FK" |
+
+**A linha de campanha mora no cartão S-13.** Designar a campanha conclui (com a data de hoje) a
+designação individual aberta de cada território dela e abre, em `territory_assignments`, uma linha
+com `campaign_designation_id` preenchido e `user_id`/`user_name` nulos. Foi escolhido assim porque
+`uq_territory_assignments_open` já garante **uma designação aberta por território** — então "a
+campanha substitui o dirigente", "território em no máximo uma campanha ativa" e "nada de designação
+individual durante a campanha" são garantidos pelo banco sem índice novo, e o cartão ganha a linha
+sem código de leitura à parte. O preço: `territory_assignments` passou a admitir linha sem autor,
+fechada pelo CHECK `ck_territory_assignments_author` (`campaign_designation_id IS NOT NULL OR
+(user_id IS NOT NULL AND user_name IS NOT NULL)`). Nenhuma linha antiga violava isso, então a
+migration (`f4a9c2d71e36`) não faz backfill. Os DTOs de designação devolvem exatamente um de
+`user` e `campaign`, e os clientes escrevem "Campanha: <nome>" onde haveria o dirigente — inclusive
+na planilha e no S-13-T.
+
+`Territory.assigned_user_id` continua projeção, e fica **nulo** durante a campanha: a permissão de
+marcar dos designados vem da linha aberta, não da coluna.
+
 ### Block
 | Campo | Tipo | Notas |
 |-------|------|-------|
@@ -719,6 +747,34 @@ porque a página Histórico não foi portada.
   existe é confirmado direto (mesmo raciocínio já aplicado à checagem de relógio): a visita já é um
   fato aceito antes, e uma designação removida ou trocada depois não pode fazer o aparelho ficar
   retentando para sempre uma marcação que o servidor já gravou.
+
+### Campanhas (spec 0017)
+Só o **admin desktop** cria, edita, designa, conclui e apaga campanha (`/admin/campaigns`, em
+`server/app/routers/admin_campaigns.py`). O app admin **consulta** (lista, territórios, publicadores,
+períodos) e mostra "Campanha: <nome>" no lugar do dirigente; o app do publicador só lê e marca.
+
+- **Designar** exige ao menos um publicador e abre um período com `started_at` do servidor. A
+  designação individual aberta de cada território é concluída hoje — a interface lista antes quem
+  será substituído. Território que já está em **outra** campanha ativa responde 409
+  `territory_in_campaign`, nomeando território e campanha.
+- **Trocar publicadores** do período aberto vale na próxima requisição do app.
+- **Alterar os territórios** de uma campanha ativa tem efeito na hora: o que entra é substituído
+  como acima; o que sai tem a linha da campanha concluída hoje e fica sem dirigente.
+- **Concluir** fecha o período e todas as linhas abertas dos territórios com a mesma data; os
+  territórios ficam sem dirigente e os publicadores perdem a marcação ali na hora. Concluída, a
+  campanha pode ser designada de novo — abre outro período.
+- **Apagar** campanha ativa responde 409 `campaign_active`. Apagar uma não ativa leva junto as linhas
+  dela nos cartões S-13 (`CASCADE`); o trabalho das quadras (`BlockWorkLog`) fica.
+- **Pelo cartão**, a linha de campanha não se edita, não se conclui e não se apaga (409
+  `campaign_assignment`), e designar individualmente um território de campanha ativa responde 409
+  `territory_in_campaign` — tudo isso se faz pela campanha.
+- **Marcar quadra pelo app**: além do dirigente individual, todo publicador do período aberto da
+  campanha que segura o território pode marcar qualquer quadra dele (`campaign_line_admits` em
+  `repositories/territory_assignment.py`). Fora disso continua o 403 `territory_not_assigned`; o
+  reenvio de `log_id` já aceito continua confirmado sem reavaliar campanha.
+- **No app do publicador** a tela inicial tem a aba **Campanhas** (`GET /app/campaigns`: as
+  campanhas ativas em que ele está), cacheada como os territórios; abrir uma leva o mapa ao modo
+  campanha, com todos os territórios dela enquadrados e as quadras marcáveis.
 
 ### Demarcação de território
 - O polígono precisa ser **válido e simples** (`ST_IsValid`, `ST_IsSimple`) — sem auto-interseção.
@@ -1329,4 +1385,4 @@ specs planejadas.
 
 ---
 
-_Documentação centaur — schema `5.2.0`, atualizada em `2026-10-09`. Atualize com `/update`._
+_Documentação centaur — schema `5.2.0`, atualizada em `2026-10-22`. Atualize com `/update`._

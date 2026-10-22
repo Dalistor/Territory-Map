@@ -21,14 +21,20 @@ a module of its own because three of them need it. It decides nothing.
 from typing import Any, Protocol
 from uuid import UUID
 
+from app.models.territory_assignment import TerritoryAssignment
+from app.schemas.campaign import CampaignBriefOut
 from app.schemas.user import UserBriefOut
 
 
 class HistoryRow(Protocol):
-    """Any row that records who produced it, by id and by name."""
+    """Any row that records who produced it, by id and by name.
 
-    user_id: UUID
-    user_name: str
+    Both may be null on one kind of row only -- a card line held by a campaign, whose
+    people are the campaign's -- and then `user` is null as well.
+    """
+
+    user_id: UUID | None
+    user_name: str | None
 
 
 class _RowWithUser:
@@ -40,7 +46,11 @@ class _RowWithUser:
 
     def __init__(self, row: HistoryRow) -> None:
         self._row = row
-        self.user = UserBriefOut(id=row.user_id, name=row.user_name)
+        self.user = (
+            UserBriefOut(id=row.user_id, name=row.user_name)
+            if row.user_id is not None and row.user_name is not None
+            else None
+        )
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._row, name)
@@ -49,3 +59,26 @@ class _RowWithUser:
 def with_user(row: HistoryRow) -> _RowWithUser:
     """The row, ready to be validated into a DTO that nests the publisher."""
     return _RowWithUser(row)
+
+
+class _AssignmentWithHolder(_RowWithUser):
+    """A card row seen with both possible holders in front of it: a publisher or a campaign.
+
+    Exactly one of `user` and `campaign` is filled: an individual designation names the
+    publisher, and a campaign's line names the campaign, which the admin screens show
+    where the dirigente would be.
+    """
+
+    def __init__(self, row: TerritoryAssignment) -> None:
+        super().__init__(row)
+        designation = row.campaign_designation
+        self.campaign = (
+            CampaignBriefOut(id=designation.campaign.id, name=designation.campaign.name)
+            if designation is not None
+            else None
+        )
+
+
+def with_holder(assignment: TerritoryAssignment) -> _AssignmentWithHolder:
+    """The card row, ready to be validated into `AssignmentOut` and its subclasses."""
+    return _AssignmentWithHolder(assignment)

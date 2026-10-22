@@ -127,6 +127,16 @@ function makeApi(overrides: DeepPartialIpcApi = {}): IpcApi {
       markWorked: vi.fn(),
       ...overrides.workLogs
     },
+    campaigns: {
+      list: vi.fn().mockResolvedValue([]),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      designate: vi.fn(),
+      setPublishers: vi.fn(),
+      complete: vi.fn(),
+      ...overrides.campaigns
+    },
     geo: {
       geocodeCity: vi.fn(),
       ...overrides.geo

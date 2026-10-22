@@ -13,6 +13,8 @@ import {
   type AssignmentUpdateInput,
   type BlockCreateInput,
   type BlockUpdateInput,
+  type CampaignCreateInput,
+  type CampaignUpdateInput,
   type S13TImportPreview,
   type S13TImportResult,
   type S13TOptions,
@@ -180,6 +182,26 @@ export function registerIpcHandlers({
   )
   handle(IPC_CHANNELS.assignmentsDelete, (territoryId: string, assignmentId: string) =>
     session.run(() => api.deleteAssignment(territoryId, assignmentId))
+  )
+
+  handle(IPC_CHANNELS.campaignsList, () => session.run(() => api.listCampaigns()))
+  handle(IPC_CHANNELS.campaignsCreate, (input: CampaignCreateInput) =>
+    session.run(() => api.createCampaign(input))
+  )
+  handle(IPC_CHANNELS.campaignsUpdate, (campaignId: string, input: CampaignUpdateInput) =>
+    session.run(() => api.updateCampaign(campaignId, input))
+  )
+  handle(IPC_CHANNELS.campaignsDelete, (campaignId: string) =>
+    session.run(() => api.deleteCampaign(campaignId))
+  )
+  handle(IPC_CHANNELS.campaignsDesignate, (campaignId: string, publisherIds: string[]) =>
+    session.run(() => api.designateCampaign(campaignId, publisherIds))
+  )
+  handle(IPC_CHANNELS.campaignsSetPublishers, (campaignId: string, publisherIds: string[]) =>
+    session.run(() => api.setCampaignPublishers(campaignId, publisherIds))
+  )
+  handle(IPC_CHANNELS.campaignsComplete, (campaignId: string) =>
+    session.run(() => api.completeCampaign(campaignId))
   )
 
   handle(IPC_CHANNELS.blocksCreate, (input: BlockCreateInput) =>

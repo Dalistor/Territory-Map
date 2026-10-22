@@ -124,6 +124,15 @@ function makeApi(overrides: Partial<IpcApi['blocks']> = {}): IpcApi {
     exports: { assignments: vi.fn(), s13t: vi.fn(), s13tDocx: vi.fn() },
     imports: { s13tSelectAndPreview: vi.fn(), s13tExecute: vi.fn() },
     workLogs: { listFor: vi.fn(), delete: vi.fn(), markWorked: vi.fn() },
+    campaigns: {
+      list: vi.fn().mockResolvedValue([]),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      designate: vi.fn(),
+      setPublishers: vi.fn(),
+      complete: vi.fn()
+    },
     geo: { geocodeCity: vi.fn() }
   }
 }

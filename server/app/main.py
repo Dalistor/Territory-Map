@@ -8,6 +8,8 @@ from slowapi.errors import RateLimitExceeded
 from app.core.app_key import install_app_key_gate
 from app.core.config import get_settings
 from app.core.exceptions import (
+    CampaignActiveError,
+    CampaignAssignmentManagedError,
     DomainError,
     DuplicateBlockNumberError,
     DuplicateNameError,
@@ -17,6 +19,7 @@ from app.core.exceptions import (
     NotFoundError,
     OpenAssignmentConflictError,
     PublisherHasOpenAssignmentError,
+    TerritoryInCampaignError,
     TerritoryNotAssignedError,
 )
 from app.core.rate_limit import limiter, rate_limit_exceeded_handler
@@ -24,6 +27,7 @@ from app.core.scheduler import lifespan
 from app.routers import (
     admin_assignments,
     admin_blocks,
+    admin_campaigns,
     admin_territories,
     admin_users,
     app_client,
@@ -56,6 +60,9 @@ DOMAIN_ERROR_STATUS: dict[type[DomainError], int] = {
     PublisherHasOpenAssignmentError: status.HTTP_409_CONFLICT,
     OpenAssignmentConflictError: status.HTTP_409_CONFLICT,
     DuplicateBlockNumberError: status.HTTP_409_CONFLICT,
+    CampaignActiveError: status.HTTP_409_CONFLICT,
+    TerritoryInCampaignError: status.HTTP_409_CONFLICT,
+    CampaignAssignmentManagedError: status.HTTP_409_CONFLICT,
     TerritoryNotAssignedError: status.HTTP_403_FORBIDDEN,
 }
 
@@ -135,6 +142,7 @@ app.include_router(admin_assignments.router)
 # history -- and a prefix is a property of the router, not of the route.
 app.include_router(admin_assignments.flat_router)
 app.include_router(admin_blocks.router)
+app.include_router(admin_campaigns.router)
 app.include_router(app_client.router)
 app.include_router(updates.router)
 

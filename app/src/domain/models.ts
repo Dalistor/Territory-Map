@@ -31,6 +31,31 @@ export interface PublisherBrief {
   readonly name: string
 }
 
+/**
+ * Just the identity of a campaign (`CampaignBriefOut`) -- what a territory
+ * carries to say which active campaign holds it.
+ */
+export interface CampaignBrief {
+  readonly id: string
+  readonly name: string
+}
+
+/**
+ * An active campaign the logged-in publisher is designated to
+ * (`AppCampaignOut`, `GET /app/campaigns`): a group of territories handed to
+ * several publishers at once. Every territory listed in `territoryIds` is
+ * one this publisher may mark blocks in, exactly like a territory designated
+ * to them alone. Only active campaigns that include this publisher ever come
+ * back, so being in this list *is* the permission.
+ */
+export interface Campaign {
+  readonly id: string
+  readonly name: string
+  /** When the current period of the campaign began -- "desde" on the dashboard card. */
+  readonly startedAt: Date
+  readonly territoryIds: readonly string[]
+}
+
 /** A block, the numbered outline that is the real unit of field work (`BlockOut`). */
 /**
  * The two statuses the admin can pin a block to, overriding what its work
@@ -74,6 +99,13 @@ export interface Territory {
    * territory did before the admin could configure the setting.
    */
   readonly rotationDays?: number
+  /**
+   * The active campaign holding this territory, if any. While a campaign
+   * holds it, `assignedUser` is always `undefined`: the campaign replaced the
+   * individual designation, and who may mark it is answered by the
+   * publisher's own campaigns (`canMarkBlocksOf` in `assignment.ts`).
+   */
+  readonly campaign?: CampaignBrief
 }
 
 /**

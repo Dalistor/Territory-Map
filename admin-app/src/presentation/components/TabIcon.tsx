@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 
-export type TabIconName = 'territories' | 'publishers' | 'history';
+export type TabIconName = 'territories' | 'publishers' | 'campaigns' | 'history';
 
 interface TabIconProps {
   readonly name: TabIconName;
@@ -13,6 +13,7 @@ interface TabIconProps {
 const labelFor: Record<TabIconName, string> = {
   territories: 'Territórios',
   publishers: 'Publicadores',
+  campaigns: 'Campanhas',
   history: 'Histórico',
 };
 
@@ -41,6 +42,12 @@ export default function TabIcon({ name, color, size, focused }: TabIconProps): R
           <View style={[styles.personBody, common]} />
         </>
       )}
+      {name === 'campaigns' && (
+        <>
+          <View style={[styles.flagPole, filled]} />
+          <View style={[styles.flagCloth, filled]} />
+        </>
+      )}
       {name === 'history' && (
         <>
           <View style={[styles.historyLine, filled]} />
@@ -57,6 +64,8 @@ const styles = StyleSheet.create({
   territory: { width: '68%', height: '68%', borderRadius: 3, transform: [{ rotate: '45deg' }] },
   personHead: { width: 7, height: 7, borderRadius: 999, marginBottom: 2 },
   personBody: { width: 14, height: 9, borderTopLeftRadius: 8, borderTopRightRadius: 8, borderBottomWidth: 0 },
+  flagPole: { position: 'absolute', left: '22%', top: '12%', width: 2, height: '76%', borderRadius: 1 },
+  flagCloth: { position: 'absolute', left: '22%', top: '12%', width: '52%', height: '38%', borderTopRightRadius: 2, borderBottomRightRadius: 2 },
   historyLine: { width: '68%', height: 2, borderRadius: 2, marginBottom: 3 },
   historyLineMiddle: { width: '52%' },
   historyLineBottom: { width: '38%', marginBottom: 0 },

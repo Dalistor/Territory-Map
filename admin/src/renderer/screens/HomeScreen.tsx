@@ -8,7 +8,7 @@
 // props instead of an import, so this file does not need to know they exist.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { LatLngTuple } from 'leaflet'
-import { compareTerritoriesByNumber } from '../../shared/models'
+import { campaignHolderLabel, compareTerritoriesByNumber } from '../../shared/models'
 import type { Block, Congregation, Territory } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
 import { TerritoryMap } from '../map/TerritoryMap'
@@ -292,6 +292,11 @@ export function HomeScreen({
                     {sortedTerritories.map((territory) => (
                       <li key={territory.id} className="territory-row">
                         <span>{territory.name}</span>
+                        {territory.campaign !== undefined && (
+                          <span className="territory-assigned-user">
+                            {campaignHolderLabel(territory.campaign)}
+                          </span>
+                        )}
                         {territory.assignedUser && (
                           <span className="territory-assigned-user">
                             Designado a {territory.assignedUser.name}

@@ -2942,3 +2942,307 @@ label.field-checkbox {
   color: var(--text-secondary);
   font-size: 0.875rem;
 }
+
+/* -- Campanhas -------------------------------------------------------------
+   Master/detail like Publicadores: the campaigns stay a stable list on the
+   left, the selected one gets a bordered surface on the right. Flat surfaces
+   and hairlines; colour only on the situation badge and the map outlines. */
+
+.campaigns-screen {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.campaigns-screen > main {
+  gap: 14px;
+}
+
+.campaigns-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 40rem;
+  padding: 20px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+}
+
+.campaigns-state p {
+  margin: 0;
+}
+
+.campaigns-workspace {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(0, 24rem);
+  gap: 16px;
+  min-height: 0;
+}
+
+.campaigns-workspace.has-detail {
+  grid-template-columns: minmax(260px, 22rem) minmax(0, 1fr);
+}
+
+.campaigns-directory {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  min-width: 0;
+}
+
+.campaign-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  gap: 4px;
+}
+
+.campaign-list > li {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.campaign-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  background: var(--surface-raised);
+}
+
+.campaign-row[aria-pressed='true'] {
+  background: var(--surface-selected);
+  border-color: var(--intent-primary);
+}
+
+.campaign-row-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.campaign-row-name {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.campaign-row .status-badge,
+.campaign-detail .status-badge {
+  flex: none;
+  white-space: nowrap;
+}
+
+.campaign-detail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.campaign-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.campaign-detail-header .eyebrow {
+  margin: 0 0 2px;
+}
+
+.campaign-detail-header h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.campaign-detail-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.campaign-detail > [role='alert'] {
+  margin: 12px 20px 0;
+}
+
+.campaign-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 16px 20px 20px;
+  overflow-y: auto;
+}
+
+.campaign-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.campaign-block h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.campaign-block > p {
+  margin: 0;
+}
+
+.campaign-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.campaign-people {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.campaign-people > li {
+  gap: 8px;
+  padding: 4px 12px 4px 4px;
+  border-radius: 999px;
+}
+
+.campaign-territories {
+  display: grid;
+  grid-template-columns: minmax(180px, 16rem) minmax(0, 1fr);
+  gap: 12px;
+  min-height: 300px;
+}
+
+.campaign-territory-list {
+  max-height: 360px;
+  overflow-y: auto;
+  gap: 0;
+}
+
+.campaign-territory-list > li {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
+  background: transparent;
+}
+
+.campaign-territory-list > li > span:first-child {
+  margin-right: 0;
+}
+
+.campaign-map {
+  display: flex;
+  min-height: 300px;
+}
+
+.campaign-map .leaflet-container {
+  min-height: 300px;
+  height: 100%;
+}
+
+.territory-campaign-label {
+  font-weight: 500;
+  color: var(--selection-text);
+}
+
+/* The editor and the publishers dialogs share the checkbox list. */
+.campaign-editor-toolbar {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.campaign-editor-count {
+  margin: 0 0 0 auto;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.campaign-publishers .campaign-editor-count {
+  margin: 8px 0 0;
+}
+
+.campaign-pick-list {
+  max-height: 360px;
+  margin-top: 8px;
+  overflow-y: auto;
+}
+
+.campaign-pick-list > ul {
+  gap: 0;
+}
+
+.campaign-pick-list li {
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
+  background: transparent;
+}
+
+.campaign-pick {
+  display: flex;
+  flex: 1;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.campaign-pick-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+}
+
+.campaign-pick-list li.is-blocked .campaign-pick {
+  color: var(--text-secondary);
+  cursor: not-allowed;
+}
+
+.campaign-pick-map {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 360px;
+}
+
+.campaign-pick-map .leaflet-container {
+  flex: 1;
+  min-height: 340px;
+}
+
+@media (max-width: 900px) {
+  .campaigns-workspace.has-detail,
+  .campaign-territories {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

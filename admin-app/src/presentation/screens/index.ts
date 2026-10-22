@@ -25,6 +25,22 @@ export type {
   PublisherHistoryScreenProps,
   PublisherHistoryScreenSession,
 } from './PublisherHistoryScreen';
+export {
+  default as CampaignsScreen,
+  CAMPAIGNS_DESKTOP_ONLY_MESSAGE,
+  campaignPeriodLabel,
+} from './CampaignsScreen';
+export type {
+  CampaignsScreenApi,
+  CampaignsScreenProps,
+  CampaignsScreenSession,
+} from './CampaignsScreen';
+export { default as CampaignDetailScreen } from './CampaignDetailScreen';
+export type {
+  CampaignDetailScreenApi,
+  CampaignDetailScreenProps,
+  CampaignDetailScreenSession,
+} from './CampaignDetailScreen';
 export { default as HistoryScreen } from './HistoryScreen';
 export type { HistoryScreenApi, HistoryScreenProps, HistoryScreenSession } from './HistoryScreen';
 export { default as TerritoryDetailScreen } from './TerritoryDetailScreen';

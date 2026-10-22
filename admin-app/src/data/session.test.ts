@@ -34,6 +34,8 @@ function fakeApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     listWorkLogs: jest.fn(),
     markWorked: jest.fn(),
     deleteWorkLog: jest.fn(),
+    listCampaigns: jest.fn(),
+    getCampaign: jest.fn(),
     ...overrides,
   };
 }

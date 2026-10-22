@@ -9,7 +9,8 @@ import {
   within,
 } from '@testing-library/react-native';
 import type { Assignment, Publisher, Territory } from '../../domain/models';
-import { AssignmentPanel } from './AssignmentPanel';
+import { ApiError } from '../../data/api-client';
+import { AssignmentPanel, campaignLockMessage } from './AssignmentPanel';
 import type { AssignmentPanelSession } from './AssignmentPanel';
 
 function makeTerritory(overrides: Partial<Territory> = {}): Territory {
@@ -761,5 +762,70 @@ describe('AssignmentPanel', () => {
 
     expect(screen.queryByText('Editar designação passada')).toBeNull();
     expect(api.updateAssignment).not.toHaveBeenCalled();
+  });
+  it('num território em campanha ativa mostra a campanha no lugar do dirigente e não oferece designar nem ações na linha da campanha', async () => {
+    const campaign = { id: 'camp-1', name: 'Celebração' };
+    const api = makeApi({
+      listPublishers: jest.fn(async () => [makePublisher()]),
+      listAssignments: jest.fn(async () => [
+        makeAssignment({
+          id: 'line-open',
+          publisher: null,
+          campaign,
+          startedAt: new Date('2026-10-10T12:00:00Z'),
+        }),
+        makeAssignment({
+          id: 'line-old-campaign',
+          publisher: null,
+          campaign: { id: 'camp-0', name: 'Congresso' },
+          startedAt: new Date('2026-05-01T12:00:00Z'),
+          completedAt: new Date('2026-05-20T12:00:00Z'),
+        }),
+        makeAssignment({
+          id: 'line-ana',
+          startedAt: new Date('2026-01-10T12:00:00Z'),
+          completedAt: new Date('2026-04-01T12:00:00Z'),
+        }),
+      ]),
+    });
+
+    await render(
+      <AssignmentPanel
+        territory={makeTerritory({ campaign })}
+        session={makeSession()}
+        api={api}
+      />,
+    );
+
+    expect(await screen.findByText(/Campanha: Celebração — desde/)).toBeTruthy();
+    expect(screen.getByText(campaignLockMessage('Celebração'))).toBeTruthy();
+    expect(screen.queryByText('Designar a…')).toBeNull();
+    expect(screen.queryByText('Designar')).toBeNull();
+    expect(screen.queryByText('Marcar como concluído')).toBeNull();
+    expect(screen.queryByLabelText('Editar designação de Campanha: Celebração')).toBeNull();
+    expect(screen.getByText(/Campanha: Congresso —/)).toBeTruthy();
+    expect(screen.queryByLabelText('Apagar designação de Campanha: Congresso')).toBeNull();
+    expect(screen.queryByLabelText('Editar designação de Campanha: Congresso')).toBeNull();
+    // An individual line of the same card keeps its actions.
+    expect(screen.getByLabelText('Apagar designação de Ana')).toBeTruthy();
+  });
+
+  it('mostra a mensagem do 409 do servidor ao designar um território que entrou em campanha depois de carregado', async () => {
+    const detail = 'O território "Centro" está na campanha "Celebração". Conclua a campanha antes.';
+    const api = makeApi({
+      listPublishers: jest.fn(async () => [makePublisher({ id: 'pub-9', name: 'Bruno' })]),
+      designate: jest.fn(async () => {
+        throw new ApiError(409, detail, 'territory_in_campaign');
+      }),
+    });
+
+    await render(
+      <AssignmentPanel territory={makeTerritory()} session={makeSession()} api={api} />,
+    );
+
+    await fireEvent.press(await screen.findByText('Bruno'));
+    await fireEvent.press(screen.getByText('Designar'));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(detail));
   });
 });

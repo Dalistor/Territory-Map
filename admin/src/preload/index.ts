@@ -10,6 +10,8 @@ import {
   type AssignmentUpdateInput,
   type BlockCreateInput,
   type BlockUpdateInput,
+  type CampaignCreateInput,
+  type CampaignUpdateInput,
   type IpcApi,
   type SessionCredentials,
   type TerritoryCreateInput,
@@ -64,6 +66,18 @@ const api: IpcApi = {
       ipcRenderer.invoke(IPC_CHANNELS.assignmentsComplete, territoryId),
     delete: (territoryId: string, assignmentId: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.assignmentsDelete, territoryId, assignmentId)
+  },
+  campaigns: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.campaignsList),
+    create: (input: CampaignCreateInput) => ipcRenderer.invoke(IPC_CHANNELS.campaignsCreate, input),
+    update: (campaignId: string, input: CampaignUpdateInput) =>
+      ipcRenderer.invoke(IPC_CHANNELS.campaignsUpdate, campaignId, input),
+    delete: (campaignId: string) => ipcRenderer.invoke(IPC_CHANNELS.campaignsDelete, campaignId),
+    designate: (campaignId: string, publisherIds: string[]) =>
+      ipcRenderer.invoke(IPC_CHANNELS.campaignsDesignate, campaignId, publisherIds),
+    setPublishers: (campaignId: string, publisherIds: string[]) =>
+      ipcRenderer.invoke(IPC_CHANNELS.campaignsSetPublishers, campaignId, publisherIds),
+    complete: (campaignId: string) => ipcRenderer.invoke(IPC_CHANNELS.campaignsComplete, campaignId)
   },
   exports: {
     assignments: () => ipcRenderer.invoke(IPC_CHANNELS.exportAssignments),

@@ -1,27 +1,32 @@
 // Which territories the map shows, given the filter the publisher picked.
 // Pure decision logic — no MapLibre, no view code — so the map screen (Task
 // 25) only has to call `visibleTerritories` and draw whatever comes back.
-import type { Territory } from '../../domain/models'
+import type { Campaign, Territory } from '../../domain/models'
 import { isTerritoryAssignedToMe } from '../../domain/assignment'
 
 /**
  * The map's filter state: the publisher's own territory/territories, every
- * territory in the congregation, or one picked by id.
+ * territory in the congregation, one picked by id, or every territory of one
+ * of the publisher's campaigns.
  */
 export type MapFilter =
   | { mode: 'assigned' }
   | { mode: 'all' }
   | { mode: 'specific'; territoryId: string }
+  | { mode: 'campaign'; campaignId: string }
 
 /**
  * Applies `filter` to `all`. `'specific'` with an id that matches nothing
  * returns an empty list rather than throwing — the territory may have been
- * unassigned or deleted since the filter was picked.
+ * unassigned or deleted since the filter was picked. `'campaign'` behaves the
+ * same way when the campaign is no longer among `myCampaigns` (concluded, or
+ * the publisher was taken off it): nothing is drawn as if it were still theirs.
  */
 export function visibleTerritories(
   all: Territory[],
   filter: MapFilter,
-  myUserId: string
+  myUserId: string,
+  myCampaigns: readonly Campaign[] = []
 ): Territory[] {
   switch (filter.mode) {
     case 'assigned':
@@ -30,7 +35,22 @@ export function visibleTerritories(
       return all
     case 'specific':
       return all.filter((territory) => territory.id === filter.territoryId)
+    case 'campaign': {
+      const campaign = myCampaigns.find((candidate) => candidate.id === filter.campaignId)
+      if (campaign === undefined) return []
+      return all.filter((territory) => campaign.territoryIds.includes(territory.id))
+    }
   }
+}
+
+/**
+ * Whether the map draws the blocks of what it shows. The overview of the
+ * whole congregation (or of the publisher's own territories) shows only
+ * outlines and names; a single territory or a campaign is where the
+ * publisher came to mark blocks, so the blocks are drawn there.
+ */
+export function showsBlocks(filter: MapFilter): boolean {
+  return filter.mode === 'specific' || filter.mode === 'campaign'
 }
 
 /**

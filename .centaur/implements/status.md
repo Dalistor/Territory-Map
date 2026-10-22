@@ -90,3 +90,8 @@ Implementações anteriores a 0156 estão em `arquivo.md`.
 | [0238](0238/README.md) | Modal de atualização e verificação ao abrir no app admin (spec 0016, Task 07) | 2026-10-09 | Concluído | `UpdateModal.tsx`, `UpdateModal.test.tsx`, `App.tsx`, `App.test.tsx` |
 | [0239](0239/README.md) | Documentação e fluxo de deploy das releases na VPS (spec 0016, Task 08) | 2026-10-09 | Concluído | `AGENTS.md`, `docker-compose.yml`, `server/README.md`, `app/README.md`, `admin-app/README.md` |
 | [0240](0240/README.md) | Correção do toque sobre o número da quadra nos mapas MapLibre | 2026-10-09 | Concluído | `app/src/presentation/map/TerritoryMapView.tsx`, `admin-app/src/presentation/map/AssignmentsMapView.tsx` |
+| [0241](0241/README.md) | Campanhas no servidor: esquema, regras, rotas admin e marcação pelo app (spec 0017, Tasks 01–04) | 2026-10-22 | Concluído | `server/app/{models,repositories,services,schemas,routers}`, migration `f4a9c2d71e36`, testes |
+| [0245](0245/README.md) | Campanhas no admin desktop: dados, IPC, página e exportações (spec 0017, Tasks 05–06) | 2026-10-22 | Concluído | `admin/src/{shared,main,preload,renderer}` |
+| [0247](0247/README.md) | Aba Campanhas e mapa da campanha no app do publicador (spec 0017, Task 07) | 2026-10-22 | Concluído | `app/src/{domain,data,presentation}` |
+| [0248](0248/README.md) | Campanhas em modo consulta no app admin (spec 0017, Task 08) | 2026-10-22 | Concluído | `admin-app/src/{domain,data,presentation}` |
+| [0249](0249/README.md) | Documentação, estado e evidências das campanhas (spec 0017, Task 09) | 2026-10-22 | Concluído | `AGENTS.md`, `.centaur/state/campanhas.json`, `.centaur/evidence/` |

@@ -36,6 +36,7 @@ function makeApi(): ApiClient {
   return {
     listTerritoriesWithBlocks: jest.fn(async (): Promise<Territory[]> => []),
     listPublishers: jest.fn(async () => []),
+    listCampaigns: jest.fn(async () => []),
   } as unknown as ApiClient;
 }
 
@@ -163,19 +164,22 @@ describe('App', () => {
     expect(screen.queryByLabelText('Nome da congregação')).not.toBeOnTheScreen();
   });
 
-  it('offers the three primary destinations and keeps the current session while switching tabs', async () => {
+  it('offers the four primary destinations and keeps the current session while switching tabs', async () => {
     const session = makeSession({ isConfigured: jest.fn(async () => true) });
 
     await render(<App session={session} api={makeApi()} />);
     await screen.findByText(DESIGNATIONS_TEXT);
 
-    await fireEvent.press(screen.getByLabelText('Publicadores, tab, 2 of 3'));
+    await fireEvent.press(screen.getByLabelText('Publicadores, tab, 2 of 4'));
     expect(await screen.findByLabelText('Buscar publicadores')).toBeOnTheScreen();
 
-    await fireEvent.press(screen.getByLabelText('Histórico, tab, 3 of 3'));
+    await fireEvent.press(screen.getByLabelText('Campanhas, tab, 3 of 4'));
+    expect(await screen.findByText('Nenhuma campanha cadastrada')).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByLabelText('Histórico, tab, 4 of 4'));
     expect(await screen.findByRole('header', { name: 'Histórico completo' })).toBeOnTheScreen();
 
-    await fireEvent.press(screen.getByLabelText('Territórios, tab, 1 of 3'));
+    await fireEvent.press(screen.getByLabelText('Territórios, tab, 1 of 4'));
     expect(await screen.findByText(DESIGNATIONS_TEXT)).toBeOnTheScreen();
     expect(session.isConfigured).toHaveBeenCalledTimes(1);
   });
@@ -194,6 +198,7 @@ describe('App', () => {
 
     expectIcon('territories', 'Ícone de Territórios');
     expectIcon('publishers', 'Ícone de Publicadores');
+    expectIcon('campaigns', 'Ícone de Campanhas');
     expectIcon('history', 'Ícone de Histórico');
   });
 

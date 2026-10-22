@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { ApiError } from '../../data/api-client';
+import { campaignLabel } from '../../domain/assignment';
 import type { Block, Territory } from '../../domain/models';
 import { QuerySegmentedControl } from '../components';
 import { colors, radius, spacing } from '../theme';
@@ -137,9 +138,11 @@ export function TerritoryDetailScreen({
       <View style={styles.summary}>
         <Text accessibilityRole="header" style={styles.title}>{territory.name}</Text>
         <Text style={styles.summaryText}>
-          {territory.assignedPublisher === null
-            ? 'Disponível para designação'
-            : `Dirigente atual: ${territory.assignedPublisher.name}`}
+          {territory.campaign
+            ? campaignLabel(territory.campaign)
+            : territory.assignedPublisher === null
+              ? 'Disponível para designação'
+              : `Dirigente atual: ${territory.assignedPublisher.name}`}
         </Text>
       </View>
       <QuerySegmentedControl

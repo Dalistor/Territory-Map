@@ -71,6 +71,16 @@ function makeApi(overrides: DeepPartialIpcApi = {}): IpcApi {
       ...overrides.imports
     },
     workLogs: { listFor: vi.fn(), delete: vi.fn(), markWorked: vi.fn(), ...overrides.workLogs },
+    campaigns: {
+      list: vi.fn().mockResolvedValue([]),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      designate: vi.fn(),
+      setPublishers: vi.fn(),
+      complete: vi.fn(),
+      ...overrides.campaigns
+    },
     geo: { geocodeCity: vi.fn(), ...overrides.geo }
   }
 }
@@ -109,6 +119,28 @@ describe('HistoryScreen', () => {
     expect(within(table).getByText('Centro - N1')).toBeInTheDocument()
     expect(within(table).getByText('Ana')).toBeInTheDocument()
     expect(within(table).getByText('Em andamento')).toBeInTheDocument()
+  })
+
+  it('names the campaign on a campaign line, without offering to delete it', async () => {
+    const campaignLine = makeEntry({
+      id: 'a-campaign',
+      publisher: undefined,
+      campaign: { id: 'c1', name: 'Celebração' },
+      completedAt: undefined
+    })
+    vi.stubGlobal(
+      'api',
+      makeApi({
+        assignments: {
+          listAll: vi.fn().mockResolvedValue(makePage([campaignLine]))
+        } as unknown as IpcApi['assignments']
+      })
+    )
+    render(<HistoryScreen />)
+
+    const table = await screen.findByRole('table', { name: 'Histórico completo' })
+    expect(await within(table).findByText('Campanha: Celebração')).toBeInTheDocument()
+    expect(within(table).queryByRole('button', { name: /apagar/i })).toBeNull()
   })
 
   it('turns selected local days into a half-open ISO interval', async () => {

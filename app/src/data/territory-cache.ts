@@ -7,20 +7,28 @@
 // and the caller (the map screen) needs to tell them apart to show an empty
 // map with a warning instead of silently claiming there is nothing to see.
 //
+// The publisher's active campaigns (`listCampaigns`) are kept next to the
+// territories, under their own key, for the same reason: a campaign is what
+// opens a territory for marking, and the Campaigns tab and the campaign map
+// must still open without signal. Marking itself never runs from the cache --
+// it always needs the server (AGENTS.md, "Marcar quadra exige o servidor").
+//
 // `clearCache` exists for the root navigation (spec 0005, Task 26): a token
 // found to be revoked or on a stale `token_version` wipes both the session
 // (`session-store.ts`) and this cache together, so a device that switches
 // congregations by redeeming a new access code never shows a stale map from
 // the previous one.
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Block, Territory } from '../domain/models';
+import type { Block, Campaign, Territory } from '../domain/models';
 
 /** Namespaced the same way `session-store.ts` namespaces its keychain entry. */
 const CACHE_KEY = 'territory-map/territories-cache';
+const CAMPAIGNS_CACHE_KEY = 'territory-map/campaigns-cache';
 
 /** `Block` as it exists after a JSON round trip: `Date` degrades to `string`. */
 type SerializedBlock = Omit<Block, 'lastWorkedAt'> & { lastWorkedAt?: string };
 type SerializedTerritory = Omit<Territory, 'blocks'> & { blocks: SerializedBlock[] };
+type SerializedCampaign = Omit<Campaign, 'startedAt'> & { startedAt: string };
 
 function reviveBlock(block: SerializedBlock): Block {
   return {
@@ -44,6 +52,20 @@ export async function getCachedTerritories(): Promise<Territory[] | null> {
   }));
 }
 
+export async function saveCampaigns(campaigns: Campaign[]): Promise<void> {
+  await AsyncStorage.setItem(CAMPAIGNS_CACHE_KEY, JSON.stringify(campaigns));
+}
+
+/** `null` when no save has ever happened -- same distinction as `getCachedTerritories`. */
+export async function getCachedCampaigns(): Promise<Campaign[] | null> {
+  const raw = await AsyncStorage.getItem(CAMPAIGNS_CACHE_KEY);
+  if (raw === null) return null;
+
+  const parsed = JSON.parse(raw) as SerializedCampaign[];
+  return parsed.map((campaign) => ({ ...campaign, startedAt: new Date(campaign.startedAt) }));
+}
+
 export async function clearCache(): Promise<void> {
   await AsyncStorage.removeItem(CACHE_KEY);
+  await AsyncStorage.removeItem(CAMPAIGNS_CACHE_KEY);
 }

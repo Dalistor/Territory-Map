@@ -10,10 +10,13 @@ from datetime import datetime
 from uuid import UUID
 
 from app.core.exceptions import (
+    CampaignAssignmentManagedError,
     InvalidAssignmentDatesError,
     NotFoundError,
     OpenAssignmentConflictError,
+    TerritoryInCampaignError,
 )
+from app.models.campaign import Campaign
 from app.models.territory import Territory
 from app.models.territory_assignment import TerritoryAssignment
 from app.models.user import User
@@ -40,6 +43,12 @@ class AssignmentService:
     Every method is scoped to the congregation of the caller's token, and the two
     ways of failing that -- an id from another congregation, an id that names
     nothing -- raise the same `NotFoundError`.
+
+    A row may also be a campaign's line (`campaign_designation_id`), written by
+    `CampaignService`. This service reads those rows -- they are part of the card --
+    but never writes them: designating over one, and editing, completing or deleting
+    one from the card, are refused with a message pointing at the campaign, because
+    the line only means anything together with the rest of the campaign.
     """
 
     def __init__(
@@ -68,12 +77,23 @@ class AssignmentService:
         "handed it back" and "completed it" are one event, and demanding an explicit
         completion first would cost the admin the single click they have today to
         change who is responsible.
+
+        A campaign's line is the exception: the territory is in an active campaign, and
+        handing it to one person would take it out of the campaign behind the admin's
+        back. That is refused, naming the campaign.
         """
         now = now if now is not None else self._now_provider()
         territory = self._territory_of_congregation(congregation_id, territory_id)
         publisher = self._publisher_of_congregation(congregation_id, user_id)
         open_assignment = self._assignments.get_open(territory.id)
         if open_assignment is not None:
+            if open_assignment.campaign_designation is not None:
+                campaign = open_assignment.campaign_designation.campaign
+                raise TerritoryInCampaignError(
+                    f"O território “{territory.name}” está na campanha “{campaign.name}”, em "
+                    "andamento. Conclua a campanha ou tire o território dela antes de designá-lo "
+                    "a um publicador."
+                )
             self._assignments.close(open_assignment, now)
         assignment = self._assignments.create(
             territory_id=territory.id,
@@ -101,6 +121,7 @@ class AssignmentService:
         open_assignment = self._assignments.get_open(territory.id)
         if open_assignment is None:
             raise NotFoundError
+        self._refuse_campaign_line(open_assignment)
         closed = self._assignments.close(open_assignment, now)
         self._territories.set_assigned_user(territory, None)
         return closed
@@ -127,6 +148,7 @@ class AssignmentService:
             raise NotFoundError
         if territory_id is not None and assignment.territory_id != territory_id:
             raise NotFoundError
+        self._refuse_campaign_line(assignment)
 
         if user_id is not None:
             publisher = self._publisher_of_congregation(congregation_id, user_id)
@@ -163,6 +185,7 @@ class AssignmentService:
         assignment = self._assignments.get_in_congregation(congregation_id, assignment_id)
         if assignment is None:
             raise NotFoundError
+        self._refuse_campaign_line(assignment)
         territory = assignment.territory
         self._assignments.delete(assignment)
         self._refresh_assigned_user(territory)
@@ -188,6 +211,18 @@ class AssignmentService:
         return {
             assignment.territory_id: assignment.started_at
             for assignment in self._assignments.list_open_by_congregation(congregation_id)
+        }
+
+    def open_campaign_by_territory(self, congregation_id: UUID) -> dict[UUID, Campaign]:
+        """The active campaign holding each territory that is in one.
+
+        Read off the open rows of the card, which is where an active campaign lives for
+        a territory -- the same statement that tells since when each one is out.
+        """
+        return {
+            assignment.territory_id: assignment.campaign_designation.campaign
+            for assignment in self._assignments.list_open_by_congregation(congregation_id)
+            if assignment.campaign_designation is not None
         }
 
     def list_page(
@@ -242,6 +277,15 @@ class AssignmentService:
             raise NotFoundError
         return user
 
+    def _refuse_campaign_line(self, assignment: TerritoryAssignment) -> None:
+        """Refuse to touch, from the card, a line that belongs to a campaign."""
+        if assignment.campaign_designation is not None:
+            campaign = assignment.campaign_designation.campaign
+            raise CampaignAssignmentManagedError(
+                f"Esta linha do cartão pertence à campanha “{campaign.name}”. Para alterá-la, "
+                "concluí-la ou removê-la, use a página Campanhas."
+            )
+
     def _refresh_assigned_user(self, territory: Territory) -> None:
         """Rewrite the territory's read cache from the assignment that is open now.
 
@@ -251,9 +295,14 @@ class AssignmentService:
         carry. That one rule is what makes deleting a record undo itself precisely:
         removing the open assignment frees the territory, and removing a completed
         one changes nothing, without either case being special-cased here.
+
+        A campaign's open line projects to nobody: the territory is the campaign's, and
+        the app reads the campaign's publishers from the line, not from this column.
         """
         open_assignment = self._assignments.get_open(territory.id)
-        self._territories.set_assigned_user(
-            territory,
-            open_assignment.user_id if open_assignment is not None else None,
+        holder = (
+            open_assignment.user_id
+            if open_assignment is not None and open_assignment.campaign_designation_id is None
+            else None
         )
+        self._territories.set_assigned_user(territory, holder)

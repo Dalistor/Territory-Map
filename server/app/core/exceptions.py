@@ -168,3 +168,48 @@ class InvalidAssignmentDatesError(DomainError):
 
     code = "invalid_assignment_dates"
     default_message = "A data de início não pode ser posterior à data de conclusão."
+
+
+class CampaignActiveError(DomainError):
+    """The campaign is out right now, and the operation needs it completed first.
+
+    Raised for deleting it -- which would erase the lines it holds open on the cards --
+    and for designating it again while a period is already open. The call site passes
+    the message that says which of the two the admin should do.
+    """
+
+    code = "campaign_active"
+    default_message = "Esta campanha está em andamento. Marque-a como concluída antes de apagá-la."
+
+
+class CampaignWithoutPublishersError(DomainError):
+    """A campaign period with nobody in it would leave its territories unworkable."""
+
+    code = "campaign_without_publishers"
+    default_message = "Escolha ao menos um publicador para designar a campanha."
+
+
+class TerritoryInCampaignError(DomainError):
+    """The territory is held by an active campaign, which forbids the operation.
+
+    One class for both doors into the conflict -- designating the territory to a
+    publisher, and putting it in a second active campaign -- because the cause and the
+    way out are the same: conclude that campaign or take the territory out of it. The
+    service passes a message naming the territory and the campaign.
+    """
+
+    code = "territory_in_campaign"
+    default_message = (
+        "Este território está numa campanha em andamento. Conclua a campanha ou tire o "
+        "território dela antes."
+    )
+
+
+class CampaignAssignmentManagedError(DomainError):
+    """The card row belongs to a campaign, so it is edited through the campaign."""
+
+    code = "campaign_assignment"
+    default_message = (
+        "Esta linha do cartão pertence a uma campanha. Para alterá-la, concluí-la ou "
+        "removê-la, use a página Campanhas."
+    )

@@ -16,7 +16,7 @@ function twoDigits(value: number): string {
 }
 
 /** `18/08/2026`, in the device's own timezone -- the same day the publisher sees on the calendar. */
-function formatDate(date: Date): string {
+export function formatDate(date: Date): string {
   return `${twoDigits(date.getDate())}/${twoDigits(date.getMonth() + 1)}/${date.getFullYear()}`
 }
 

@@ -166,6 +166,16 @@ function fakeApi(overrides: DeepPartialIpcApi = {}): IpcApi {
       markWorked: vi.fn(),
       ...overrides.workLogs
     },
+    campaigns: {
+      list: vi.fn().mockResolvedValue([]),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      designate: vi.fn(),
+      setPublishers: vi.fn(),
+      complete: vi.fn(),
+      ...overrides.campaigns
+    },
     geo: {
       geocodeCity: vi.fn().mockResolvedValue(null),
       ...overrides.geo
@@ -485,7 +495,7 @@ function authedApi(overrides: Partial<IpcApi> = {}): IpcApi {
 // The permanent navigation shell: a compact sidebar with the congregation at
 // the top, four primary destinations and sign-out isolated at the bottom.
 describe('AuthenticatedApp sidebar shell', () => {
-  it('shows the sidebar with the congregation, the four sections, and "Mapa" initially active', async () => {
+  it('shows the sidebar with the congregation, the sections, and "Mapa" initially active', async () => {
     vi.stubGlobal('api', authedApi())
 
     render(<App />)
@@ -521,6 +531,7 @@ describe('AuthenticatedApp sidebar shell', () => {
     expect(labels).toEqual([
       'Mapa',
       'Territórios',
+      'Campanhas',
       'Publicadores',
       'Histórico completo',
       'Sair da congregação'

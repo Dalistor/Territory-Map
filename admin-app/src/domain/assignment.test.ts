@@ -1,6 +1,8 @@
 import type { Assignment } from './models';
 import {
+  assignmentHolderLabel,
   assignmentIsOpen,
+  isCampaignAssignment,
   openAssignment,
   sortAssignments,
 } from './assignment';
@@ -143,5 +145,24 @@ describe('sortAssignments', () => {
       'older',
       'open',
     ]);
+  });
+});
+
+describe('campaign lines', () => {
+  it('names the campaign where the dirigente would be, and flags the line as the campaign\'s', () => {
+    const line = makeAssignment({
+      publisher: null,
+      campaign: { id: 'campaign-1', name: 'Celebração' },
+    });
+
+    expect(isCampaignAssignment(line)).toBe(true);
+    expect(assignmentHolderLabel(line)).toBe('Campanha: Celebração');
+  });
+
+  it('keeps reading an individual line by the publisher name', () => {
+    const line = makeAssignment();
+
+    expect(isCampaignAssignment(line)).toBe(false);
+    expect(assignmentHolderLabel(line)).toBe('Irmão Silva');
   });
 });

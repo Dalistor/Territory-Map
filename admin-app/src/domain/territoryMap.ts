@@ -14,6 +14,7 @@
 import type { Block, LatLng, Territory } from './models';
 import { toGeoJsonRing } from './models';
 import { blockColorCategory, type BlockColorCategory } from './blockColor';
+import { campaignLabel } from './assignment';
 
 /** Solid blue: somebody is responsible for this territory right now. */
 export const ASSIGNED_TERRITORY_COLOR = '#1565c0';
@@ -41,21 +42,36 @@ export interface TerritoryMapFeature {
   /** Where the label goes. */
   readonly center: LatLng;
   readonly color: string;
-  /** Whether an assignment is open -- drives the colour and the second label line. */
+  /** Whether a dirigente or an active campaign holds it -- drives the colour. */
   readonly hasLeader: boolean;
-  /** The publisher's name, or {@link NO_LEADER_LABEL}. */
+  /** The publisher's name, "Campanha: <nome>", or {@link NO_LEADER_LABEL}. */
   readonly leaderLabel: string;
 }
 
-/** Blue when a publisher is responsible for it, grey when nobody is. */
+/**
+ * Whether somebody holds the territory right now: a dirigente, or an active
+ * campaign. In a campaign `assignedPublisher` is `null` by contract, so
+ * reading only that field would call a territory out in the field "free".
+ */
+export function territoryIsHeld(territory: Territory): boolean {
+  return territory.assignedPublisher !== null || Boolean(territory.campaign);
+}
+
+/** Blue when a publisher or a campaign holds it, grey when nobody does. */
 export function territoryColor(territory: Territory): string {
-  return territory.assignedPublisher
+  return territoryIsHeld(territory)
     ? ASSIGNED_TERRITORY_COLOR
     : UNASSIGNED_TERRITORY_COLOR;
 }
 
-/** The second line of the label: who has it, or that nobody does. */
+/**
+ * The second line of the label: who has it, or that nobody does. A territory
+ * in an active campaign reads "Campanha: <nome>" in the dirigente's place.
+ */
 export function territoryLeaderLabel(territory: Territory): string {
+  if (territory.campaign) {
+    return campaignLabel(territory.campaign);
+  }
   return territory.assignedPublisher?.name ?? NO_LEADER_LABEL;
 }
 
@@ -96,7 +112,7 @@ export function territoryMapFeatures(
       ring: toGeoJsonRing(territory.boundary),
       center,
       color: territoryColor(territory),
-      hasLeader: Boolean(territory.assignedPublisher),
+      hasLeader: territoryIsHeld(territory),
       leaderLabel: territoryLeaderLabel(territory),
     });
   }

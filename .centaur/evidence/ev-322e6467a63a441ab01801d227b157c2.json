@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "id": "ev-322e6467a63a441ab01801d227b157c2",
+  "contract": "campanhas@1",
+  "rule": "CMP-08",
+  "contract_hash": "a484c3a45dcb7540aa8086feb80bc26b5ceba94c17f342b364468b8cff648ebb",
+  "method": "test",
+  "command": [
+    "npm",
+    "--prefix",
+    "app",
+    "test",
+    "--",
+    "--silent"
+  ],
+  "result": "passed",
+  "exit_code": 0,
+  "at": "2026-10-22T14:03:54.092069+00:00",
+  "revision": "805eb691596b820c1e19fa4e94e3a05e343905ef",
+  "summary": "Aba Campanhas, cache das campanhas e mapa em modo campanha com marcação liberada pela regra do domínio",
+  "reference": "Comando executado no checkout; saída exibida no terminal",
+  "files": {
+    "app/src/data/api-client.ts": "c51eb613cad3e90a61577c69d29de7d16d3d724a2b82bf7add4a1675be41d69f",
+    "app/src/data/territory-cache.ts": "1cd3ffa28e3fcae607ca84886b4b649d92c75e138f5469f65dc1961708719744",
+    "app/src/domain/assignment.test.ts": "7fdce078e84736e56b015195b642fe7b676fe8402940da35186139d2bf476266",
+    "app/src/domain/assignment.ts": "a832748e73206847268658578838846e3b0a1e5d95a5852fad94108d520c3d6d",
+    "app/src/presentation/App.tsx": "a77b3bb7dbce277eda6da162cfbaa251462763ce4420f3765b979fabf07cc769",
+    "app/src/presentation/map/territoryFilter.ts": "ad266bac80be2c80b7ca397ac56b21b73eb6c1e217df039ba134559f18965223",
+    "app/src/presentation/screens/DashboardScreen.test.tsx": "d26d28034c33560cf8479909fa9072b57263c7e7da1df9add0087ab6a1f1ca25",
+    "app/src/presentation/screens/DashboardScreen.tsx": "14610e1cfe93ef3dc07e68e2b8901cff2227fbe00c4e8a38a71caa3b9ad29a4a",
+    "app/src/presentation/screens/MapScreen.test.tsx": "0a704b6af0bbfafb302ebdebaeb21362e9790d6d1ada721aaeb3aac30079cf4c",
+    "app/src/presentation/screens/MapScreen.tsx": "826bd9f38ec9771f074ff1d851361c4c5d5225187f858cf5f829028d240a425c"
+  },
+  "sources_stable": true
+}

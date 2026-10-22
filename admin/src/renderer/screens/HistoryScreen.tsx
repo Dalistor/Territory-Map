@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { DataTable } from '../components/DataTable'
 import type { AssignmentHistoryQuery, AssignmentWithTerritory } from '../../shared/models'
-import { assignmentIsOpen } from '../../shared/models'
+import { assignmentHolderName, assignmentIsCampaign, assignmentIsOpen } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
 import { Icon } from '../components/Icon'
 
@@ -40,7 +40,7 @@ function rangeFor(fromDay: string, toDay: string, page: number): AssignmentHisto
 
 function deleteConfirmMessage(entry: AssignmentWithTerritory): string {
   return (
-    `Apagar a designação de ${entry.publisher.name} em "${entry.territory.name}"?\n\n` +
+    `Apagar a designação de ${assignmentHolderName(entry)} em "${entry.territory.name}"?\n\n` +
     'O registro sai do histórico como se não tivesse existido. Não há como desfazer.'
   )
 }
@@ -220,7 +220,7 @@ export function HistoryScreen(): React.JSX.Element {
             {
               key: 'publisher',
               header: 'Publicador',
-              cell: (entry: AssignmentWithTerritory) => entry.publisher.name
+              cell: (entry: AssignmentWithTerritory) => assignmentHolderName(entry)
             },
             {
               key: 'started',
@@ -246,18 +246,23 @@ export function HistoryScreen(): React.JSX.Element {
             {
               key: 'actions',
               header: 'Ações',
-              cell: (entry: AssignmentWithTerritory) => (
-                <button
-                  type="button"
-                  className="button-small button-quiet button-danger"
-                  disabled={isActionPending}
-                  aria-label={`Apagar designação de ${entry.publisher.name} em ${entry.territory.name}`}
-                  onClick={() => void deleteEntry(entry)}
-                >
-                  <Icon name="trash" />
-                  Apagar
-                </button>
-              )
+              // A campaign's line belongs to every territory of the campaign at
+              // once, so it is deleted with the campaign, never one row here.
+              cell: (entry: AssignmentWithTerritory) =>
+                assignmentIsCampaign(entry) ? (
+                  <span className="cell-sub">Gerida em Campanhas</span>
+                ) : (
+                  <button
+                    type="button"
+                    className="button-small button-quiet button-danger"
+                    disabled={isActionPending}
+                    aria-label={`Apagar designação de ${assignmentHolderName(entry)} em ${entry.territory.name}`}
+                    onClick={() => void deleteEntry(entry)}
+                  >
+                    <Icon name="trash" />
+                    Apagar
+                  </button>
+                )
             }
           ]}
           rows={entries}

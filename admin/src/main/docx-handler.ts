@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import JSZip from 'jszip'
 import {
+  assignmentHolderName,
   compareTerritoriesByNumber,
   getServiceYear,
   type Assignment,
@@ -237,7 +238,8 @@ export async function buildS13TDocx(input: S13TExportInput): Promise<Buffer> {
 
         // Cells 2..5: Publisher names
         for (let slot = 0; slot < 4; slot++) {
-          const pubName = syAssignments[slot]?.publisher.name ?? ''
+          const slotAssignment = syAssignments[slot]
+          const pubName = slotAssignment === undefined ? '' : assignmentHolderName(slotAssignment)
           const newCSlot = setCellText(cellsA[2 + slot], pubName)
           updatedA = updatedA.replace(cellsA[2 + slot], newCSlot)
         }

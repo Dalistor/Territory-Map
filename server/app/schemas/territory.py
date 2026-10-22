@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.schemas.block import BlockOut
+from app.schemas.campaign import CampaignBriefOut
 from app.schemas.common import OutSchema, ShortText
 from app.schemas.geo import RingIn, RingOut
 from app.schemas.user import UserBriefOut
@@ -61,6 +62,10 @@ class TerritoryOut(OutSchema):
 
     `assigned_since` is when the assignment in force started -- the "retirada" date of
     the S-13 card. Only the admin routes fill it; `None` means nobody has it now.
+
+    `campaign` is the active campaign holding the territory, if any. Then
+    `assigned_user` is `None` -- the campaign replaced the dirigente -- and clients show
+    "Campanha: <nome>" in its place. Filled by the listings and the admin detail.
     """
 
     id: UUID
@@ -71,6 +76,7 @@ class TerritoryOut(OutSchema):
     rotation_days: int | None = None
     last_work: LastWorkOut | None = None
     assigned_since: datetime | None = None
+    campaign: CampaignBriefOut | None = None
 
 
 class TerritoryBriefOut(OutSchema):

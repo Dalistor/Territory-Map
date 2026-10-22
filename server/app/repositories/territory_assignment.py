@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
+from app.models.campaign_designation import CampaignDesignation, CampaignDesignationPublisher
 from app.models.territory import Territory
 from app.models.territory_assignment import TerritoryAssignment
 
@@ -61,6 +62,71 @@ class TerritoryAssignmentRepository:
         self.session.flush()
         return assignment
 
+    def create_campaign_line(
+        self,
+        territory_id: UUID,
+        campaign_designation_id: UUID,
+        started_at: datetime,
+    ) -> TerritoryAssignment:
+        """Open the territory's line for a campaign period, and flush.
+
+        The line names no publisher: the people are the period's, and they can change
+        while it is open. Like `create`, the flush is what turns a second open row for
+        the territory into an integrity error right here, inside the caller's
+        transaction.
+        """
+        line = TerritoryAssignment(
+            territory_id=territory_id,
+            campaign_designation_id=campaign_designation_id,
+            started_at=started_at,
+        )
+        self.session.add(line)
+        self.session.flush()
+        return line
+
+    def list_open_by_campaign_designation(
+        self,
+        campaign_designation_id: UUID,
+    ) -> list[TerritoryAssignment]:
+        """The lines a campaign period still holds open, one per territory at most."""
+        return list(
+            self.session.scalars(
+                select(TerritoryAssignment).where(
+                    TerritoryAssignment.campaign_designation_id == campaign_designation_id,
+                    TerritoryAssignment.completed_at.is_(None),
+                )
+            )
+        )
+
+    def campaign_line_admits(self, territory_id: UUID, user_id: UUID) -> bool:
+        """Whether the territory's open line is a campaign's and lists this publisher.
+
+        Answered in one statement, because it runs on every marking the phone sends:
+        the open line of the territory, joined to its period -- still open -- and to
+        that period's publishers. A removed publisher, a completed campaign and a line
+        closed when its territory left the campaign all simply match nothing.
+        """
+        return (
+            self.session.scalars(
+                select(TerritoryAssignment.id)
+                .join(
+                    CampaignDesignation,
+                    CampaignDesignation.id == TerritoryAssignment.campaign_designation_id,
+                )
+                .join(
+                    CampaignDesignationPublisher,
+                    CampaignDesignationPublisher.campaign_designation_id == CampaignDesignation.id,
+                )
+                .where(
+                    TerritoryAssignment.territory_id == territory_id,
+                    TerritoryAssignment.completed_at.is_(None),
+                    CampaignDesignation.completed_at.is_(None),
+                    CampaignDesignationPublisher.user_id == user_id,
+                )
+            ).first()
+            is not None
+        )
+
     def get_open(self, territory_id: UUID) -> TerritoryAssignment | None:
         """The assignment currently in force for the territory, or `None`.
 
@@ -113,12 +179,18 @@ class TerritoryAssignmentRepository:
         """Every assignment currently in force in the congregation, one per territory at most.
 
         The territory listing reads this to show since when each territory has been
-        out, in a single statement instead of one history request per row.
+        out, and which campaign holds it, in a single statement instead of one history
+        request per row -- hence the campaign loaded along with each line.
         """
         return list(
             self.session.scalars(
                 select(TerritoryAssignment)
                 .join(Territory, TerritoryAssignment.territory_id == Territory.id)
+                .options(
+                    joinedload(TerritoryAssignment.campaign_designation).joinedload(
+                        CampaignDesignation.campaign
+                    )
+                )
                 .where(
                     Territory.congregation_id == congregation_id,
                     TerritoryAssignment.completed_at.is_(None),
