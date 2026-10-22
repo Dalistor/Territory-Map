@@ -176,7 +176,6 @@ export function BlockEditorScreen({
     <div className="editor-split screen-workbench">
       <aside className="editor-panel screen-card">
         <div>
-          <p className="eyebrow">Quadras</p>
           <h1>
             {editingBlock
               ? `Editar quadra ${editingBlock.number}`

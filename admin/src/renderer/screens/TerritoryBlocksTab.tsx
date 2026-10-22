@@ -24,12 +24,9 @@ import {
   toDateInputValue,
   type BlockSortOrder
 } from './territoryBlocks'
+import { formatDate } from '../formatDate'
 
 const GENERIC_ERROR_MESSAGE = 'Não foi possível marcar a quadra.'
-
-function formatDate(date: Date): string {
-  return date.toLocaleDateString()
-}
 
 function blockList(numbers: readonly number[]): string {
   if (numbers.length === 1) return `Quadra ${numbers[0]}`

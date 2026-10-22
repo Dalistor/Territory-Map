@@ -45,6 +45,7 @@ import DesignationsScreen from './screens/DesignationsScreen'
 import HistoryScreen from './screens/HistoryScreen'
 import CampaignsScreen from './screens/CampaignsScreen'
 import TerritorySettingsScreen from './screens/TerritorySettingsScreen'
+import { useConfirm } from './components/ConfirmDialog'
 import { Icon, type IconName } from './components/Icon'
 
 const STORAGE_READ_ERROR_MESSAGE = 'Não foi possível ler os dados guardados neste computador.'
@@ -151,7 +152,7 @@ type Route =
   | { readonly kind: 'publishers' }
   | { readonly kind: 'block-history'; readonly territory: Territory; readonly block: Block }
 
-/** The sidebar sections. Pushed screens (editors, block history) open from Home, so they keep "Mapa" lit. */
+/** The sidebar sections. Pushed screens (editors, block history) open from Home, so they keep "Demarcações" lit. */
 type Section = 'home' | 'territories' | 'campaigns' | 'publishers' | 'history'
 
 function sectionOf(route: Route): Section {
@@ -214,8 +215,15 @@ function AuthenticatedApp({ congregation, onSignedOut }: AuthenticatedAppProps):
   // credentials deserves a beat), then routes back to setup; a failure shows
   // in the content area instead of vanishing into an unhandled rejection.
   const [signOutError, setSignOutError] = useState<string | null>(null)
+  const { confirm, confirmDialog } = useConfirm()
   const signOut = async (): Promise<void> => {
-    if (!window.confirm(SIGN_OUT_CONFIRM_MESSAGE)) return
+    const accepted = await confirm({
+      title: 'Sair da congregação?',
+      message: SIGN_OUT_CONFIRM_MESSAGE,
+      confirmLabel: 'Sair da congregação',
+      danger: true
+    })
+    if (!accepted) return
     setSignOutError(null)
     try {
       await window.api.session.signOut()
@@ -267,7 +275,7 @@ function AuthenticatedApp({ congregation, onSignedOut }: AuthenticatedAppProps):
           </div>
         </div>
         <div className="sidebar-nav">
-          {sectionButton('home', 'map', 'Mapa', 'home')}
+          {sectionButton('home', 'map', 'Demarcações', 'home')}
           {sectionButton('territories', 'list', 'Territórios', 'designations')}
           {sectionButton('campaigns', 'flag', 'Campanhas', 'campaigns')}
           {sectionButton('publishers', 'users', 'Publicadores', 'publishers')}
@@ -284,6 +292,7 @@ function AuthenticatedApp({ congregation, onSignedOut }: AuthenticatedAppProps):
         {signOutError !== null && <p role="alert">{signOutError}</p>}
         {renderRoute()}
       </div>
+      {confirmDialog}
     </div>
   )
 
@@ -345,7 +354,6 @@ function AuthenticatedApp({ congregation, onSignedOut }: AuthenticatedAppProps):
       case 'home':
         return (
           <HomeScreen
-            congregation={congregation}
             onNewTerritory={(neighbours) => setRoute({ kind: 'territory-editor', neighbours })}
             onEditTerritory={(territory, neighbours) =>
               setRoute({ kind: 'territory-editor', territory, neighbours })

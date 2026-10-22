@@ -50,7 +50,9 @@ import {
 } from '@maplibre/maplibre-react-native';
 import { canMarkBlocksOf } from '../../domain/assignment';
 import { blockColorCategory, type BlockColorCategory } from '../../domain/blockColor';
+import { blockCategoryLabel } from '../../domain/blockStatusLabel';
 import type { Block, Campaign, LatLng, Territory } from '../../domain/models';
+import { colors, fontSize, radius, shadows, spacing } from '../theme';
 
 const OSM_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 const OSM_ATTRIBUTION = '© OpenStreetMap contributors';
@@ -75,9 +77,23 @@ const CATEGORY_COLOR: Record<BlockColorCategory, string> = {
   recent: '#2e7d32', // green -- worked recently
 };
 
+/**
+ * The ink of the block number over each domain colour. The colours above do
+ * not change (they are domain); the ink does: white over the orange is only
+ * 3.08:1, the dark ink 5.11:1. White stays on red (5.62:1) and green (5.13:1).
+ */
+const CATEGORY_INK: Record<BlockColorCategory, string> = {
+  never: colors.onPrimary,
+  overdue: colors.mapLabelInk,
+  recent: colors.onPrimary,
+};
+
+/** Legend order: what most needs a visit first. */
+const LEGEND_CATEGORIES: readonly BlockColorCategory[] = ['never', 'overdue', 'recent'];
+
 // Mirrors the admin's Designations map: the territory that is "yours" reads
 // as a solid, confident blue; everything else is a muted grey the eye skips.
-const MY_TERRITORY_COLOR = '#1565c0';
+const MY_TERRITORY_COLOR = colors.primary;
 const OTHER_TERRITORY_COLOR = '#78909c';
 const FALLBACK_CENTER: LngLat = [-47.93, -15.78]; // Brasília, [lng, lat] -- nothing to centre on yet
 const FALLBACK_ZOOM = 4;
@@ -277,19 +293,22 @@ export function TerritoryMapView({
       (showBlocks ? territories : []).flatMap((territory) =>
         territory.blocks
           .filter((block) => block.polygon.length >= 3)
-          .map((block) => ({
-            territory,
-            block,
-            properties: {
-              blockId: block.id,
-              // The rotation belongs to the territory that owns the block
-              // (spec 0009): a block is only "overdue" against its own
-              // territory's cycle, not against a single global threshold.
-              color:
-                CATEGORY_COLOR[blockColorCategory(block, effectiveNow, territory.rotationDays)],
-              label: String(block.number),
-            },
-          })),
+          .map((block) => {
+            // The rotation belongs to the territory that owns the block
+            // (spec 0009): a block is only "overdue" against its own
+            // territory's cycle, not against a single global threshold.
+            const category = blockColorCategory(block, effectiveNow, territory.rotationDays);
+            return {
+              territory,
+              block,
+              category,
+              properties: {
+                blockId: block.id,
+                color: CATEGORY_COLOR[category],
+                label: String(block.number),
+              },
+            };
+          }),
       ),
     [territories, showBlocks, effectiveNow],
   );
@@ -324,9 +343,10 @@ export function TerritoryMapView({
    */
   const blockLabelMarkers = useMemo(
     () =>
-      blockFeatureProperties.map(({ territory, block, properties }) => ({
+      blockFeatureProperties.map(({ territory, block, category, properties }) => ({
         territory,
         block,
+        category,
         color: properties.color,
         label: properties.label,
         center: averageCentroid(block.polygon),
@@ -451,7 +471,7 @@ export function TerritoryMapView({
             </Pressable>
           </Marker>
         ))}
-        {blockLabelMarkers.map(({ territory, block, color, label, center }) => (
+        {blockLabelMarkers.map(({ territory, block, category, color, label, center }) => (
           <Marker
             key={block.id}
             id={`block-label-${block.id}`}
@@ -465,11 +485,11 @@ export function TerritoryMapView({
                 handle the press so it is guaranteed on every device. */}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Quadra ${label}`}
+              accessibilityLabel={`Quadra ${label}, ${blockCategoryLabel(category)}`}
               onPress={() => onBlockTap?.(territory, block)}
               style={[styles.blockLabel, { backgroundColor: color }]}
             >
-              <Text style={styles.blockLabelText}>{label}</Text>
+              <Text style={[styles.blockLabelText, { color: CATEGORY_INK[category] }]}>{label}</Text>
             </Pressable>
           </Marker>
         ))}
@@ -479,10 +499,34 @@ export function TerritoryMapView({
           </Marker>
         )}
       </MapLibreMap>
+      {/* Colour is never the only sign of status (DESIGN.md): whenever block
+          colours are on screen, the legend names them. Above the attribution
+          strip, clear of the floating card's top edge on the left. */}
+      {showBlocks && <StatusLegend />}
       {/* The other half of the OSM tile usage policy: visible on-screen attribution, not just the native attribution sheet. */}
       <View style={styles.attribution} pointerEvents="none">
         <Text style={styles.attributionText}>{OSM_ATTRIBUTION}</Text>
       </View>
+    </View>
+  );
+}
+
+/** Names the three block colours. Not pressable, so taps fall through to the map. */
+function StatusLegend(): React.JSX.Element {
+  return (
+    <View
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel="Legenda das quadras: Nunca trabalhada, Vencida, Em dia"
+      pointerEvents="none"
+      style={styles.legend}
+    >
+      {LEGEND_CATEGORIES.map((category) => (
+        <View key={category} style={styles.legendItem}>
+          <View style={[styles.legendSwatch, { backgroundColor: CATEGORY_COLOR[category] }]} />
+          <Text style={styles.legendLabel}>{blockCategoryLabel(category)}</Text>
+        </View>
+      ))}
     </View>
   );
 }
@@ -494,40 +538,70 @@ const styles = StyleSheet.create({
     width: 16,
     height: 16,
     borderRadius: 8,
-    backgroundColor: '#1565c0',
+    backgroundColor: colors.primary,
     borderWidth: 2,
-    borderColor: '#ffffff',
+    borderColor: colors.surface,
   },
   territoryLabel: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    backgroundColor: colors.mapOverlay,
+    borderRadius: radius.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
     alignItems: 'center',
   },
-  territoryLabelText: { fontSize: 11, fontWeight: '600', color: '#37474f' },
-  territoryLabelMine: { fontSize: 10, color: '#1565c0' },
+  territoryLabelText: { fontSize: fontSize.mapLabel, fontWeight: '600', color: colors.mapLabelInk },
+  territoryLabelMine: { fontSize: fontSize.mapLabel, color: colors.primary },
   blockLabel: {
-    minWidth: 24,
-    height: 24,
-    paddingHorizontal: 4,
-    borderRadius: 12,
+    minWidth: 26,
+    minHeight: 26,
+    paddingHorizontal: spacing.xs,
+    borderRadius: radius.full,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: '#ffffff',
+    borderColor: colors.surface,
   },
-  blockLabelText: { color: '#ffffff', fontSize: 11, fontWeight: '700' },
+  blockLabelText: { fontSize: fontSize.small, fontWeight: '700' },
+  legend: {
+    position: 'absolute',
+    top: spacing.sm,
+    left: spacing.sm,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: spacing.sm,
+    maxWidth: '90%',
+    backgroundColor: colors.mapOverlay,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    ...shadows.sm,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  legendSwatch: {
+    width: 12,
+    height: 12,
+    borderRadius: radius.full,
+  },
+  legendLabel: { fontSize: fontSize.small, color: colors.mapLabelInk },
   attribution: {
     position: 'absolute',
-    right: 4,
-    bottom: 4,
-    backgroundColor: 'rgba(255,255,255,0.8)',
-    paddingHorizontal: 6,
+    right: spacing.xs,
+    bottom: spacing.xs,
+    backgroundColor: colors.mapOverlay,
+    paddingHorizontal: spacing.xs,
     paddingVertical: 2,
-    borderRadius: 4,
+    borderRadius: radius.xs,
   },
-  attributionText: { fontSize: 10, color: '#333333' },
+  attributionText: { fontSize: fontSize.mapLabel, color: colors.mapLabelInk },
 });
 
 export default TerritoryMapView;

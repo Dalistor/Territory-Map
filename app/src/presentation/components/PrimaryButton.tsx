@@ -1,7 +1,8 @@
-// The primary button component with modern look, rounded corners and subtle shadow.
+// The app's button: flat (no resting shadow, DESIGN.md), 8 px control radius and a
+// 48 dp minimum height so it is always a comfortable thumb target.
 // Keeps accessibilityRole="button" and disabled state compatible with existing tests.
 import { ActivityIndicator, Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from 'react-native';
-import { colors, radius, shadows, spacing } from '../theme';
+import { colors, fontSize, radius, spacing, touchTarget } from '../theme';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'surface';
 
@@ -76,10 +77,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.sm,
     backgroundColor: colors.primary,
-    borderRadius: radius.md,
-    paddingVertical: 14,
+    borderRadius: radius.sm,
+    minHeight: touchTarget.comfortable,
+    paddingVertical: 12,
     paddingHorizontal: spacing.lg,
-    ...shadows.sm,
   },
   buttonSecondary: {
     backgroundColor: colors.primaryLight,
@@ -88,8 +89,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderWidth: 1.5,
     borderColor: colors.primary,
-    elevation: 0,
-    shadowOpacity: 0,
   },
   buttonSurface: {
     backgroundColor: colors.surface,
@@ -108,14 +107,11 @@ const styles = StyleSheet.create({
   buttonDisabled: {
     backgroundColor: colors.disabledSurface,
     borderColor: colors.disabledSurface,
-    elevation: 0,
-    shadowOpacity: 0,
   },
   title: {
     color: colors.onPrimary,
-    fontSize: 16,
+    fontSize: fontSize.section,
     fontWeight: '600',
-    letterSpacing: 0.2,
   },
   titleOutline: {
     color: colors.primary,

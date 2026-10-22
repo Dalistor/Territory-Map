@@ -195,10 +195,10 @@ export function BlockWorkPanel({
                   type="button"
                   className="button-danger button-quiet"
                   disabled={isActionPending}
-                  aria-label={`Remover registro de ${log.publisher.name} em ${formatDateTime(log.workedAt)}`}
+                  aria-label={`Apagar registro de ${log.publisher.name} em ${formatDateTime(log.workedAt)}`}
                   onClick={() => setPendingDeleteId(log.id)}
                 >
-                  Remover
+                  Apagar
                 </button>
               </li>
             ))}
@@ -228,7 +228,7 @@ export function BlockWorkPanel({
       )}
 
       {pendingLog && (
-        <Dialog title="Remover registro?" onClose={() => setPendingDeleteId(null)}>
+        <Dialog title="Apagar registro?" onClose={() => setPendingDeleteId(null)}>
           <p>
             A marcação de {pendingLog.publisher.name} em {formatDateTime(pendingLog.workedAt)} será
             apagada, e a data da última visita da quadra será recalculada.
@@ -242,7 +242,7 @@ export function BlockWorkPanel({
               disabled={isActionPending}
               onClick={() => void confirmDelete(pendingLog)}
             >
-              {isActionPending ? 'Atualizando…' : 'Remover'}
+              {isActionPending ? 'Atualizando…' : 'Apagar'}
             </button>
           </div>
         </Dialog>

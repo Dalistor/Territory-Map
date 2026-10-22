@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { AssignmentHistoryPage, AssignmentWithTerritory, PublisherBrief } from '../../domain/models';
 import { QueryPagination, QueryState } from '../components';
-import { colors, radius, shadows, spacing } from '../theme';
+import { colors, radius, spacing } from '../theme';
 import { formatDate } from './BlockWorkSection';
 
 export interface PublisherHistoryScreenApi {
@@ -27,7 +27,7 @@ function errorMessage(error: unknown): string {
 }
 
 function assignmentStatus(assignment: AssignmentWithTerritory): string {
-  return assignment.completedAt === null ? 'Em andamento' : 'Devolvido';
+  return assignment.completedAt === null ? 'Em andamento' : 'Devolvida';
 }
 
 /** Stack detail for a publisher's assignment history; it never offers account-management actions. */
@@ -76,14 +76,14 @@ export default function PublisherHistoryScreen({
           <View style={styles.publisherIdentity}>
             <Text style={styles.publisherCaption}>Histórico de territórios</Text>
             <Text accessibilityRole="header" style={styles.publisherName}>{publisher.name}</Text>
-            {history !== null && !isLoading && loadError === null && (
+            {history !== null && loadError === null && (
               <Text style={styles.publisherCount}>
                 {history.total} {history.total === 1 ? 'território retirado' : 'territórios retirados'}
               </Text>
             )}
           </View>
         </View>
-        {isLoading ? (
+        {isLoading && history === null ? (
           <QueryState kind="loading" title="Carregando histórico" message="Aguarde um momento." />
         ) : loadError !== null ? (
           <QueryState kind="error" title="Não foi possível carregar" message={loadError} onRetry={retry} />
@@ -94,12 +94,16 @@ export default function PublisherHistoryScreen({
             message={`${publisher.name} ainda não retirou nenhum território.`}
           />
         ) : history !== null ? (
-          <>
+          // A page change keeps the current page on screen, dimmed, instead of
+          // swapping it for a loading block that makes the screen jump.
+          <View
+            accessibilityState={{ busy: isLoading }}
+            style={isLoading && styles.pageLoading}>
             {history.items.map(assignment => (
               <View
                 key={assignment.id}
                 accessible
-                accessibilityLabel={`${assignment.territory.name}. ${assignmentStatus(assignment)}. Retirada em ${formatDate(assignment.startedAt)}${assignment.completedAt === null ? '' : `. Devolvida em ${formatDate(assignment.completedAt)}`}`}
+                accessibilityLabel={`${assignment.territory.name}. ${assignmentStatus(assignment)}. Retirada em ${formatDate(assignment.startedAt)}${assignment.completedAt === null ? '' : `. Devolução em ${formatDate(assignment.completedAt)}`}`}
                 style={styles.assignment}>
                 <View style={styles.assignmentHeading}>
                   <Text style={styles.territoryName}>{assignment.territory.name}</Text>
@@ -109,7 +113,7 @@ export default function PublisherHistoryScreen({
                 </View>
                 <View style={styles.period}>
                   <View style={styles.dateBlock}>
-                    <Text style={styles.dateLabel}>RETIRADA</Text>
+                    <Text style={styles.dateLabel}>Retirada</Text>
                     <Text style={styles.dateValue}>{formatDate(assignment.startedAt)}</Text>
                   </View>
                   <View accessibilityElementsHidden style={styles.periodLine}>
@@ -118,9 +122,9 @@ export default function PublisherHistoryScreen({
                     <View style={[styles.periodDot, assignment.completedAt === null && styles.periodDotOpen]} />
                   </View>
                   <View style={[styles.dateBlock, styles.dateBlockEnd]}>
-                    <Text style={styles.dateLabel}>DEVOLUÇÃO</Text>
+                    <Text style={styles.dateLabel}>Devolução</Text>
                     <Text style={styles.dateValue}>
-                      {assignment.completedAt === null ? '—' : formatDate(assignment.completedAt)}
+                      {assignment.completedAt === null ? 'Em andamento' : formatDate(assignment.completedAt)}
                     </Text>
                   </View>
                 </View>
@@ -133,7 +137,7 @@ export default function PublisherHistoryScreen({
               pageSize={history.pageSize}
               total={history.total}
             />
-          </>
+          </View>
         ) : null}
       </ScrollView>
     </View>
@@ -142,9 +146,8 @@ export default function PublisherHistoryScreen({
 
 const styles = StyleSheet.create({
   avatar: { alignItems: 'center', backgroundColor: colors.primaryLight, borderRadius: radius.full, height: 52, justifyContent: 'center', width: 52 },
-  avatarText: { color: colors.primaryPressed, fontSize: 20, fontWeight: '800' },
+  avatarText: { color: colors.primaryPressed, fontSize: 20, fontWeight: '700' },
   assignment: {
-    ...shadows.sm,
     backgroundColor: colors.surface,
     borderColor: colors.border,
     borderRadius: radius.md,
@@ -157,18 +160,19 @@ const styles = StyleSheet.create({
   content: { padding: spacing.md, paddingBottom: spacing.xl },
   dateBlock: { flex: 1 },
   dateBlockEnd: { alignItems: 'flex-end' },
-  dateLabel: { color: colors.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 0.7 },
-  dateValue: { color: colors.textPrimary, fontSize: 15, fontWeight: '700', marginTop: 3 },
+  dateLabel: { color: colors.textSecondary, fontSize: 12, fontWeight: '700', letterSpacing: 0.5 },
+  dateValue: { color: colors.textPrimary, fontSize: 15, fontWeight: '700', marginTop: spacing.xs },
   period: { alignItems: 'center', backgroundColor: colors.surfaceSubtle, borderRadius: radius.sm, flexDirection: 'row', marginTop: spacing.md, padding: spacing.sm },
   periodDot: { backgroundColor: colors.primary, borderRadius: radius.full, height: 8, width: 8 },
   periodDotOpen: { backgroundColor: colors.surface, borderColor: colors.warningText, borderWidth: 2 },
   periodLine: { alignItems: 'center', flexDirection: 'row', marginHorizontal: spacing.sm, width: 48 },
   periodRule: { backgroundColor: colors.borderStrong, flex: 1, height: 2 },
-  publisherCaption: { color: colors.primaryPressed, fontSize: 11, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase' },
+  pageLoading: { opacity: 0.6 },
+  publisherCaption: { color: colors.primaryPressed, fontSize: 12, fontWeight: '700' },
   publisherCount: { color: colors.textSecondary, fontSize: 13, marginTop: spacing.xs },
   publisherIdentity: { flex: 1, minWidth: 0 },
-  publisherName: { color: colors.textPrimary, fontSize: 22, fontWeight: '800', marginTop: 2 },
-  publisherSummary: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, flexDirection: 'row', gap: spacing.md, marginBottom: spacing.lg, padding: spacing.md, ...shadows.sm },
+  publisherName: { color: colors.textPrimary, fontSize: 20, fontWeight: '700', marginTop: spacing.xs },
+  publisherSummary: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, flexDirection: 'row', gap: spacing.md, marginBottom: spacing.lg, padding: spacing.md },
   screen: { backgroundColor: colors.background, flex: 1 },
   status: { borderRadius: radius.full, fontSize: 12, fontWeight: '700', overflow: 'hidden', paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   statusOngoing: { backgroundColor: colors.warningSurface, color: colors.warningText },

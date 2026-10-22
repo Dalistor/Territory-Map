@@ -1,9 +1,18 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { Publisher } from '../../domain/models';
+import { Button, QuerySearchField } from '../components';
+import { colors, radius, spacing, touchTarget } from '../theme';
 
 const NO_MATCH_MESSAGE = 'Nenhum publicador encontrado.';
+
+/**
+ * How many options show before "Mostrar todos". The whole congregation used to
+ * be listed, which pushed "Designar publicador" and "Marcar como trabalhada"
+ * several screens down; the search narrows the rest.
+ */
+export const PUBLISHER_PICKER_LIMIT = 8;
 
 export interface PublisherPickerProps {
   readonly publishers: readonly Publisher[];
@@ -19,6 +28,7 @@ export function PublisherPicker({
   optionTestIdPrefix,
 }: PublisherPickerProps): React.JSX.Element {
   const [search, setSearch] = useState('');
+  const [showAll, setShowAll] = useState(false);
   const normalizedSearch = search.trim().toLocaleLowerCase();
   const matchingPublishers = useMemo(
     () =>
@@ -28,60 +38,113 @@ export function PublisherPicker({
     [normalizedSearch, publishers],
   );
   const selectedPublisher = publishers.find(publisher => publisher.id === selectedPublisherId);
+  // The chosen name always stays in view, first, whatever the search says.
+  const others = matchingPublishers.filter(publisher => publisher !== selectedPublisher);
+  const shownOthers = showAll ? others : others.slice(0, PUBLISHER_PICKER_LIMIT);
   const visiblePublishers =
-    selectedPublisher !== undefined && !matchingPublishers.includes(selectedPublisher)
-      ? [selectedPublisher, ...matchingPublishers]
-      : matchingPublishers;
+    selectedPublisher !== undefined ? [selectedPublisher, ...shownOthers] : shownOthers;
+  const hiddenCount = others.length - shownOthers.length;
 
   return (
     <View>
-      <TextInput
+      <QuerySearchField
         accessibilityLabel="Buscar publicador"
         placeholder="Buscar publicador"
         testID="publisher-search"
         value={search}
         onChangeText={setSearch}
-        style={styles.search}
       />
       {matchingPublishers.length === 0 && <Text style={styles.noMatch}>{NO_MATCH_MESSAGE}</Text>}
-      {visiblePublishers.map(publisher => (
-        <Pressable
-          key={publisher.id}
-          testID={`${optionTestIdPrefix}${publisher.id}`}
-          accessibilityRole="radio"
-          accessibilityLabel={publisher.name}
-          accessibilityState={{ selected: selectedPublisherId === publisher.id }}
-          style={[styles.option, selectedPublisherId === publisher.id && styles.optionSelected]}
-          onPress={() => onSelect(publisher.id)}>
-          <Text>{publisher.name}</Text>
-        </Pressable>
-      ))}
+      <View accessibilityRole="radiogroup" style={styles.options}>
+        {visiblePublishers.map(publisher => {
+          const checked = selectedPublisherId === publisher.id;
+          return (
+            <Pressable
+              key={publisher.id}
+              testID={`${optionTestIdPrefix}${publisher.id}`}
+              accessibilityRole="radio"
+              accessibilityLabel={publisher.name}
+              accessibilityState={{ checked, selected: checked }}
+              style={({ pressed }) => [
+                styles.option,
+                checked && styles.optionSelected,
+                pressed && !checked && styles.optionPressed,
+              ]}
+              onPress={() => onSelect(publisher.id)}>
+              <View style={[styles.radio, checked && styles.radioChecked]}>
+                {checked && <View style={styles.radioDot} />}
+              </View>
+              <Text style={styles.optionText}>{publisher.name}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      {hiddenCount > 0 && (
+        <Button
+          label={`Mostrar todos (${others.length})`}
+          variant="quiet"
+          onPress={() => setShowAll(true)}
+          style={styles.showAll}
+        />
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   noMatch: {
-    color: '#64748b',
-    fontSize: 13,
-    marginTop: 6,
+    color: colors.textSecondary,
+    fontSize: 14,
+    marginTop: spacing.sm,
+  },
+  options: {
+    gap: spacing.xs,
+    marginTop: spacing.sm,
   },
   option: {
-    borderColor: '#e2e8f0',
-    borderRadius: 8,
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
     borderWidth: 1,
-    marginTop: 6,
-    padding: 12,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    minHeight: touchTarget.default,
+    paddingHorizontal: spacing.md,
+  },
+  optionPressed: {
+    backgroundColor: colors.surfaceSubtle,
   },
   optionSelected: {
-    backgroundColor: '#e3f2fd',
-    borderColor: '#1565c0',
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
   },
-  search: {
-    borderColor: '#e2e8f0',
-    borderRadius: 8,
-    borderWidth: 1,
-    padding: 12,
+  optionText: {
+    color: colors.textPrimary,
+    flex: 1,
+    fontSize: 15,
+  },
+  radio: {
+    alignItems: 'center',
+    borderColor: colors.borderInput,
+    borderRadius: radius.full,
+    borderWidth: 2,
+    height: 20,
+    justifyContent: 'center',
+    width: 20,
+  },
+  radioChecked: {
+    borderColor: colors.primary,
+  },
+  radioDot: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.full,
+    height: 10,
+    width: 10,
+  },
+  showAll: {
+    alignSelf: 'flex-start',
+    marginTop: spacing.xs,
   },
 });
 

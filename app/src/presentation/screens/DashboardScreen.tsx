@@ -1,14 +1,22 @@
-// The publisher's home screen (spec 0005, Task 23): what they worked and what
-// they are currently responsible for. `session` arrives already active (the
-// activation/restoration flow, Task 22/26, owns getting one) and `apiClient`
-// is injected rather than created here -- this is Presentation, and per
-// AGENTS.md's Arquitetura de Camadas it never talks HTTP directly. `onOpenMap`
-// is wired to real navigation in Task 26; here it is just a callback.
-import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+// The publisher's home screen (spec 0005, Task 23): what they are currently
+// responsible for and what they already worked. `session` arrives already
+// active (the activation/restoration flow, Task 22/26, owns getting one) and
+// `apiClient` is injected rather than created here -- this is Presentation,
+// and per AGENTS.md's Arquitetura de Camadas it never talks HTTP directly.
+// `onOpenMap` is wired to real navigation in App.tsx; here it is a callback.
+//
+// Spec 0018 (Task 02): every section has honest states -- loading shows grey
+// rows instead of a false "nothing here", a failure stays inside its section
+// with "Tentar novamente" -- and the data reloads when the publisher pulls
+// down or comes back from the map, so a block just marked is reflected here.
+// The overview answers "where do I work today?" first: the territories
+// designated to the publisher, then what they worked.
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { ApiClient } from '../../data/api-client';
 import { isTerritoryAssignedToMe } from '../../domain/assignment';
-import { formatDate } from '../../domain/lastWorked';
+import { blockColorCategory } from '../../domain/blockColor';
+import { formatDate, formatTime } from '../../domain/lastWorked';
 import type {
   Campaign,
   PublisherWorkHistoryItem,
@@ -17,19 +25,24 @@ import type {
   WorkedTerritory,
 } from '../../domain/models';
 import { PrimaryButton } from '../components/PrimaryButton';
-import { colors, radius, shadows, spacing } from '../theme';
+import { LoadingRows, SectionError } from '../components/SectionState';
+import { colors, fontSize, radius, spacing, touchTarget } from '../theme';
 
 /**
- * Shown when either fetch rejects. `listTerritories` already falls back to
- * the offline cache one layer up (`withOfflineFallback`, App.tsx), so by the
- * time a rejection reaches this screen there genuinely is nothing to show --
- * the message says so instead of leaving a silently empty dashboard.
+ * Shown inside a section whose fetch rejected. `listTerritories` already
+ * falls back to the offline cache one layer up (`withOfflineFallback`,
+ * App.tsx), so by the time a rejection reaches this screen there genuinely
+ * is nothing to show.
  */
-const LOAD_ERROR_MESSAGE =
-  'Não foi possível carregar os dados. Verifique a conexão e abra a tela de novo.';
-
+const TERRITORIES_ERROR_MESSAGE =
+  'Não foi possível carregar os territórios. Verifique a conexão.';
+const WORKED_ERROR_MESSAGE =
+  'Não foi possível carregar os territórios trabalhados. Verifique a conexão.';
 const CAMPAIGNS_ERROR_MESSAGE =
-  'Não foi possível carregar as campanhas. Verifique a conexão e abra a tela de novo.';
+  'Não foi possível carregar as campanhas. Verifique a conexão.';
+
+/** The history tab shows this many entries before "Ver mais" -- the list never grows unbounded. */
+const HISTORY_PAGE_SIZE = 20;
 
 export interface DashboardScreenProps {
   readonly session: Session;
@@ -45,9 +58,26 @@ export interface DashboardScreenProps {
    * would otherwise have no way into the map at all.
    */
   readonly onOpenFullMap: () => void;
+  /**
+   * Registers a callback fired when the publisher comes back to this screen
+   * (from the map); returns the unsubscribe. App.tsx wires it to the
+   * navigation's blur/focus events -- a prop, so this screen still renders
+   * in tests without a `NavigationContainer`.
+   */
+  readonly subscribeToReturn?: (onReturn: () => void) => () => void;
+  /** Injected so a fixed "now" can drive the overdue counts; defaults to the real clock. */
+  readonly now?: Date;
 }
 
 type DashboardTab = 'overview' | 'campaigns' | 'history';
+
+/** One fetch's answer: `data` stays `null` until the first success, and survives a later failure. */
+interface Loadable<T> {
+  readonly data: T | null;
+  readonly failed: boolean;
+}
+
+const LOADING: Loadable<never> = { data: null, failed: false };
 
 export function DashboardScreen({
   session,
@@ -55,108 +85,129 @@ export function DashboardScreen({
   onOpenMap,
   onOpenCampaign,
   onOpenFullMap,
+  subscribeToReturn,
+  now,
 }: DashboardScreenProps) {
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
-  const [workedTerritories, setWorkedTerritories] = useState<WorkedTerritory[]>([]);
+  const [worked, setWorked] = useState<Loadable<WorkedTerritory[]>>(LOADING);
+  const [territories, setTerritories] = useState<Loadable<Territory[]>>(LOADING);
+  const [campaigns, setCampaigns] = useState<Loadable<Campaign[]>>(LOADING);
   const [workHistory, setWorkHistory] = useState<PublisherWorkHistoryItem[]>([]);
-  const [territories, setTerritories] = useState<Territory[]>([]);
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [campaignsError, setCampaignsError] = useState<string | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const assignedTerritories = territories.filter((territory) =>
-    isTerritoryAssignedToMe(territory, session.user.id),
+  const [refreshing, setRefreshing] = useState(false);
+  const mounted = useRef(true);
+  useEffect(
+    () => () => {
+      mounted.current = false;
+    },
+    [],
+  );
+
+  const loadWorked = useCallback(
+    (): Promise<void> =>
+      apiClient.listWorkedTerritories(session.token).then(
+        (data) => {
+          if (mounted.current) setWorked({ data, failed: false });
+        },
+        () => {
+          if (mounted.current) setWorked((previous) => ({ ...previous, failed: true }));
+        },
+      ),
+    [apiClient, session.token],
+  );
+
+  const loadTerritories = useCallback(
+    (): Promise<void> =>
+      apiClient.listTerritories(session.token).then(
+        (data) => {
+          if (mounted.current) setTerritories({ data, failed: false });
+        },
+        () => {
+          if (mounted.current) setTerritories((previous) => ({ ...previous, failed: true }));
+        },
+      ),
+    [apiClient, session.token],
+  );
+
+  const loadCampaigns = useCallback((): Promise<void> => {
+    if (typeof apiClient.listCampaigns !== 'function') {
+      setCampaigns({ data: [], failed: false });
+      return Promise.resolve();
+    }
+    return apiClient.listCampaigns(session.token).then(
+      (data) => {
+          if (mounted.current) setCampaigns({ data, failed: false });
+        },
+      () => {
+          if (mounted.current) setCampaigns((previous) => ({ ...previous, failed: true }));
+        },
+    );
+  }, [apiClient, session.token]);
+
+  const loadHistory = useCallback((): Promise<void> => {
+    if (typeof apiClient.listWorkHistory !== 'function') return Promise.resolve();
+    return apiClient.listWorkHistory(session.token).then(
+      (data) => {
+          if (mounted.current) setWorkHistory(data);
+        },
+      () => {
+        // Non-blocking if older server or offline: the tab falls back to the
+        // worked territories.
+      },
+    );
+  }, [apiClient, session.token]);
+
+  const loadAll = useCallback(
+    (): Promise<unknown> =>
+      Promise.all([loadWorked(), loadTerritories(), loadCampaigns(), loadHistory()]),
+    [loadWorked, loadTerritories, loadCampaigns, loadHistory],
   );
 
   useEffect(() => {
-    apiClient
-      .listWorkedTerritories(session.token)
-      .then(setWorkedTerritories)
-      .catch(() => setLoadError(LOAD_ERROR_MESSAGE));
-  }, [apiClient, session.token]);
+    loadAll();
+  }, [loadAll]);
 
+  // Subscribed once: the caller may hand a new function on every render, and
+  // resubscribing would forget that the publisher had left for the map.
+  const loadAllRef = useRef(loadAll);
   useEffect(() => {
-    if (typeof apiClient.listWorkHistory === 'function') {
-      apiClient
-        .listWorkHistory(session.token)
-        .then(setWorkHistory)
-        .catch(() => {
-          // Non-blocking if older server or offline
-        });
-    }
-  }, [apiClient, session.token]);
+    loadAllRef.current = loadAll;
+  }, [loadAll]);
+  const subscribeRef = useRef(subscribeToReturn);
+  useEffect(() => subscribeRef.current?.(() => loadAllRef.current()), []);
 
-  useEffect(() => {
-    apiClient
-      .listTerritories(session.token)
-      .then(setTerritories)
-      .catch(() => setLoadError(LOAD_ERROR_MESSAGE));
-  }, [apiClient, session.token]);
+  function handlePullToRefresh(): void {
+    setRefreshing(true);
+    loadAll().finally(() => {
+      if (mounted.current) setRefreshing(false);
+    });
+  }
 
-  useEffect(() => {
-    if (typeof apiClient.listCampaigns !== 'function') return;
-    apiClient
-      .listCampaigns(session.token)
-      .then(setCampaigns)
-      // Kept inside the Campaigns tab: the rest of the dashboard still works.
-      .catch(() => setCampaignsError(CAMPAIGNS_ERROR_MESSAGE));
-  }, [apiClient, session.token]);
+  const assignedTerritories =
+    territories.data?.filter((territory) => isTerritoryAssignedToMe(territory, session.user.id)) ??
+    null;
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
-      {loadError !== null && (
-        <View style={styles.errorBanner}>
-          <Text style={styles.errorBannerText}>{loadError}</Text>
-        </View>
-      )}
-
-      {/* Hero Welcome Card */}
-      <View style={styles.heroCard}>
-        <View style={styles.heroTop}>
-          <View style={styles.heroAvatar}>
-            <Text style={styles.heroAvatarText}>
-              {session.user.name.charAt(0).toUpperCase()}
-            </Text>
-          </View>
-          <View style={styles.heroTextContainer}>
-            <Text style={styles.heroGreeting}>Olá, {session.user.name}</Text>
-            <Text style={styles.heroCongregation}>
-              {session.congregation.name} • {session.congregation.city}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.statsRow}>
-          <View style={styles.statBox}>
-            <Text style={styles.statNumber}>{assignedTerritories.length}</Text>
-            <Text style={styles.statLabel}>
-              {assignedTerritories.length === 1 ? 'Designado' : 'Designados'}
-            </Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statBox}>
-            <Text style={styles.statNumber}>{workedTerritories.length}</Text>
-            <Text style={styles.statLabel}>
-              {workedTerritories.length === 1 ? 'Trabalhado' : 'Trabalhados'}
-            </Text>
-          </View>
-          {workHistory.length > 0 && (
-            <>
-              <View style={styles.statDivider} />
-              <View style={styles.statBox}>
-                <Text style={styles.statNumber}>{workHistory.length}</Text>
-                <Text style={styles.statLabel}>Visitas</Text>
-              </View>
-            </>
-          )}
-        </View>
-      </View>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.container}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handlePullToRefresh}
+          colors={[colors.primary]}
+          tintColor={colors.primary}
+        />
+      }
+    >
+      <Text style={styles.context}>
+        {session.user.name} · {session.congregation.name}, {session.congregation.city}
+      </Text>
 
       <PrimaryButton title="Abrir mapa" onPress={onOpenFullMap} />
 
-      {/* Tab Switcher */}
-      <View style={styles.tabBar} accessibilityRole="tablist">
+      <View style={styles.tabBar} accessibilityRole="tablist" accessibilityLabel="Seções do início">
         <TabButton
-          label="Meus Territórios"
+          label="Início"
           active={activeTab === 'overview'}
           onPress={() => setActiveTab('overview')}
         />
@@ -174,20 +225,36 @@ export function DashboardScreen({
 
       {activeTab === 'overview' && (
         <>
-          <WorkedTerritoriesSection territories={workedTerritories} />
-          <AssignedTerritoriesSection territories={assignedTerritories} onOpenMap={onOpenMap} />
+          <AssignedTerritoriesSection
+            territories={assignedTerritories}
+            failed={territories.failed}
+            now={now ?? new Date()}
+            onOpenMap={onOpenMap}
+            onRetry={loadTerritories}
+          />
+          <WorkedTerritoriesSection
+            territories={worked.data}
+            failed={worked.failed}
+            onRetry={loadWorked}
+          />
         </>
       )}
       {activeTab === 'campaigns' && (
         <CampaignsSection
-          campaigns={campaigns}
-          territories={territories}
-          error={campaignsError}
+          campaigns={campaigns.data}
+          failed={campaigns.failed}
+          territories={territories.data ?? []}
           onOpenCampaign={onOpenCampaign}
+          onRetry={loadCampaigns}
         />
       )}
       {activeTab === 'history' && (
-        <WorkHistorySection history={workHistory} workedTerritories={workedTerritories} />
+        <WorkHistorySection
+          history={workHistory}
+          workedTerritories={worked.data}
+          failed={worked.failed}
+          onRetry={loadAll}
+        />
       )}
     </ScrollView>
   );
@@ -215,30 +282,66 @@ function TabButton({
   );
 }
 
+/** A section heading with its count in words ("2 territórios"), once the count is known. */
+function SectionHeading({ title, count }: { readonly title: string; readonly count?: string }) {
+  return (
+    <View style={styles.headingRow}>
+      <Text accessibilityRole="header" style={styles.heading}>
+        {title}
+      </Text>
+      {count !== undefined && <Text style={styles.headingCount}>{count}</Text>}
+    </View>
+  );
+}
+
+function plural(count: number, singular: string, pluralForm: string): string {
+  return `${count} ${count === 1 ? singular : pluralForm}`;
+}
+
+/** "Ver no mapa": a secondary action, one per row, with a 44 dp target. */
+function MapButton({ label, onPress }: { readonly label: string; readonly onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={({ pressed }) => [styles.mapButton, pressed && styles.mapButtonPressed]}
+    >
+      <Text style={styles.mapButtonText}>Ver no mapa</Text>
+    </Pressable>
+  );
+}
+
 /**
  * The publisher's active campaigns: territories handed to a group of
- * publishers at once, any of whom may mark their blocks. Each card names the
+ * publishers at once, any of whom may mark their blocks. Each row names the
  * campaign, how many territories it holds (and which, when the map has them)
  * and since when, and opens the map on all of them.
  */
 function CampaignsSection({
   campaigns,
+  failed,
   territories,
-  error,
   onOpenCampaign,
+  onRetry,
 }: {
-  readonly campaigns: Campaign[];
+  readonly campaigns: Campaign[] | null;
+  readonly failed: boolean;
   readonly territories: Territory[];
-  readonly error: string | null;
   readonly onOpenCampaign: (campaign: Campaign) => void;
+  readonly onRetry: () => void;
 }) {
   const nameOf = new Map(territories.map((territory) => [territory.id, territory.name]));
   return (
     <>
-      <Text style={styles.heading}>Campanhas</Text>
+      <SectionHeading
+        title="Campanhas"
+        count={campaigns === null ? undefined : plural(campaigns.length, 'campanha', 'campanhas')}
+      />
       <View style={styles.card}>
-        {error !== null && campaigns.length === 0 ? (
-          <Text style={styles.emptyText}>{error}</Text>
+        {failed && <SectionError message={CAMPAIGNS_ERROR_MESSAGE} onRetry={onRetry} />}
+        {campaigns === null ? (
+          failed ? null : <LoadingRows label="Carregando campanhas" />
         ) : campaigns.length === 0 ? (
           <View style={styles.emptyBlock}>
             <Text style={styles.emptyTitle}>Você não está em nenhuma campanha agora</Text>
@@ -268,14 +371,10 @@ function CampaignsSection({
                     </Text>
                   )}
                 </View>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Ver ${campaign.name} no mapa`}
+                <MapButton
+                  label={`Ver ${campaign.name} no mapa`}
                   onPress={() => onOpenCampaign(campaign)}
-                  style={({ pressed }) => [styles.mapButton, pressed && styles.mapButtonPressed]}
-                >
-                  <Text style={styles.mapButtonText}>Ver no mapa</Text>
-                </Pressable>
+                />
               </View>
             );
           })
@@ -285,13 +384,29 @@ function CampaignsSection({
   );
 }
 
-/** Section 1: what the publisher has already worked, most recent first (server-ordered). */
-function WorkedTerritoriesSection({ territories }: { readonly territories: WorkedTerritory[] }) {
+/** What the publisher has already worked, most recent first (server-ordered). */
+function WorkedTerritoriesSection({
+  territories,
+  failed,
+  onRetry,
+}: {
+  readonly territories: WorkedTerritory[] | null;
+  readonly failed: boolean;
+  readonly onRetry: () => void;
+}) {
   return (
     <>
-      <Text style={styles.heading}>Territórios trabalhados</Text>
+      <SectionHeading
+        title="Trabalhados por você"
+        count={
+          territories === null ? undefined : plural(territories.length, 'território', 'territórios')
+        }
+      />
       <View style={styles.card}>
-        {territories.length === 0 ? (
+        {failed && <SectionError message={WORKED_ERROR_MESSAGE} onRetry={onRetry} />}
+        {territories === null ? (
+          failed ? null : <LoadingRows label="Carregando territórios trabalhados" />
+        ) : territories.length === 0 ? (
           <Text style={styles.emptyText}>Nenhuma quadra trabalhada ainda</Text>
         ) : (
           territories.map((territory, index) => (
@@ -300,9 +415,7 @@ function WorkedTerritoriesSection({ territories }: { readonly territories: Worke
                 <Text style={styles.rowTitle}>{territory.name}</Text>
                 <Text style={styles.rowSubtitle}>Última visita registrada</Text>
               </View>
-              <View style={styles.dateBadge}>
-                <Text style={styles.rowDetail}>{territory.lastWorkedAt.toLocaleDateString()}</Text>
-              </View>
+              <Text style={styles.rowDate}>{formatDate(territory.lastWorkedAt)}</Text>
             </View>
           ))
         )}
@@ -311,19 +424,42 @@ function WorkedTerritoriesSection({ territories }: { readonly territories: Worke
   );
 }
 
-/** Section 2: the territory (or territories) currently assigned to this publisher. */
+/** "12 quadras · 3 vencidas" -- the overdue count uses the same colour rule as the map. */
+function blocksSummary(territory: Territory, now: Date): string {
+  const overdue = territory.blocks.filter(
+    (block) => blockColorCategory(block, now, territory.rotationDays) === 'overdue',
+  ).length;
+  const blocks = plural(territory.blocks.length, 'quadra', 'quadras');
+  return overdue === 0 ? blocks : `${blocks} · ${plural(overdue, 'vencida', 'vencidas')}`;
+}
+
+/** The territory (or territories) currently assigned to this publisher -- where to work today. */
 function AssignedTerritoriesSection({
   territories,
+  failed,
+  now,
   onOpenMap,
+  onRetry,
 }: {
-  readonly territories: Territory[];
+  readonly territories: Territory[] | null;
+  readonly failed: boolean;
+  readonly now: Date;
   readonly onOpenMap: (territory: Territory) => void;
+  readonly onRetry: () => void;
 }) {
   return (
     <>
-      <Text style={styles.heading}>Território(s) designado(s)</Text>
+      <SectionHeading
+        title="Designados a você"
+        count={
+          territories === null ? undefined : plural(territories.length, 'território', 'territórios')
+        }
+      />
       <View style={styles.card}>
-        {territories.length === 0 ? (
+        {failed && <SectionError message={TERRITORIES_ERROR_MESSAGE} onRetry={onRetry} />}
+        {territories === null ? (
+          failed ? null : <LoadingRows label="Carregando territórios designados" />
+        ) : territories.length === 0 ? (
           <Text style={styles.emptyText}>
             Nenhum território designado no momento — fale com quem cuida dos territórios na
             congregação
@@ -333,17 +469,12 @@ function AssignedTerritoriesSection({
             <View key={territory.id} style={[styles.row, index > 0 && styles.rowDivided]}>
               <View style={styles.territoryRowInfo}>
                 <Text style={styles.rowTitle}>{territory.name}</Text>
-                <Text style={styles.rowSubtitle}>
-                  {territory.blocks.length} {territory.blocks.length === 1 ? 'quadra' : 'quadras'}
-                </Text>
+                <Text style={styles.rowSubtitle}>{blocksSummary(territory, now)}</Text>
               </View>
-              <Pressable
-                accessibilityRole="button"
+              <MapButton
+                label={`Ver ${territory.name} no mapa`}
                 onPress={() => onOpenMap(territory)}
-                style={({ pressed }) => [styles.mapButton, pressed && styles.mapButtonPressed]}
-              >
-                <Text style={styles.mapButtonText}>Ver no mapa</Text>
-              </Pressable>
+              />
             </View>
           ))
         )}
@@ -352,61 +483,66 @@ function AssignedTerritoriesSection({
   );
 }
 
-/** Section 3: Detailed timeline of work history. */
+/** Detailed timeline of work history, capped at `HISTORY_PAGE_SIZE` with "Ver mais". */
 function WorkHistorySection({
   history,
   workedTerritories,
+  failed,
+  onRetry,
 }: {
   readonly history: PublisherWorkHistoryItem[];
-  readonly workedTerritories: WorkedTerritory[];
+  readonly workedTerritories: WorkedTerritory[] | null;
+  readonly failed: boolean;
+  readonly onRetry: () => void;
 }) {
-  if (history.length === 0 && workedTerritories.length === 0) {
-    return (
-      <>
-        <Text style={styles.heading}>Histórico de Trabalho</Text>
-        <View style={styles.card}>
-          <Text style={styles.emptyText}>Nenhuma quadra trabalhada ainda</Text>
-        </View>
-      </>
-    );
-  }
+  const [shown, setShown] = useState(HISTORY_PAGE_SIZE);
+  const total = history.length > 0 ? history.length : workedTerritories?.length ?? 0;
+  const loading = history.length === 0 && workedTerritories === null && !failed;
 
   return (
     <>
-      <Text style={styles.heading}>Histórico de Trabalho</Text>
+      <SectionHeading
+        title="Histórico"
+        count={loading ? undefined : plural(total, 'registro', 'registros')}
+      />
       <View style={styles.card}>
-        {history.length > 0
-          ? history.map((item, index) => (
-              <View key={item.id} style={[styles.historyRow, index > 0 && styles.rowDivided]}>
-                <View style={styles.historyBlockBadge}>
-                  <Text style={styles.historyBlockNumber}>Q{item.blockNumber}</Text>
-                </View>
-                <View style={styles.historyDetails}>
-                  <Text style={styles.historyTerritoryName}>{item.territoryName}</Text>
-                  <Text style={styles.historyDate}>
-                    {item.workedAt.toLocaleDateString()} às{' '}
-                    {item.workedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </Text>
-                </View>
-                <View style={styles.historyStatusBadge}>
-                  <Text style={styles.historyStatusText}>✓ Feito</Text>
-                </View>
+        {failed && history.length === 0 && (
+          <SectionError message={WORKED_ERROR_MESSAGE} onRetry={onRetry} />
+        )}
+        {loading ? (
+          <LoadingRows label="Carregando histórico" />
+        ) : total === 0 ? (
+          failed ? null : <Text style={styles.emptyText}>Nenhuma quadra trabalhada ainda</Text>
+        ) : history.length > 0 ? (
+          history.slice(0, shown).map((item, index) => (
+            <View key={item.id} style={[styles.historyRow, index > 0 && styles.rowDivided]}>
+              <View style={styles.historyBlockBadge}>
+                <Text style={styles.historyBlockNumber}>Q{item.blockNumber}</Text>
               </View>
-            ))
-          : workedTerritories.map((item, index) => (
-              <View key={item.id} style={[styles.historyRow, index > 0 && styles.rowDivided]}>
-                <View style={styles.historyBlockBadge}>
-                  <Text style={styles.historyBlockNumber}>📍</Text>
-                </View>
-                <View style={styles.historyDetails}>
-                  <Text style={styles.historyTerritoryName}>{item.name}</Text>
-                  <Text style={styles.historyDate}>{item.lastWorkedAt.toLocaleDateString()}</Text>
-                </View>
-                <View style={styles.historyStatusBadge}>
-                  <Text style={styles.historyStatusText}>✓ Visitado</Text>
-                </View>
-              </View>
-            ))}
+              <Text style={[styles.rowTitle, styles.historyName]}>{item.territoryName}</Text>
+              <Text style={styles.rowDate}>
+                {formatDate(item.workedAt)} às {formatTime(item.workedAt)}
+              </Text>
+            </View>
+          ))
+        ) : (
+          (workedTerritories ?? []).slice(0, shown).map((item, index) => (
+            <View key={item.id} style={[styles.historyRow, index > 0 && styles.rowDivided]}>
+              <Text style={[styles.rowTitle, styles.historyName]}>{item.name}</Text>
+              <Text style={styles.rowDate}>{formatDate(item.lastWorkedAt)}</Text>
+            </View>
+          ))
+        )}
+        {total > shown && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Ver mais registros, ${total - shown} restantes`}
+            onPress={() => setShown((current) => current + HISTORY_PAGE_SIZE)}
+            style={({ pressed }) => [styles.moreButton, pressed && styles.moreButtonPressed]}
+          >
+            <Text style={styles.moreButtonText}>Ver mais</Text>
+          </Pressable>
+        )}
       </View>
     </>
   );
@@ -422,110 +558,34 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
     gap: spacing.sm,
   },
-  errorBanner: {
-    backgroundColor: colors.dangerSurface,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.dangerBorder,
-  },
-  errorBannerText: {
-    color: colors.danger,
-    lineHeight: 20,
+  context: {
     fontSize: 14,
-  },
-  // Hero Card
-  heroCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...shadows.sm,
+    color: colors.textSecondary,
     marginBottom: spacing.xs,
   },
-  heroTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    marginBottom: spacing.md,
-  },
-  heroAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.full,
-    backgroundColor: colors.primaryLight,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  heroAvatarText: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.primary,
-  },
-  heroTextContainer: {
-    flex: 1,
-  },
-  heroGreeting: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  heroCongregation: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-  },
-  statBox: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  statNumber: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.primary,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    fontWeight: '500',
-    marginTop: 2,
-  },
-  statDivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: colors.border,
-  },
-  // Tab Bar
+  // Tab bar: a segmented control. The active segment is a white surface
+  // with a border, not a shadow.
   tabBar: {
     flexDirection: 'row',
     backgroundColor: colors.surfaceSubtle,
-    borderRadius: radius.md,
-    padding: 3,
+    borderRadius: radius.sm,
+    padding: spacing.xs,
     marginTop: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
   },
   tabButton: {
     flex: 1,
-    minHeight: 44,
-    paddingVertical: 10,
+    minHeight: touchTarget.min,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: radius.sm,
+    borderRadius: radius.xs,
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
   tabButtonActive: {
     backgroundColor: colors.surface,
-    ...shadows.sm,
+    borderColor: colors.border,
   },
   tabText: {
     fontSize: 14,
@@ -536,20 +596,29 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '700',
   },
-  heading: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.textPrimary,
+  headingRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
     marginTop: spacing.md,
     marginBottom: spacing.xs,
   },
+  heading: {
+    fontSize: fontSize.section,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  headingCount: {
+    fontSize: fontSize.meta,
+    color: colors.textSecondary,
+  },
   card: {
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: spacing.md,
-    ...shadows.sm,
   },
   emptyText: {
     color: colors.textSecondary,
@@ -563,7 +632,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   emptyTitle: {
-    fontSize: 15,
+    fontSize: fontSize.body,
     fontWeight: '600',
     color: colors.textPrimary,
     textAlign: 'center',
@@ -579,7 +648,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.sm,
-    paddingVertical: 14,
+    paddingVertical: spacing.md,
   },
   rowDivided: {
     borderTopWidth: 1,
@@ -587,56 +656,52 @@ const styles = StyleSheet.create({
   },
   territoryRowInfo: {
     flex: 1,
-    gap: 2,
+    gap: spacing.xs,
   },
   rowTitle: {
-    fontSize: 15,
+    fontSize: fontSize.body,
     fontWeight: '600',
     color: colors.textPrimary,
   },
   rowSubtitle: {
-    fontSize: 12,
+    fontSize: fontSize.meta,
     color: colors.textSecondary,
   },
-  dateBadge: {
-    backgroundColor: colors.surfaceSubtle,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  rowDetail: {
-    fontSize: 13,
+  rowDate: {
+    fontSize: fontSize.meta,
     color: colors.textSecondary,
-    fontWeight: '500',
+    textAlign: 'right',
+    fontVariant: ['tabular-nums'],
   },
   mapButton: {
-    backgroundColor: colors.primary,
+    minHeight: touchTarget.min,
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
     borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.primary,
     paddingHorizontal: spacing.md,
-    paddingVertical: 8,
-    ...shadows.sm,
   },
   mapButtonPressed: {
-    backgroundColor: colors.primaryPressed,
+    backgroundColor: colors.primaryLight,
   },
   mapButtonText: {
-    color: colors.onPrimary,
-    fontSize: 13,
+    color: colors.primary,
+    fontSize: 14,
     fontWeight: '600',
   },
-  // Work History Timeline Item
   historyRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    paddingVertical: 12,
+    minHeight: 56,
+    paddingVertical: spacing.sm,
   },
   historyBlockBadge: {
-    width: 38,
-    height: 38,
-    borderRadius: radius.md,
+    minWidth: 40,
+    height: 40,
+    paddingHorizontal: spacing.xs,
+    borderRadius: radius.sm,
     backgroundColor: colors.primaryLight,
     justifyContent: 'center',
     alignItems: 'center',
@@ -646,30 +711,22 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.primary,
   },
-  historyDetails: {
+  historyName: {
     flex: 1,
-    gap: 2,
   },
-  historyTerritoryName: {
-    fontSize: 15,
+  moreButton: {
+    minHeight: touchTarget.min,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  moreButtonPressed: {
+    backgroundColor: colors.surfaceSubtle,
+  },
+  moreButtonText: {
+    color: colors.primary,
+    fontSize: fontSize.body,
     fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  historyDate: {
-    fontSize: 12,
-    color: colors.textSecondary,
-  },
-  historyStatusBadge: {
-    backgroundColor: colors.successSurface,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: colors.successBorder,
-  },
-  historyStatusText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.successText,
   },
 });

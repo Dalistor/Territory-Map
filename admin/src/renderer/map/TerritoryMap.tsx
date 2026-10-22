@@ -114,7 +114,7 @@ function numberIcon(number: number, color: string): DivIcon {
       `<div style="width:28px;height:28px;border-radius:50%;` +
       `background:${color};color:#fff;border:2px solid #fff;` +
       `display:flex;align-items:center;justify-content:center;` +
-      `font-weight:bold;font-size:12px;font-family:sans-serif;` +
+      `font-weight:bold;font-size:12px;font-family:inherit;` +
       `box-shadow:0 1px 3px rgba(0,0,0,0.4);">${number}</div>`,
     iconSize: [28, 28],
     iconAnchor: [14, 14]

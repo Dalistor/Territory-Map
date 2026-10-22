@@ -69,12 +69,15 @@ export default function PublishersScreen({
 
   return (
     <View style={styles.screen}>
-      <QuerySearchField
-        accessibilityLabel="Buscar publicadores"
-        onChangeText={setSearch}
-        placeholder="Buscar publicadores"
-        value={search}
-      />
+      <View style={styles.controls}>
+        <QuerySearchField
+          accessibilityLabel="Buscar publicadores"
+          onChangeText={setSearch}
+          placeholder="Buscar publicadores"
+          value={search}
+        />
+      </View>
+      <View style={styles.body}>
       {isLoading ? (
         <QueryState kind="loading" title="Carregando publicadores" message="Aguarde um momento." />
       ) : loadError !== null ? (
@@ -86,10 +89,12 @@ export default function PublishersScreen({
           message="O cadastro de publicadores é feito no admin do computador."
         />
       ) : visiblePublishers.length === 0 ? (
-        <QueryState kind="no-results" title="Sem resultado" message={NO_RESULTS} />
+        <QueryState kind="no-results" title="Sem resultado" message={NO_RESULTS} onClear={() => setSearch('')} />
       ) : (
         <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
-          <Text style={styles.count}>{visiblePublishers.length} publicadores</Text>
+          <Text style={styles.count}>
+            {visiblePublishers.length === 1 ? '1 publicador' : `${visiblePublishers.length} publicadores`}
+          </Text>
           {visiblePublishers.map(publisher => (
             <QueryListItem
               key={publisher.id}
@@ -102,12 +107,15 @@ export default function PublishersScreen({
           ))}
         </ScrollView>
       )}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   count: { color: colors.textSecondary, fontSize: 13, fontWeight: '600', marginBottom: spacing.sm },
-  list: { paddingBottom: spacing.xl, paddingHorizontal: spacing.md, paddingTop: spacing.sm },
+  body: { flex: 1, paddingHorizontal: spacing.md },
+  controls: { paddingHorizontal: spacing.md },
+  list: { gap: spacing.sm, paddingBottom: spacing.xl, paddingTop: spacing.sm },
   screen: { backgroundColor: colors.background, flex: 1, paddingTop: spacing.md },
 });

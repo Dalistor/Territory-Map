@@ -42,9 +42,15 @@ function territoryCountLabel(count: number): string {
 export function campaignPeriodLabel(campaign: Campaign): string {
   const current = campaign.currentDesignation;
   if (current !== null) {
-    return `Ativa desde ${formatDate(current.startedAt)}`;
+    return `Retirada: ${formatDate(current.startedAt)}`;
   }
   return campaign.designations.length === 0 ? 'Ainda não designada' : 'Concluída';
+}
+
+/** One situation per campaign, in the canonical vocabulary. */
+export function campaignSituation(campaign: Campaign): string {
+  if (campaign.currentDesignation !== null) return 'Em andamento';
+  return campaign.designations.length === 0 ? 'Não designada' : 'Concluída';
 }
 
 export default function CampaignsScreen({
@@ -77,6 +83,7 @@ export default function CampaignsScreen({
 
   return (
     <View style={styles.screen}>
+      <View style={styles.body}>
       {isLoading ? (
         <QueryState kind="loading" title="Carregando campanhas" message="Aguarde um momento." />
       ) : loadError !== null ? (
@@ -97,18 +104,20 @@ export default function CampaignsScreen({
               description={campaignPeriodLabel(campaign)}
               details={[territoryCountLabel(campaign.territories.length)]}
               onPress={() => onOpenCampaign(campaign)}
-              status={campaign.currentDesignation !== null ? 'Ativa' : 'Inativa'}
+              status={campaignSituation(campaign)}
               title={campaign.name}
             />
           ))}
         </ScrollView>
       )}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  list: { paddingBottom: spacing.xl, paddingHorizontal: spacing.md, paddingTop: spacing.sm },
+  body: { flex: 1, paddingHorizontal: spacing.md },
+  list: { gap: spacing.sm, paddingBottom: spacing.xl, paddingTop: spacing.sm },
   note: { color: colors.textSecondary, fontSize: 13, marginBottom: spacing.sm },
   screen: { backgroundColor: colors.background, flex: 1, paddingTop: spacing.md },
 });

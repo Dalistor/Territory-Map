@@ -19,7 +19,9 @@
   --surface-subtle: #f8fafc;
   --surface-selected: #eaf1ff;
   --text-primary: #10233f;
-  --text-secondary: #5f7088;
+  /* #5a6b83 keeps secondary text at AA on white (5.43:1) and on the selected
+     row tint (4.79:1); the old #5f7088 fell to 4.45:1 on the selection. */
+  --text-secondary: #5a6b83;
   --border-subtle: #dce4ed;
   --border-strong: #b8c6d6;
   --focus-ring: #1769d1;
@@ -32,6 +34,16 @@
   --intent-danger-surface: #fff1f0;
   --intent-success-surface: #eefaf1;
   --intent-warning-surface: #fff8e8;
+  /* Text on the intent surfaces: the base hues miss 4.5:1 on their own tints. */
+  --intent-success-text: #1f7642;
+  --intent-warning-text: #955b0e;
+  --intent-danger-text: #b91c1c;
+  --intent-info-surface: #eaf1ff;
+  --intent-info-border: #a9c4ef;
+  --intent-info-text: #123f80;
+  --neutral-surface: #eef2f6;
+  /* Input and search outlines: 3:1 against white, the AA floor for controls. */
+  --border-control: #8696ab;
 
   /* Legacy aliases keep existing screens visually coherent while they are
      migrated in Task 13. */
@@ -51,9 +63,10 @@
   --color-surface: var(--surface-raised);
   --color-surface-subtle: var(--surface-subtle);
   --color-background: var(--surface-canvas);
-  --radius-sm: 6px;
+  --radius-sm: 4px;
   --radius: 8px;
   --radius-lg: 12px;
+  /* Below AA for text: icons and decorative marks only, never words. */
   --text-tertiary: #7b8aa0;
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --duration-fast: 150ms;
@@ -168,7 +181,7 @@ header h2 {
   flex: 1;
   min-width: 200px;
   margin: 0;
-  font-size: 1.1rem;
+  font-size: 1.25rem;
 }
 
 /* A summary line inside a header (DesignationsScreen's "N de M territórios
@@ -248,7 +261,7 @@ main > div:has(> .leaflet-container) {
   align-items: center;
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(38, 50, 56, 0.18);
-  border-radius: 6px;
+  border-radius: var(--radius);
   bottom: 12px;
   color: #263238;
   display: flex;
@@ -286,14 +299,11 @@ main > div:has(> .leaflet-container) {
 }
 
 .territory-row {
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
+  transition: border-color 0.15s ease;
 }
 
 .territory-row:hover {
   border-color: var(--color-primary);
-  box-shadow: 0 1px 4px rgba(13, 71, 161, 0.12);
 }
 
 ul {
@@ -327,24 +337,27 @@ li > span:first-child {
 /* HomeScreen's territory row -- who it is designated to, when it is. A soft
    pill between the name and the "⋮" button, so the designation reads as a
    status without stealing the name's anchor role. */
+/* Who has it and when it was last worked each take a line of their own under
+   the name, so neither the publisher nor the date is ever cut off. */
 .territory-assigned-user {
-  padding: 2px 10px;
-  border-radius: 999px;
-  background: #e8f0fe;
-  color: var(--color-primary-dark);
-  font-size: 0.78rem;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 140px;
-  flex-shrink: 0;
+  order: 1;
+  flex-basis: 100%;
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
 }
 
 .territory-last-work {
-  color: var(--color-text-muted);
-  font-size: 0.78rem;
-  white-space: nowrap;
+  order: 2;
+  flex-basis: 100%;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.territory-row .territory-quick-actions {
+  order: 3;
 }
 
 form {
@@ -366,7 +379,7 @@ select,
 textarea {
   font: inherit;
   padding: 8px 12px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius);
   background: var(--color-surface);
   color: var(--color-text);
@@ -434,7 +447,6 @@ button[type='submit'],
   border-color: var(--color-primary-dark);
   color: #fff;
   font-weight: 600;
-  box-shadow: var(--shadow-sm);
 }
 
 form button[type='submit']:hover:not(:disabled),
@@ -442,24 +454,23 @@ button[type='submit']:hover:not(:disabled),
 .button-primary:hover:not(:disabled) {
   background: var(--color-primary-dark);
   border-color: var(--color-primary-dark);
-  box-shadow: var(--shadow-md);
 }
 
 [role='alert'] {
   padding: 10px 14px;
   border-radius: var(--radius);
-  background: #fdecea;
+  background: var(--intent-danger-surface);
   border: 1px solid var(--color-danger);
-  color: #7f1d1d;
+  color: var(--intent-danger-text);
   font-size: 0.9rem;
 }
 
 [role='note'] {
   padding: 10px 14px;
   border-radius: var(--radius);
-  background: #e8f0fe;
-  border: 1px solid #90b4f5;
-  color: #1a3a6b;
+  background: var(--intent-info-surface);
+  border: 1px solid var(--intent-info-border);
+  color: var(--intent-info-text);
   font-size: 0.9rem;
 }
 
@@ -467,9 +478,9 @@ button[type='submit']:hover:not(:disabled),
 main > p[role='status'] {
   padding: 8px 14px;
   border-radius: var(--radius);
-  background: var(--color-success-light);
-  border: 1px solid #bbf7d0;
-  color: #15803d;
+  background: var(--intent-success-surface);
+  border: 1px solid color-mix(in srgb, var(--intent-success) 30%, white);
+  color: var(--intent-success-text);
   font-weight: 500;
   font-size: 0.9rem;
 }
@@ -536,7 +547,7 @@ li > [role='menu'] {
   margin-top: 6px;
   background: var(--color-surface-subtle);
   border: 1px solid var(--color-border);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.03);
+  box-shadow: none;
 }
 
 /* Reset the generic `li` card styling inside nested menus */
@@ -554,7 +565,7 @@ li > [role='menu'] {
   width: 100%;
   text-align: left;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 8px 12px;
   background: transparent;
   font-size: 0.88rem;
@@ -575,7 +586,7 @@ li > [role='menu'] {
 }
 
 [role='menu'] button.block-action-danger:hover:not(:disabled) {
-  background: #fef2f2;
+  background: var(--intent-danger-surface);
   color: var(--color-danger);
 }
 
@@ -597,9 +608,7 @@ li > [role='menu'] {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  box-shadow:
-    0 0 0 9999px rgba(15, 23, 32, 0.45),
-    0 24px 48px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.25);
   z-index: 2000;
 }
 
@@ -644,7 +653,7 @@ li > [role='menu'] {
 
 .block-action {
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius);
   font-size: 0.92rem;
 }
 
@@ -684,7 +693,7 @@ li > [role='menu'] {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: linear-gradient(180deg, #eef3fa 0%, var(--color-background) 55%);
+  background: var(--color-background);
 }
 
 .setup-card {
@@ -693,8 +702,7 @@ li > [role='menu'] {
   padding: 36px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 16px;
-  box-shadow: 0 24px 48px rgba(13, 71, 161, 0.1);
+  border-radius: var(--radius-lg);
   text-align: center;
 }
 
@@ -707,7 +715,7 @@ li > [role='menu'] {
   width: 140px;
   height: 140px;
   margin: 0 auto 16px;
-  border-radius: 20px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--color-border);
 }
 
@@ -802,14 +810,16 @@ li > [role='menu'] {
   }
 }
 
+/* One mark per situation, the same on every screen: "Em andamento" is amber,
+   "Livre" and "Devolvido" are neutral. */
 .status-badge.status-idle {
-  background: #f1f5f9;
-  color: #475569;
+  background: var(--neutral-surface);
+  color: var(--text-secondary);
 }
 
 .status-badge.status-working {
-  background: #e0f2fe;
-  color: #0369a1;
+  background: var(--intent-warning-surface);
+  color: var(--intent-warning-text);
 }
 
 .territory-leader-badge {
@@ -847,9 +857,9 @@ li > [role='menu'] {
 
 .dialog-error {
   padding: 8px 12px;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  color: #b91c1c;
+  background: var(--intent-danger-surface);
+  border: 1px solid color-mix(in srgb, var(--intent-danger) 30%, white);
+  color: var(--intent-danger-text);
   border-radius: var(--radius-sm);
   font-size: 0.85rem;
   margin: 0 0 12px;
@@ -953,7 +963,8 @@ li > [role='menu'] {
 .publishers-workspace {
   display: grid;
   flex: 1 1 auto;
-  grid-template-columns: minmax(0, 1fr);
+  /* A reading width for the list on its own; the detail takes the rest. */
+  grid-template-columns: minmax(0, 44rem);
   min-height: 0;
   margin-top: 10px;
 }
@@ -971,6 +982,10 @@ li > [role='menu'] {
 }
 
 .publishers-no-results {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
   background: var(--surface-subtle);
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius-lg);
@@ -994,7 +1009,7 @@ li > [role='menu'] {
 
 .publisher-history-panel-header {
   align-items: flex-start;
-  background: linear-gradient(135deg, var(--surface-raised), var(--surface-selected));
+  background: var(--surface-subtle);
   border-bottom: 1px solid var(--border-subtle);
   display: flex;
   gap: 16px;
@@ -1002,13 +1017,11 @@ li > [role='menu'] {
   padding: 18px 20px;
 }
 
-.publisher-history-panel-header .eyebrow {
-  color: var(--selection-text);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.09em;
-  margin: 0 0 5px;
-  text-transform: uppercase;
+.publisher-history-title {
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  margin: 0 0 4px;
 }
 
 .publisher-history-name {
@@ -1055,15 +1068,14 @@ li > [role='menu'] {
 }
 
 .publisher-history-table-wrap th {
-  background: var(--surface-subtle);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border-strong);
   color: var(--text-secondary);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.055em;
+  font-size: 0.8125rem;
+  font-weight: 600;
   padding: 11px 14px;
   position: sticky;
   text-align: left;
-  text-transform: uppercase;
   top: 0;
   z-index: 1;
 }
@@ -1083,26 +1095,6 @@ li > [role='menu'] {
 
 .publisher-history-table-wrap tbody tr:hover {
   background: var(--surface-subtle);
-}
-
-.assignment-status {
-  align-items: center;
-  border-radius: 999px;
-  display: inline-flex;
-  font-size: 0.76rem;
-  font-weight: 700;
-  padding: 4px 9px;
-  white-space: nowrap;
-}
-
-.assignment-status.is-ongoing {
-  background: var(--intent-warning-surface);
-  color: var(--intent-warning);
-}
-
-.assignment-status.is-returned {
-  background: var(--intent-success-surface);
-  color: var(--intent-success);
 }
 
 .publisher-history-state {
@@ -1137,12 +1129,7 @@ li > [role='menu'] {
 }
 
 .publishers-search {
-  display: block;
-  width: 100%;
-  max-width: 360px;
-  margin: 12px 0 6px;
-  padding: 8px 14px;
-  border-radius: 999px;
+  max-width: 24rem;
 }
 
 @media (max-width: 1120px) {
@@ -1174,14 +1161,14 @@ li > [role='menu'] {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: #dbe7f5;
+  background: var(--surface-selected);
   color: var(--color-primary-dark);
   font-weight: 700;
   font-size: 0.95rem;
 }
 
 .publisher-row .avatar.is-inactive {
-  background: #ececec;
+  background: var(--neutral-surface);
   color: var(--color-text-muted);
 }
 
@@ -1216,6 +1203,8 @@ li > [role='menu'] {
 }
 
 .status-badge {
+  flex: none;
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1235,23 +1224,23 @@ li > [role='menu'] {
 }
 
 .status-badge.status-active {
-  background: #e6f4ea;
-  color: #1e7d34;
+  background: var(--intent-success-surface);
+  color: var(--intent-success-text);
 }
 
 .status-badge.status-live-code {
-  background: #e8f0fe;
-  color: #1a56c4;
+  background: var(--intent-info-surface);
+  color: var(--intent-info-text);
 }
 
 .status-badge.status-pending {
-  background: #fff4e0;
-  color: #a15c00;
+  background: var(--intent-warning-surface);
+  color: var(--intent-warning-text);
 }
 
 .status-badge.status-revoked {
-  background: #f1f1f1;
-  color: var(--color-text-muted);
+  background: var(--neutral-surface);
+  color: var(--text-secondary);
 }
 
 /* The code-reveal dialog's headline number -- big, spaced out, impossible to
@@ -1266,7 +1255,7 @@ li > [role='menu'] {
   letter-spacing: 0.25em;
   background: var(--color-background);
   border: 1px dashed var(--color-border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   color: var(--color-primary-dark);
 }
 
@@ -1285,7 +1274,6 @@ li > [role='menu'] {
   flex-direction: column;
   background: var(--surface-raised);
   border-right: 1px solid var(--border-subtle);
-  box-shadow: var(--shadow-sm);
 }
 
 .sidebar-header {
@@ -1303,7 +1291,6 @@ li > [role='menu'] {
   height: 36px;
   flex-shrink: 0;
   border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
 }
 
 .sidebar-header-text {
@@ -1314,9 +1301,9 @@ li > [role='menu'] {
   display: block;
   margin-bottom: 5px;
   color: var(--text-secondary);
-  font-size: 0.62rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -1373,10 +1360,9 @@ li > [role='menu'] {
 }
 
 .sidebar-nav button.is-active {
-  background: var(--surface-selected);
-  box-shadow: inset 3px 0 0 var(--intent-primary);
-  color: var(--selection-text);
-  font-weight: 700;
+  background: var(--neutral-surface);
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 .sidebar-footer {
@@ -1434,28 +1420,17 @@ li > [role='menu'] {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  box-shadow: var(--shadow-sm);
-  transition:
-    transform 0.15s ease,
-    box-shadow 0.15s ease;
-}
-
-.kpi-card:hover {
-  box-shadow: var(--shadow-md);
 }
 
 .kpi-card-active {
   border-color: var(--color-primary);
-  box-shadow:
-    inset 0 2px 0 var(--color-primary),
-    var(--shadow-sm);
+  box-shadow: inset 0 2px 0 var(--color-primary);
 }
 
 .kpi-label {
-  font-size: 0.78rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: var(--color-text-muted);
-  text-transform: uppercase;
   letter-spacing: 0.03em;
 }
 
@@ -1734,21 +1709,9 @@ li > [role='menu'] {
 }
 
 /* S-13-T Import Preview Modal */
-.import-modal {
-  width: 100%;
-  min-width: 0;
-  max-width: min(680px, calc(100vw - 32px));
-  max-height: calc(100vh - 48px);
-  display: flex;
-  flex-direction: column;
-}
 
 .import-preview-list {
-  flex: 1;
-  min-height: 0;
-  max-height: 340px;
-  overflow-y: auto;
-  margin: 14px 0;
+  margin: 14px 0 0;
   padding: 10px;
   background: var(--color-background);
   border: 1px solid var(--color-border);
@@ -1757,8 +1720,7 @@ li > [role='menu'] {
 
 .import-preview-list h3 {
   margin: 0 0 8px;
-  font-size: 0.88rem;
-  text-transform: uppercase;
+  font-size: 0.875rem;
   color: var(--color-text-muted);
 }
 
@@ -1807,7 +1769,7 @@ li > [role='menu'] {
   color: var(--color-primary-dark);
   font-size: 0.8rem;
   padding: 3px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-weight: 500;
 }
 
@@ -1844,6 +1806,18 @@ li > [role='menu'] {
   overflow-wrap: anywhere;
 }
 
+.screen-title-block .screen-subtitle {
+  margin: 2px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.empty-hint {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
 .screen-body {
   padding: clamp(14px, 2vw, 24px) clamp(16px, 2.2vw, 28px);
 }
@@ -1852,7 +1826,6 @@ li > [role='menu'] {
   background: var(--surface-raised);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
 }
 
 .button-secondary {
@@ -1866,7 +1839,7 @@ li > [role='menu'] {
 }
 
 .button-danger:hover:not(:disabled) {
-  background: #ffe4e1;
+  background: color-mix(in srgb, var(--intent-danger) 12%, white);
   border-color: var(--intent-danger);
 }
 
@@ -1906,7 +1879,6 @@ li > [role='menu'] {
   background: var(--surface-raised);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
 
@@ -1972,7 +1944,6 @@ li > [role='menu'] {
 
 .editor-map .leaflet-container {
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
 }
 
 .screen-settings .settings-screen {
@@ -2246,8 +2217,8 @@ main > p[role='status'] {
   padding: 8px 14px;
   border-radius: var(--radius);
   background: var(--intent-success-surface);
-  border: 1px solid #bbf7d0;
-  color: #166534;
+  border: 1px solid color-mix(in srgb, var(--intent-success) 30%, white);
+  color: var(--intent-success-text);
   font-size: 0.875rem;
   font-weight: 500;
 }
@@ -2390,14 +2361,14 @@ main > p[role='status'] {
 }
 
 .cell-sub {
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   font-size: 0.78rem;
   font-weight: 400;
 }
 
 .cell-muted {
   font-style: normal;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
 }
 
 .cell-check {
@@ -2506,6 +2477,45 @@ main > p[role='status'] {
   margin: 0 24px;
 }
 
+/* A workspace dialog is header / scrolling body / pinned actions: however low
+   the window is, the body scrolls and Cancel and the primary stay reachable. */
+.dialog-xl > .dialog-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 24px 8px;
+}
+
+.dialog-xl > .dialog-actions {
+  flex: none;
+  align-items: center;
+  margin: 0;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.dialog-actions-hint {
+  margin: 0 auto 0 0;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+/* The import preview reads as a document, not a map workspace: narrower, and
+   only as tall as its content needs. */
+[role='dialog'].dialog-xl.import-modal {
+  width: min(720px, calc(100vw - 48px));
+  height: auto;
+  max-height: calc(100vh - 48px);
+}
+
+.campaign-editor .campaign-pick-list {
+  flex: 1;
+  max-height: none;
+  min-height: 12rem;
+}
+
 .field-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -2545,10 +2555,8 @@ label.field-checkbox {
 
 .summary-label {
   color: var(--text-secondary);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-size: 0.8125rem;
+  font-weight: 600;
 }
 
 .summary-value {
@@ -2777,7 +2785,7 @@ label.field-checkbox {
 }
 
 .block-status-forced {
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   font-size: 0.8125rem;
   font-weight: 400;
 }
@@ -2798,7 +2806,7 @@ label.field-checkbox {
   align-items: center;
   gap: 6px;
   padding: 48px 16px;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   text-align: center;
 }
 
@@ -2979,13 +2987,31 @@ label.field-checkbox {
 .campaigns-workspace {
   display: grid;
   flex: 1 1 auto;
-  grid-template-columns: minmax(0, 24rem);
+  /* The detail column is always there: with no campaign chosen it says what
+     to do next instead of leaving most of the screen blank. */
+  grid-template-columns: minmax(260px, 22rem) minmax(0, 1fr);
   gap: 16px;
   min-height: 0;
 }
 
-.campaigns-workspace.has-detail {
-  grid-template-columns: minmax(260px, 22rem) minmax(0, 1fr);
+.campaign-detail-empty {
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 32px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  color: var(--text-secondary);
+}
+
+.campaign-detail-empty strong {
+  color: var(--text-primary);
+}
+
+.campaign-detail-empty p {
+  margin: 0;
+  max-width: 36rem;
 }
 
 .campaigns-directory {
@@ -3032,11 +3058,10 @@ label.field-checkbox {
   min-width: 0;
 }
 
+/* Wraps instead of truncating: the name is what tells two campaigns apart. */
 .campaign-row-name {
-  overflow: hidden;
   font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .campaign-row .status-badge,
@@ -3241,8 +3266,71 @@ label.field-checkbox {
 }
 
 @media (max-width: 900px) {
-  .campaigns-workspace.has-detail,
+  .campaigns-workspace,
   .campaign-territories {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* A failed read inside its own block, with the retry beside the message. */
+.error-notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  justify-content: space-between;
+}
+
+.error-notice > span {
+  min-width: 0;
+}
+
+.territories-workspace-toolbar .search-field {
+  min-width: min(100%, 26rem);
+}
+
+/* The app's own confirmation (useConfirm): the question is the title, the
+   consequences follow, line breaks kept as written. */
+.confirm-dialog-text {
+  margin: 0 0 12px;
+  color: var(--text-primary);
+  white-space: pre-line;
+}
+
+/* The territory tag drawn on the assignments map (AssignmentsMap's DivIcon). */
+.assignments-map-tag {
+  display: inline-block;
+  padding: 4px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+}
+
+.assignments-map-name {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.assignments-map-holder {
+  font-size: 12px;
+}
+
+.assignments-map-holder.is-empty {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* Leaflet ships its own Helvetica stack; the map speaks in the app's face. */
+#root .leaflet-container,
+#root .leaflet-container .leaflet-control-attribution,
+#root .leaflet-container .leaflet-control-zoom a {
+  /* `#root` out-ranks leaflet.css, which the map component imports after this file. */
+  font-family: inherit;
 }

@@ -1,34 +1,55 @@
-// The admin app's one palette, deliberately the same values as
-// `app/src/presentation/theme.ts` in the publisher app: the two APKs sit side
-// by side on the same phone and belong to the same product, so they must read
-// as the same product. The block status colors (red/orange/green) are NOT
-// here on purpose -- they belong to the domain (`domain/blockColor.ts`
-// consumers) and never change with theming.
+// The admin app's one palette: the values of `DESIGN.md` (colors, "Contrast
+// rules" and "Mobile (Android)", spec 0018) under the names this app's
+// screens already use. Only the border tints of the status surfaces and the
+// disabled pair are local; DESIGN.md names no value for them.
+//
+// The block status colors (red/orange/green) are NOT here on purpose -- they
+// belong to the domain (`domain/blockColor.ts` consumers) and never change
+// with theming.
 export const colors = {
-  primary: '#1565c0',
-  primaryPressed: '#0d47a1',
-  primaryLight: '#e3f2fd',
-  background: '#f8fafc',
-  surface: '#ffffff',
-  surfaceSubtle: '#f1f5f9',
-  border: '#e2e8f0',
-  borderStrong: '#cbd5e1',
-  textPrimary: '#0f172a',
-  textSecondary: '#64748b',
-  textMuted: '#94a3b8',
-  onPrimary: '#ffffff',
-  danger: '#dc2626',
-  dangerSurface: '#fef2f2',
-  dangerBorder: '#fecaca',
-  warningSurface: '#fffbeb',
-  warningBorder: '#fde68a',
-  warningText: '#92400e',
-  success: '#16a34a',
-  successSurface: '#f0fdf4',
-  successBorder: '#bbf7d0',
-  successText: '#15803d',
-  disabledSurface: '#cbd5e1',
-  disabledText: '#94a3b8',
+  primary: '#155FC0',
+  primaryPressed: '#124F9F',
+  primaryLight: '#EAF1FF',
+  background: '#F8FAFC',
+  surface: '#FFFFFF',
+  surfaceSubtle: '#F8FAFC',
+  border: '#DCE4ED',
+  borderStrong: '#B8C6D6',
+  /** Outline of an input or a secondary control: 3.47:1 against white. */
+  borderInput: '#7B8BA1',
+  focus: '#1769D1',
+  textPrimary: '#10233F',
+  /** 5.05:1 on white; never used on `primaryLight`, where it falls under AA. */
+  textSecondary: '#5A6B83',
+  /** `text-placeholder` in DESIGN.md: the same ink as `textSecondary`. */
+  textPlaceholder: '#5A6B83',
+  /**
+   * `text-tertiary`: non-text only (chevrons, decorative dots). Text uses
+   * `textSecondary`, the lightest ink that still passes AA.
+   */
+  textMuted: '#7B8AA0',
+  onPrimary: '#FFFFFF',
+  danger: '#C63D37',
+  /** Error text and destructive labels on `dangerSurface`: 5.91:1. */
+  dangerText: '#B91C1C',
+  dangerSurface: '#FFF1F0',
+  dangerBorder: '#F5C2BF',
+  warning: '#AA6812',
+  warningSurface: '#FFF8E8',
+  warningBorder: '#F1D79B',
+  warningText: '#955B0E',
+  success: '#25834A',
+  successSurface: '#EEFAF1',
+  successBorder: '#B9E2C6',
+  successText: '#1F7642',
+  disabledSurface: '#E8EDF3',
+  disabledText: '#5A6B83',
+  /** Behind a modal. */
+  scrim: 'rgba(16, 35, 63, 0.5)',
+  /** Controls and labels drawn over the map. */
+  mapOverlay: 'rgba(255, 255, 255, 0.94)',
+  /** Ink of text over the map, and of the number on the overdue block. */
+  mapLabelInk: '#10233F',
 } as const;
 
 export const spacing = {
@@ -49,23 +70,29 @@ export const radius = {
   full: 9999,
 } as const;
 
+/** 44 dp is the floor (`UX-CONTRACT.md`); 48 dp is what a button gets by default. */
+export const touchTarget = {
+  min: 44,
+  default: 48,
+} as const;
+
 export const shadows = {
   sm: {
-    shadowColor: '#0f172a',
+    shadowColor: '#10233F',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 2,
   },
   md: {
-    shadowColor: '#0f172a',
+    shadowColor: '#10233F',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
     shadowRadius: 8,
-    elevation: 4,
+    elevation: 6,
   },
   lg: {
-    shadowColor: '#0f172a',
+    shadowColor: '#10233F',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.12,
     shadowRadius: 16,

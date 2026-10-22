@@ -95,3 +95,7 @@ Implementações anteriores a 0156 estão em `arquivo.md`.
 | [0247](0247/README.md) | Aba Campanhas e mapa da campanha no app do publicador (spec 0017, Task 07) | 2026-10-22 | Concluído | `app/src/{domain,data,presentation}` |
 | [0248](0248/README.md) | Campanhas em modo consulta no app admin (spec 0017, Task 08) | 2026-10-22 | Concluído | `admin-app/src/{domain,data,presentation}` |
 | [0249](0249/README.md) | Documentação, estado e evidências das campanhas (spec 0017, Task 09) | 2026-10-22 | Concluído | `AGENTS.md`, `.centaur/state/campanhas.json`, `.centaur/evidence/` |
+| [0250](0250/README.md) | Polimento visual do app do publicador: tokens mobile, estados, legenda do mapa e alvos de toque (spec 0018, Task 02) | 2026-10-22 | Concluído | `app/src/presentation`, `app/src/domain/blockStatusLabel.ts`, `DESIGN.md` |
+| [0251](0251/README.md) | Polimento visual do app admin: Button comum, contraste, estados assíncronos e navegação aprovada (spec 0018, Task 03) | 2026-10-22 | Concluído | `admin-app/src/presentation` |
+| [0252](0252/README.md) | Polimento visual do admin desktop: diálogos, contraste, ConfirmDialog e padrão de consulta (spec 0018, Task 04) | 2026-10-22 | Concluído | `admin/src/renderer` |
+| [0253](0253/README.md) | Auditoria visual dos três clientes e alinhamento de tokens (spec 0018, Task 01) | 2026-10-22 | Concluído | `.centaur/specs/0018/audit.md`, `DESIGN.md`, `UX-CONTRACT.md`, `theme.ts` dos apps |

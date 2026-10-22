@@ -22,7 +22,7 @@ lado já existente.
 
 ### Android
 
-As tabs inferiores são `Territórios`, `Publicadores` e `Histórico`. Cada tab é uma consulta com
+As tabs inferiores são `Territórios`, `Publicadores`, `Campanhas` (consulta, spec 0017) e `Histórico`. Cada tab é uma consulta com
 lista densa; tocar um item abre seu detalhe no native stack. Voltar restaura a tab, busca, filtros,
 seleção e posição anteriores. A tab `Territórios` alterna `Lista` e `Mapa` sem reinicializar seu
 estado.

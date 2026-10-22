@@ -50,6 +50,7 @@ import {
   type AppRelease,
 } from '../domain/appUpdate';
 import DesignationsScreen from './screens/DesignationsScreen';
+import type { TerritoryDetailSegment } from './screens/DesignationsScreen';
 import PublishersScreen from './screens/PublishersScreen';
 import PublisherHistoryScreen from './screens/PublisherHistoryScreen';
 import HistoryScreen from './screens/HistoryScreen';
@@ -59,7 +60,7 @@ import TerritoryDetailScreen from './screens/TerritoryDetailScreen';
 import SetupScreen from './screens/SetupScreen';
 import TabIcon, { type TabIconName } from './components/TabIcon';
 import { UpdateModal } from './components/UpdateModal';
-import { colors, radius, spacing } from './theme';
+import { colors, radius, spacing, touchTarget } from './theme';
 
 export interface AppProps {
   /**
@@ -123,7 +124,7 @@ export interface DesignationsSlotProps {
   readonly session: Session;
   readonly api: ApiClient;
   /** Opens the territory route while leaving the tab mounted behind it. */
-  readonly onOpenTerritory?: (territoryId: string) => void;
+  readonly onOpenTerritory?: (territoryId: string, initialSegment?: TerritoryDetailSegment) => void;
 }
 
 /**
@@ -151,7 +152,7 @@ type RootState =
 
 export type RootStackParamList = {
   MainTabs: undefined;
-  TerritoryDetail: { readonly territoryId: string };
+  TerritoryDetail: { readonly territoryId: string; readonly initialSegment?: TerritoryDetailSegment };
   PublisherDetail: { readonly publisherId: string; readonly publisherName: string };
   CampaignDetail: { readonly campaignId: string; readonly campaignName: string };
 };
@@ -400,16 +401,17 @@ export default function App(props: AppProps): React.JSX.Element {
 
   return (
     <SafeAreaProvider>
-      {/* The blue header runs under the translucent status bar, so its icons
-          flip to light there (`statusBarStyle` below); the header-less setup
-          and loading states keep the dark icons set above. */}
+      {/* The header is a quiet surface with dark ink (spec 0018): the accent
+          belongs to data and the one primary action, not to the chrome. The
+          status bar icons stay dark, as on the header-less setup screen. */}
       <NavigationContainer theme={navigationTheme}>
         <Stack.Navigator
           screenOptions={{
-            headerStyle: { backgroundColor: colors.primary },
-            headerTintColor: colors.onPrimary,
-            headerTitleStyle: { fontWeight: '600' },
-            statusBarStyle: 'light',
+            headerStyle: { backgroundColor: colors.surface },
+            headerTintColor: colors.textPrimary,
+            headerTitleStyle: { fontSize: 18, fontWeight: '700' },
+            headerShadowVisible: true,
+            statusBarStyle: 'dark',
             contentStyle: { backgroundColor: colors.background },
           }}
         >
@@ -427,6 +429,7 @@ export default function App(props: AppProps): React.JSX.Element {
             {({ navigation, route }) => (
               <TerritoryDetailScreen
                 territoryId={route.params.territoryId}
+                initialSegment={route.params.initialSegment}
                 api={api}
                 session={guardedSession}
                 onTerritoryRemoved={() => navigation.goBack()}
@@ -487,9 +490,13 @@ function PrimaryTabs({ api, onSignOut, renderDesignations, session }: PrimaryTab
   return (
     <Tabs.Navigator
       screenOptions={{
-        headerStyle: { backgroundColor: colors.primary },
-        headerTintColor: colors.onPrimary,
-        headerTitleStyle: { fontWeight: '600' },
+        headerStyle: {
+          backgroundColor: colors.surface,
+          borderBottomColor: colors.border,
+          borderBottomWidth: StyleSheet.hairlineWidth,
+        },
+        headerTintColor: colors.textPrimary,
+        headerTitleStyle: { fontSize: 18, fontWeight: '700' },
         sceneStyle: { backgroundColor: colors.background },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textSecondary,
@@ -510,8 +517,8 @@ function PrimaryTabs({ api, onSignOut, renderDesignations, session }: PrimaryTab
         {({ navigation }) => renderDesignations({
           session,
           api,
-          onOpenTerritory: territoryId =>
-            navigation.getParent()?.navigate('TerritoryDetail', { territoryId }),
+          onOpenTerritory: (territoryId, initialSegment) =>
+            navigation.getParent()?.navigate('TerritoryDetail', { territoryId, initialSegment }),
         })}
       </Tabs.Screen>
       <Tabs.Screen name="Publishers" options={primaryTabOptions('Publicadores', 'publishers', onSignOut)}>
@@ -576,6 +583,7 @@ function SignOutButton({ onPress }: { readonly onPress: () => void }): React.JSX
       accessibilityRole="button"
       accessibilityLabel="Sair da congregação"
       onPress={onPress}
+      hitSlop={spacing.xs}
       style={({ pressed }) => [styles.signOut, pressed && styles.signOutPressed]}
     >
       <Text style={styles.signOutLabel}>Sair</Text>
@@ -607,15 +615,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   signOut: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: touchTarget.min,
+    minWidth: touchTarget.min,
+    paddingHorizontal: spacing.md,
   },
   signOutLabel: {
-    color: colors.onPrimary,
+    color: colors.primary,
     fontSize: 15,
     fontWeight: '600',
   },
   signOutPressed: {
-    opacity: 0.6,
+    backgroundColor: colors.primaryLight,
+    borderRadius: radius.sm,
   },
 });

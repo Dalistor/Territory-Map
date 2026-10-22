@@ -21,8 +21,11 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { blockColorCategory } from '../../domain/blockColor';
 import { blockStatusLabel } from '../../domain/blockStatusLabel';
 import type { Block, LatLng, Territory } from '../../domain/models';
+import { BLOCK_CATEGORY_COLOR } from '../../domain/territoryMap';
+import { QueryState } from '../components';
 import { AssignmentsMapView } from '../map/AssignmentsMapView';
 import { colors, radius, spacing } from '../theme';
 import { BlockWorkSection, formatDate } from './BlockWorkSection';
@@ -69,6 +72,17 @@ export interface BlocksScreenProps {
    * keeps its compact inline work section.
    */
   readonly onOpenBlock?: (block: Block) => void;
+  /** Off inside the territory detail, which already names the territory. */
+  readonly showTitle?: boolean;
+}
+
+/** What TalkBack reads for a block row: its number, status and last work. */
+function blockRowLabel(block: Block, status: string): string {
+  const lastWork =
+    block.lastWorkedAt === null
+      ? ''
+      : `, último trabalho ${formatDate(block.lastWorkedAt)}`;
+  return `Quadra ${block.number}, ${status}${lastWork}`;
 }
 
 export function BlocksScreen({
@@ -79,6 +93,7 @@ export function BlocksScreen({
   fallbackCenter,
   scrollable = true,
   onOpenBlock,
+  showTitle = true,
 }: BlocksScreenProps): React.JSX.Element {
   const moment = now ?? new Date();
 
@@ -135,7 +150,11 @@ export function BlocksScreen({
 
   return (
     <Container {...containerProps}>
-      <Text style={styles.title}>{current.name}</Text>
+      {showTitle && (
+        <Text accessibilityRole="header" style={styles.title}>
+          {current.name}
+        </Text>
+      )}
 
       {blocks.length > 0 && (
         <View style={styles.map}>
@@ -148,51 +167,60 @@ export function BlocksScreen({
       )}
 
       {blocks.length === 0 ? (
-        <Text style={styles.emptyMessage}>{NO_BLOCKS_MESSAGE}</Text>
+        <QueryState kind="empty" title="Sem quadras" message={NO_BLOCKS_MESSAGE} />
       ) : (
-        blocks.map(block => (
-          <View key={block.id} style={styles.card}>
-            <Pressable
-              testID={`block-row-${block.id}`}
-              accessibilityRole="button"
-              accessibilityLabel={`Quadra ${block.number}`}
-              accessibilityState={{ expanded: openBlockId === block.id }}
-              style={styles.row}
-              onPress={() => handleSelectBlock(block)}>
-              <Text style={styles.blockNumber}>Quadra {block.number}</Text>
-              <View style={styles.rowDetails}>
-                <Text style={styles.blockStatus}>
-                  {blockStatusLabel(block, moment, current.rotationDays)}
-                </Text>
-                {block.lastWorkedAt !== null && (
-                  <Text style={styles.blockLastVisit}>
-                    Última visita: {formatDate(block.lastWorkedAt)}
-                  </Text>
-                )}
-              </View>
-            </Pressable>
-            {openBlockId === block.id && (
-              <BlockWorkSection
-                block={block}
-                session={session}
-                api={api}
-                now={moment}
-                onChanged={reloadTerritory}
-              />
-            )}
-          </View>
-        ))
+        blocks.map(block => {
+          const status = blockStatusLabel(block, moment, current.rotationDays);
+          const category = blockColorCategory(block, moment, current.rotationDays);
+          return (
+            <View key={block.id} style={styles.card}>
+              <Pressable
+                testID={`block-row-${block.id}`}
+                accessibilityRole="button"
+                accessibilityLabel={blockRowLabel(block, status)}
+                accessibilityState={{ expanded: openBlockId === block.id }}
+                style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+                onPress={() => handleSelectBlock(block)}>
+                <Text style={styles.blockNumber}>Quadra {block.number}</Text>
+                <View style={styles.rowDetails}>
+                  <View style={styles.statusLine}>
+                    {/* The map's colour, so the list and the map read alike;
+                        the words beside it carry the meaning on their own. */}
+                    <View
+                      style={[
+                        styles.statusSwatch,
+                        { backgroundColor: BLOCK_CATEGORY_COLOR[category] },
+                      ]}
+                    />
+                    <Text style={styles.blockStatus}>{status}</Text>
+                  </View>
+                  {block.lastWorkedAt !== null && (
+                    <Text style={styles.blockLastVisit}>
+                      Último trabalho: {formatDate(block.lastWorkedAt)}
+                    </Text>
+                  )}
+                </View>
+              </Pressable>
+              {openBlockId === block.id && (
+                <BlockWorkSection
+                  block={block}
+                  session={session}
+                  api={api}
+                  now={moment}
+                  onChanged={reloadTerritory}
+                />
+              )}
+            </View>
+          );
+        })
       )}
     </Container>
   );
 }
 
-// The palette comes from `../theme`, like every other screen of this app: the
-// literals that used to live here dated from before `theme.ts` existed. Sizes
-// that no token names exactly stay as numbers -- the point of spec 0013's Task
-// 07 is one palette, not a bigger one, and rounding a padding to the nearest
-// token would change the layout. The block status colours stay out of the
-// theme on purpose; they belong to the domain.
+// The palette comes from `../theme`, like every other screen of this app. The
+// block status colours stay out of the theme on purpose; they belong to the
+// domain.
 const styles = StyleSheet.create({
   map: {
     borderRadius: radius.md,
@@ -225,80 +253,30 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     overflow: 'hidden',
   },
-  dateButton: {
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: radius.sm,
-    marginTop: spacing.sm,
-    padding: 12,
-  },
-  emptyMessage: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  error: {
-    color: colors.danger,
-    fontSize: 13,
-    lineHeight: 18,
-    marginBottom: spacing.sm,
-  },
-  logDate: {
-    color: colors.textSecondary,
-    fontSize: 13,
-  },
-  logName: {
-    color: colors.textPrimary,
-    fontSize: 14,
-  },
-  logRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.xs,
-  },
-  markButton: {
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radius.sm,
-    marginTop: 12,
-    padding: 14,
-  },
-  markButtonDisabled: {
-    backgroundColor: colors.disabledSurface,
-  },
-  markButtonText: {
-    color: colors.onPrimary,
-    fontWeight: '600',
-  },
-  note: {
-    color: colors.textSecondary,
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 6,
-  },
-  panel: {
-    borderTopColor: colors.border,
-    borderTopWidth: 1,
-    padding: spacing.md,
-  },
-  publisherRow: {
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    marginTop: 6,
-    padding: 12,
-  },
-  publisherRowSelected: {
-    backgroundColor: colors.primaryLight,
-    borderColor: colors.primary,
-  },
   row: {
     alignItems: 'center',
     flexDirection: 'row',
+    gap: spacing.sm,
     justifyContent: 'space-between',
     padding: spacing.md,
   },
+  rowPressed: {
+    backgroundColor: colors.surfaceSubtle,
+  },
   rowDetails: {
     alignItems: 'flex-end',
+    flexShrink: 1,
+    gap: spacing.xs,
+  },
+  statusLine: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  statusSwatch: {
+    borderRadius: radius.full,
+    height: 10,
+    width: 10,
   },
   screen: {
     backgroundColor: colors.background,
@@ -307,17 +285,11 @@ const styles = StyleSheet.create({
   screenContent: {
     padding: spacing.md,
   },
-  sectionTitle: {
-    color: colors.textPrimary,
-    fontSize: 14,
-    fontWeight: '600',
-    marginTop: 12,
-  },
   title: {
     color: colors.textPrimary,
     fontSize: 20,
     fontWeight: '700',
-    marginBottom: 12,
+    marginBottom: spacing.sm,
   },
 });
 

@@ -22,7 +22,7 @@ import type { Congregation } from '../../domain/models';
 // carries that. Nothing here ever calls `fetch` -- `session.configure` does.
 import { ApiError } from '../../data/api-client';
 import type { Session } from '../../data/session';
-import { colors, radius, shadows, spacing } from '../theme';
+import { colors, radius, spacing, touchTarget } from '../theme';
 
 /**
  * The server answers a wrong name, a wrong city and a wrong password with the
@@ -193,7 +193,7 @@ export default function SetupScreen({
 
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Confirmar"
+              accessibilityLabel="Entrar"
               accessibilityState={{ disabled: blocked, busy }}
               disabled={blocked}
               onPress={handleConfirm}
@@ -211,7 +211,7 @@ export default function SetupScreen({
                 />
               ) : null}
               <Text style={[styles.buttonTitle, blocked && styles.buttonTitleDisabled]}>
-                Confirmar
+                Entrar
               </Text>
             </Pressable>
 
@@ -243,11 +243,10 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    padding: spacing.xl,
+    borderRadius: radius.md,
+    padding: spacing.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    ...shadows.md,
   },
   logo: {
     width: 140,
@@ -256,8 +255,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '800',
+    fontSize: 20,
+    fontWeight: '700',
     color: colors.textPrimary,
     textAlign: 'center',
     marginBottom: spacing.xs,
@@ -279,10 +278,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   input: {
-    backgroundColor: colors.surfaceSubtle,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderInput,
+    borderRadius: radius.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: 14,
     fontSize: 16,
@@ -301,7 +300,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   error: {
-    color: colors.danger,
+    color: colors.dangerText,
     backgroundColor: colors.dangerSurface,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -321,7 +320,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: spacing.lg,
     marginTop: spacing.sm,
-    ...shadows.sm,
+    minHeight: touchTarget.default,
   },
   buttonPressed: {
     backgroundColor: colors.primaryPressed,

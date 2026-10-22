@@ -65,7 +65,7 @@ describe('CampaignsScreen', () => {
     await render(<CampaignsScreen api={api} session={makeSession()} onOpenCampaign={onOpenCampaign} />);
 
     expect(await screen.findByText('Celebração')).toBeOnTheScreen();
-    expect(screen.getByText('Ativa desde 10/10/2026')).toBeOnTheScreen();
+    expect(screen.getByText('Retirada: 10/10/2026')).toBeOnTheScreen();
     expect(screen.getByText('2 territórios')).toBeOnTheScreen();
     expect(screen.getByText('Ainda não designada')).toBeOnTheScreen();
     expect(screen.getByText(CAMPAIGNS_DESKTOP_ONLY_MESSAGE)).toBeOnTheScreen();
@@ -103,8 +103,8 @@ describe('CampaignDetailScreen', () => {
     expect(screen.getByText('Territórios (2)')).toBeOnTheScreen();
     const names = screen.getAllByText(/ - N\d+$/).map(node => node.props.children);
     expect(names).toEqual(['Centro - N5', 'Jardim - N12']);
-    expect(screen.getByText('10/10/2026 a em andamento')).toBeOnTheScreen();
-    expect(screen.getByText('01/09/2026 a 20/09/2026')).toBeOnTheScreen();
+    expect(screen.getByText('Retirada 10/10/2026 · Em andamento')).toBeOnTheScreen();
+    expect(screen.getByText('Retirada 01/09/2026 · Devolução 20/09/2026')).toBeOnTheScreen();
     expect(screen.getByText('Carla')).toBeOnTheScreen();
     expect(screen.queryByRole('button', { name: MANAGEMENT_LABELS })).not.toBeOnTheScreen();
   });

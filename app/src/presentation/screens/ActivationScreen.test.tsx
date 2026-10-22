@@ -66,7 +66,7 @@ describe('ActivationScreen', () => {
     await render(<ActivationScreen onActivated={onActivated} />);
 
     await fireEvent.changeText(screen.getByLabelText('Código de acesso'), 'ABC123XY');
-    await fireEvent.press(screen.getByRole('button', { name: 'Confirmar' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Ativar acesso' }));
 
     await waitFor(() => expect(onActivated).toHaveBeenCalledWith(SESSION));
     expect(activate).toHaveBeenCalledWith('ABC123XY');
@@ -86,7 +86,7 @@ describe('ActivationScreen', () => {
       await render(<ActivationScreen onActivated={onActivated} />);
 
       await fireEvent.changeText(screen.getByLabelText('Código de acesso'), 'ABC123XY');
-      await fireEvent.press(screen.getByRole('button', { name: 'Confirmar' }));
+      await fireEvent.press(screen.getByRole('button', { name: 'Ativar acesso' }));
 
       expect(await screen.findByText(GENERIC_ERROR_MESSAGE)).toBeTruthy();
       expect(onActivated).not.toHaveBeenCalled();
@@ -94,21 +94,21 @@ describe('ActivationScreen', () => {
     },
   );
 
-  it('disables the Confirmar button while the code field is empty', async () => {
+  it('disables the Ativar acesso button while the code field is empty', async () => {
     await render(<ActivationScreen onActivated={jest.fn()} />);
 
-    expect(screen.getByRole('button', { name: 'Confirmar' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Ativar acesso' })).toBeDisabled();
 
     await fireEvent.changeText(screen.getByLabelText('Código de acesso'), 'A');
 
-    expect(screen.getByRole('button', { name: 'Confirmar' })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Ativar acesso' })).not.toBeDisabled();
   });
 
-  it('keeps the Confirmar button disabled when the code is only whitespace', async () => {
+  it('keeps the Ativar acesso button disabled when the code is only whitespace', async () => {
     await render(<ActivationScreen onActivated={jest.fn()} />);
 
     await fireEvent.changeText(screen.getByLabelText('Código de acesso'), '   ');
 
-    expect(screen.getByRole('button', { name: 'Confirmar' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Ativar acesso' })).toBeDisabled();
   });
 });

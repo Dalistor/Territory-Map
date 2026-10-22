@@ -107,7 +107,7 @@ describe('MapScreen search', () => {
     expect(screen.getByText('Nenhum território com esse nome.')).toBeTruthy();
   });
 
-  it('clears search text when pressing the clear button (✕)', async () => {
+  it('clears search text when pressing the clear button (Limpar)', async () => {
     await renderScreen();
     await screen.findByText('Santa Helena - N 7');
 
@@ -191,7 +191,7 @@ describe('MapScreen marking a block as worked', () => {
 
     // 't1' is assigned to this publisher -- see `territories` above.
     await act(async () => mapProps.current?.onBlockTap?.(territories[0], block));
-    await fireEvent.press(await screen.findByText('Confirmar'));
+    await fireEvent.press(await screen.findByText('Marcar como trabalhada'));
 
     expect(markBlockWorked).toHaveBeenCalledWith(
       'token-1',
@@ -200,6 +200,7 @@ describe('MapScreen marking a block as worked', () => {
       expect.any(Date),
     );
     expect(screen.queryByText(/não foi registrada/)).toBeNull();
+    expect(screen.getByText('Quadra 7 marcada como trabalhada')).toBeTruthy();
   });
 
   it('does not mark anything when the server could not be reached', async () => {
@@ -208,7 +209,7 @@ describe('MapScreen marking a block as worked', () => {
     await screen.findByText('Santa Helena - N 7');
 
     await act(async () => mapProps.current?.onBlockTap?.(territories[0], block));
-    await fireEvent.press(await screen.findByText('Confirmar'));
+    await fireEvent.press(await screen.findByText('Marcar como trabalhada'));
 
     expect(screen.getByText(/sem conexão/i)).toBeTruthy();
     // The block stays exactly as it was: no optimistic green, because
@@ -224,7 +225,7 @@ describe('MapScreen marking a block as worked', () => {
     await screen.findByText('Santa Helena - N 7');
 
     await act(async () => mapProps.current?.onBlockTap?.(territories[0], block));
-    await fireEvent.press(await screen.findByText('Confirmar'));
+    await fireEvent.press(await screen.findByText('Marcar como trabalhada'));
 
     expect(screen.getByText(/quadra não encontrada/)).toBeTruthy();
     expect(mapProps.current?.territories[0].blocks[0].lastWorkedAt).toBeUndefined();
@@ -247,7 +248,7 @@ describe('MapScreen marking a block as worked', () => {
     await screen.findByText('Santa Helena - N 7');
 
     await act(async () => mapProps.current?.onBlockTap?.(territories[0], block));
-    await fireEvent.press(await screen.findByText('Confirmar'));
+    await fireEvent.press(await screen.findByText('Marcar como trabalhada'));
 
     expect(screen.getByText(/não está mais designado a você/)).toBeTruthy();
     expect(listTerritories).toHaveBeenCalledTimes(2);
@@ -264,7 +265,7 @@ describe('MapScreen marking a block as worked', () => {
     await act(async () => mapProps.current?.onBlockTap?.(territories[1], block));
 
     expect(screen.getByText(/não está designado a você/)).toBeTruthy();
-    expect(screen.queryByText('Confirmar')).toBeNull();
+    expect(screen.queryByText('Marcar como trabalhada')).toBeNull();
     expect(markBlockWorked).not.toHaveBeenCalled();
   });
 });
@@ -306,7 +307,7 @@ describe('MapScreen in campaign mode', () => {
 
     // 't2' has no assigned publisher: only the campaign opens it.
     await act(async () => mapProps.current?.onBlockTap?.(territories[1], block));
-    await fireEvent.press(await screen.findByText('Confirmar'));
+    await fireEvent.press(await screen.findByText('Marcar como trabalhada'));
 
     expect(markBlockWorked).toHaveBeenCalledWith('token-1', 'b1', expect.any(String), expect.any(Date));
   });

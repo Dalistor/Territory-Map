@@ -125,16 +125,13 @@ function assignmentIcon(territory: Territory): DivIcon {
   const holder = holderText(territory)
   const leaderLine =
     holder !== undefined
-      ? `<div style="font-size:12px;color:#263238;">${escapeHtml(holder)}</div>`
-      : `<div style="font-size:12px;color:#78909c;font-style:italic;">Sem dirigente</div>`
+      ? `<div class="assignments-map-holder">${escapeHtml(holder)}</div>`
+      : `<div class="assignments-map-holder is-empty">Sem dirigente</div>`
   return new DivIcon({
     className: 'assignments-map-label',
     html:
-      `<div style="display:inline-block;transform:translate(-50%,-50%);` +
-      `background:rgba(255,255,255,0.88);border-radius:6px;` +
-      `box-shadow:0 1px 4px rgba(0,0,0,0.25);padding:4px 8px;` +
-      `font-family:sans-serif;text-align:center;white-space:nowrap;cursor:pointer;">` +
-      `<div style="font-size:11px;font-weight:600;color:#37474f;">${escapeHtml(territory.name)}</div>` +
+      `<div class="assignments-map-tag">` +
+      `<div class="assignments-map-name">${escapeHtml(territory.name)}</div>` +
       leaderLine +
       `</div>`,
     // Leaflet centres the icon box on the point; the html centres itself via

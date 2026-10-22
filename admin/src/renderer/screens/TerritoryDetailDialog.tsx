@@ -24,19 +24,17 @@ import { parseIpcError } from '../../shared/ipc-error'
 import { blockColorCategory, type BlockColorCategory } from '../map/blockColor'
 import { TerritoryMap } from '../map/TerritoryMap'
 import { Dialog } from '../components/Dialog'
+import { useConfirm, type ConfirmRequest } from '../components/ConfirmDialog'
+import { ErrorNotice } from '../components/ErrorNotice'
 import { Icon } from '../components/Icon'
 import { TerritoryBlocksTab } from './TerritoryBlocksTab'
 import { daysSince, formatDaysAgo, fromDateInputValue, toDateInputValue } from './territoryBlocks'
+import { formatDate } from '../formatDate'
 
 const GENERIC_ERROR_MESSAGE = 'Não foi possível completar a operação.'
 
 function errorMessage(error: unknown): string {
   return parseIpcError(error, GENERIC_ERROR_MESSAGE).message
-}
-
-/** The one place a date is turned into text in this dialog. */
-function formatDate(date: Date): string {
-  return date.toLocaleDateString()
 }
 
 /**
@@ -116,6 +114,9 @@ export function TerritoryDetailDialog({
   const [publishers, setPublishers] = useState<Publisher[]>([])
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [hasLoaded, setHasLoaded] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  // Bumped by "Tentar novamente" to run the opening fetch again.
+  const [loadAttempt, setLoadAttempt] = useState(0)
   const [selectedPublisherId, setSelectedPublisherId] = useState('')
   const [actionError, setActionError] = useState<string | null>(null)
   const [isActionPending, setIsActionPending] = useState(false)
@@ -144,15 +145,16 @@ export function TerritoryDetailDialog({
         if (cancelled) return
         setPublishers(publisherList)
         setAssignments(assignmentList)
+        setLoadError(null)
         setHasLoaded(true)
       })
       .catch((error: unknown) => {
-        if (!cancelled) setActionError(errorMessage(error))
+        if (!cancelled) setLoadError(errorMessage(error))
       })
     return () => {
       cancelled = true
     }
-  }, [territoryId])
+  }, [territoryId, loadAttempt])
 
   /** Turns a rejected write into a visible `role="alert"`, never an unhandled rejection. */
   const runAction = useCallback(async (action: () => Promise<void>) => {
@@ -170,12 +172,13 @@ export function TerritoryDetailDialog({
     }
   }, [])
 
+  const { confirm, confirmDialog } = useConfirm()
   const runConfirmed = useCallback(
-    (message: string, action: () => Promise<void>) => {
-      if (!window.confirm(message)) return Promise.resolve()
-      return runAction(action)
+    async (request: ConfirmRequest, action: () => Promise<void>) => {
+      if (!(await confirm(request))) return
+      await runAction(action)
     },
-    [runAction]
+    [confirm, runAction]
   )
 
   /**
@@ -213,7 +216,10 @@ export function TerritoryDetailDialog({
     const nextName =
       publishers.find((publisher) => publisher.id === publisherId)?.name ?? 'este publicador'
     return runConfirmed(
-      replaceConfirmMessage(territory, assignmentHolderName(openIndividual), nextName),
+      {
+        message: replaceConfirmMessage(territory, assignmentHolderName(openIndividual), nextName),
+        confirmLabel: 'Designar publicador'
+      },
       run
     )
   }
@@ -221,7 +227,10 @@ export function TerritoryDetailDialog({
   const complete = (): Promise<void> => {
     if (openIndividual === undefined) return Promise.resolve()
     return runConfirmed(
-      completeConfirmMessage(territory, assignmentHolderName(openIndividual)),
+      {
+        message: completeConfirmMessage(territory, assignmentHolderName(openIndividual)),
+        confirmLabel: 'Marcar como concluído'
+      },
       async () => {
         await window.api.assignments.complete(territoryId)
         await reloadAfterAction()
@@ -230,10 +239,35 @@ export function TerritoryDetailDialog({
   }
 
   const deleteAssignment = (assignment: Assignment): Promise<void> =>
-    runConfirmed(deleteAssignmentConfirmMessage(assignment), async () => {
-      await window.api.assignments.delete(territoryId, assignment.id)
-      await reloadAfterAction()
-    })
+    runConfirmed(
+      {
+        message: deleteAssignmentConfirmMessage(assignment),
+        confirmLabel: 'Apagar registro',
+        danger: true
+      },
+      async () => {
+        await window.api.assignments.delete(territoryId, assignment.id)
+        await reloadAfterAction()
+      }
+    )
+
+  /** Arrow keys, Home and End move between the tabs, the ARIA tabs pattern. */
+  function moveBetweenTabs(event: React.KeyboardEvent<HTMLDivElement>): void {
+    const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End']
+    if (!keys.includes(event.key)) return
+    event.preventDefault()
+    const current = TABS.findIndex((option) => option.value === tab)
+    const next =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? TABS.length - 1
+          : (current + (event.key === 'ArrowRight' ? 1 : -1) + TABS.length) % TABS.length
+    const target = TABS[next]
+    if (target === undefined) return
+    setTab(target.value)
+    document.getElementById(`territory-tab-${target.value}`)?.focus()
+  }
 
   function openEdit(assignment: Assignment): void {
     setEditing(assignment)
@@ -294,7 +328,6 @@ export function TerritoryDetailDialog({
   return (
     <Dialog
       title={territory.name}
-      eyebrow="Território"
       size="xl"
       className="territory-dialog"
       closeLabel="Fechar detalhes"
@@ -350,7 +383,7 @@ export function TerritoryDetailDialog({
             ) : (
               <button type="button" className="button-small" onClick={() => setTab('assignments')}>
                 <Icon name="userPlus" />
-                Designar…
+                Designar publicador…
               </button>
             )}
           </div>
@@ -392,9 +425,23 @@ export function TerritoryDetailDialog({
         </div>
       </section>
 
+      {loadError !== null && (
+        <ErrorNotice
+          message={loadError}
+          onRetry={() => {
+            setLoadError(null)
+            setLoadAttempt((attempt) => attempt + 1)
+          }}
+        />
+      )}
       {actionError !== null && <p role="alert">{actionError}</p>}
 
-      <div className="tabs" role="tablist" aria-label="Detalhe do território">
+      <div
+        className="tabs"
+        role="tablist"
+        aria-label="Detalhe do território"
+        onKeyDown={moveBetweenTabs}
+      >
         {TABS.map((option) => (
           <button
             key={option.value}
@@ -402,7 +449,9 @@ export function TerritoryDetailDialog({
             role="tab"
             id={`territory-tab-${option.value}`}
             aria-selected={tab === option.value}
-            aria-controls={`territory-tabpanel-${option.value}`}
+            // Only the shown panel exists, so only its tab points at it.
+            aria-controls={tab === option.value ? `territory-tabpanel-${option.value}` : undefined}
+            tabIndex={tab === option.value ? 0 : -1}
             className={tab === option.value ? 'is-active' : undefined}
             onClick={() => setTab(option.value)}
           >
@@ -475,7 +524,7 @@ export function TerritoryDetailDialog({
                   }
                   onClick={() => void designate()}
                 >
-                  {isActionPending ? 'Atualizando…' : 'Designar'}
+                  {isActionPending ? 'Atualizando…' : 'Designar publicador'}
                 </button>
               </div>
             </section>
@@ -651,6 +700,7 @@ export function TerritoryDetailDialog({
           </div>
         </Dialog>
       )}
+      {confirmDialog}
     </Dialog>
   )
 }

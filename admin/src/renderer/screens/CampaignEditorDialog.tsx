@@ -75,6 +75,15 @@ export function CampaignEditorDialog({
 
   const trimmedName = name.trim()
   const canSave = trimmedName !== '' && selected.size > 0 && !isSaving
+  // Says why the save button is off, instead of leaving a dead button to guess at.
+  const missingInput =
+    trimmedName === '' && selected.size === 0
+      ? 'Dê um nome e escolha ao menos um território.'
+      : trimmedName === ''
+        ? 'Dê um nome à campanha.'
+        : selected.size === 0
+          ? 'Escolha ao menos um território.'
+          : null
 
   async function submit(): Promise<void> {
     if (!canSave) return
@@ -92,92 +101,101 @@ export function CampaignEditorDialog({
   }
 
   return (
-    <Dialog title={title} size="xl" className="campaign-editor" onClose={onClose}>
-      {error !== null && (
-        <p className="dialog-error" role="alert">
-          {error}
-        </p>
-      )}
+    <Dialog
+      title={title}
+      size="xl"
+      className="campaign-editor"
+      closeLabel="Fechar"
+      onClose={onClose}
+    >
+      <div className="dialog-body">
+        {error !== null && (
+          <p className="dialog-error" role="alert">
+            {error}
+          </p>
+        )}
 
-      <label className="field">
-        <span>Nome da campanha</span>
-        <input value={name} onChange={(event) => setName(event.target.value)} />
-      </label>
+        <label className="field">
+          <span>Nome da campanha</span>
+          <input value={name} onChange={(event) => setName(event.target.value)} />
+        </label>
 
-      <div className="campaign-editor-toolbar">
-        <SearchField
-          label="Buscar territórios"
-          value={search}
-          placeholder="Nome ou número do território"
-          onChange={setSearch}
-        />
-        <SegmentedControl
-          label="Escolher pela"
-          value={view}
-          onChange={setView}
-          options={[
-            { value: 'list', label: 'Lista' },
-            { value: 'map', label: 'Mapa' }
-          ]}
-        />
-        <p className="campaign-editor-count" aria-live="polite">
-          {selected.size === 1
-            ? '1 território escolhido'
-            : `${selected.size} territórios escolhidos`}
-        </p>
-      </div>
-
-      {view === 'list' ? (
-        <div className="campaign-pick-list" role="group" aria-label="Territórios da campanha">
-          {visible.length === 0 ? (
-            <p className="cell-muted">Nenhum território corresponde à busca.</p>
-          ) : (
-            <ul>
-              {visible.map((territory) => {
-                const blockingCampaign = blockedBy.get(territory.id)
-                return (
-                  <li
-                    key={territory.id}
-                    className={blockingCampaign === undefined ? undefined : 'is-blocked'}
-                  >
-                    <label className="campaign-pick">
-                      <input
-                        type="checkbox"
-                        checked={selected.has(territory.id)}
-                        disabled={blockingCampaign !== undefined}
-                        onChange={() => toggle(territory.id)}
-                      />
-                      <span className="campaign-pick-name">{territory.name}</span>
-                      <span className="cell-sub">
-                        {blockingCampaign !== undefined
-                          ? `Na campanha "${blockingCampaign}"`
-                          : territory.assignedUser !== undefined
-                            ? `Dirigente: ${territory.assignedUser.name}`
-                            : 'Sem dirigente'}
-                      </span>
-                    </label>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </div>
-      ) : (
-        <div className="campaign-pick-map">
-          <AssignmentsMap
-            territories={visible}
-            selectedIds={selected}
-            fallbackCenter={fallbackCenter}
-            onTerritoryTap={(territory) => toggle(territory.id)}
+        <div className="campaign-editor-toolbar">
+          <SearchField
+            label="Buscar territórios"
+            value={search}
+            placeholder="Nome ou número do território"
+            onChange={setSearch}
           />
-          <p className="cell-sub">
-            Clique num território para incluí-lo ou tirá-lo. Os que estão em outra campanha ativa
-            não mudam.
+          <SegmentedControl
+            label="Visualização"
+            value={view}
+            onChange={setView}
+            options={[
+              { value: 'list', label: 'Lista' },
+              { value: 'map', label: 'Mapa' }
+            ]}
+          />
+          <p className="campaign-editor-count" aria-live="polite">
+            {selected.size === 1
+              ? '1 território escolhido'
+              : `${selected.size} territórios escolhidos`}
           </p>
         </div>
-      )}
+
+        {view === 'list' ? (
+          <div className="campaign-pick-list" role="group" aria-label="Territórios da campanha">
+            {visible.length === 0 ? (
+              <p className="cell-muted">Nenhum território corresponde à busca.</p>
+            ) : (
+              <ul>
+                {visible.map((territory) => {
+                  const blockingCampaign = blockedBy.get(territory.id)
+                  return (
+                    <li
+                      key={territory.id}
+                      className={blockingCampaign === undefined ? undefined : 'is-blocked'}
+                    >
+                      <label className="campaign-pick">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(territory.id)}
+                          disabled={blockingCampaign !== undefined}
+                          onChange={() => toggle(territory.id)}
+                        />
+                        <span className="campaign-pick-name">{territory.name}</span>
+                        <span className="cell-sub">
+                          {blockingCampaign !== undefined
+                            ? `Na campanha "${blockingCampaign}"`
+                            : territory.assignedUser !== undefined
+                              ? `Dirigente atual: ${territory.assignedUser.name}`
+                              : 'Sem dirigente'}
+                        </span>
+                      </label>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        ) : (
+          <div className="campaign-pick-map">
+            <AssignmentsMap
+              territories={visible}
+              selectedIds={selected}
+              fallbackCenter={fallbackCenter}
+              onTerritoryTap={(territory) => toggle(territory.id)}
+            />
+            <p className="cell-sub">
+              Clique num território para incluí-lo ou tirá-lo. Os que estão em outra campanha ativa
+              não mudam.
+            </p>
+          </div>
+        )}
+      </div>
 
       <div className="dialog-actions">
+        {missingInput !== null && <p className="dialog-actions-hint">{missingInput}</p>}
         <button type="button" disabled={isSaving} onClick={onClose}>
           Cancelar
         </button>

@@ -2,6 +2,7 @@ import React from 'react'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native'
 import type { ApiClient } from '../../data/api-client'
 import type { Campaign, Session, Territory, WorkedTerritory } from '../../domain/models'
+import { formatDate } from '../../domain/lastWorked'
 import { DashboardScreen } from './DashboardScreen'
 
 function makeSession(overrides: Partial<Session> = {}): Session {
@@ -87,7 +88,7 @@ describe('DashboardScreen', () => {
       },
       { timeout: 3000 }
     )
-    expect(screen.getByText(lastWorkedAt.toLocaleDateString())).toBeTruthy()
+    expect(screen.getByText(formatDate(lastWorkedAt))).toBeTruthy()
   })
 
   it('lists each territory assigned to the logged-in publisher, with a working "Ver no mapa" button', async () => {
@@ -166,7 +167,7 @@ describe('DashboardScreen', () => {
     )
   })
 
-  it('displays publisher greeting and stats in the hero card', async () => {
+  it('names the publisher and congregation, and counts each section in words', async () => {
     const session = makeSession({ user: { id: 'user-1', name: 'Ana' } })
     const assigned = makeTerritory({ assignedUser: { id: 'user-1', name: 'Ana' } })
     const apiClient = makeApiClient({
@@ -180,13 +181,14 @@ describe('DashboardScreen', () => {
 
     await waitFor(
       () => {
-        expect(screen.getByText('Olá, Ana')).toBeTruthy()
+        expect(screen.getByText('Ana · Congregação Central, São Paulo')).toBeTruthy()
+        expect(screen.getAllByText('1 território')).toHaveLength(2)
       },
       { timeout: 3000 }
     )
   })
 
-  it('switches to Histórico de Trabalho tab and displays detailed work history logs', async () => {
+  it('switches to the Histórico tab and displays detailed work history logs', async () => {
     const session = makeSession({ user: { id: 'user-1', name: 'Ana' } })
     const workedAt = new Date('2026-08-15T14:30:00Z')
     const workHistory = [
@@ -210,7 +212,7 @@ describe('DashboardScreen', () => {
 
     await waitFor(
       () => {
-        expect(screen.getByText('Meus Territórios')).toBeTruthy()
+        expect(screen.getByText('Início')).toBeTruthy()
       },
       { timeout: 3000 }
     )
@@ -221,7 +223,6 @@ describe('DashboardScreen', () => {
       () => {
         expect(screen.getByText('Q5')).toBeTruthy()
         expect(screen.getByText('Setor 5')).toBeTruthy()
-        expect(screen.getByText('✓ Feito')).toBeTruthy()
       },
       { timeout: 3000 }
     )

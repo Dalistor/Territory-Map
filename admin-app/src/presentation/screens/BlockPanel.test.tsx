@@ -391,7 +391,7 @@ describe('BlockPanel', () => {
 
     await renderPanel({ api });
 
-    await waitFor(() => expect(screen.getByText(/^Bruno — desde /)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/^Retirada: .* · Em andamento$/)).toBeTruthy());
     expect(screen.queryByText('Sem designação')).toBeNull();
   });
 
@@ -411,7 +411,7 @@ describe('BlockPanel', () => {
 
     await waitFor(() => expect(screen.getByTestId('designate-publisher-2')).toBeTruthy());
     await press(screen.getByTestId('designate-publisher-2'));
-    await press(screen.getByText('Designar'));
+    await press(screen.getByText('Designar publicador'));
 
     const { message } = lastAlert();
     expect(message).toContain('encerrada com a data de hoje');

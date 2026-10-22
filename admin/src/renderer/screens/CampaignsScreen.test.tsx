@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { IpcApi } from '../../shared/ipc-contract'
 import type { Campaign, Publisher, Territory } from '../../shared/models'
 import { CampaignsScreen } from './CampaignsScreen'
+import { answerConfirm } from '../components/ConfirmDialog.testing'
 
 vi.mock('../map/AssignmentsMap', () => ({
   AssignmentsMap: ({
@@ -144,7 +145,6 @@ describe('CampaignsScreen', () => {
   it('designating warns, before confirming, which dirigente each territory loses', async () => {
     const api = makeApi()
     vi.stubGlobal('api', api)
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const user = userEvent.setup()
     render(<CampaignsScreen />)
 
@@ -158,16 +158,17 @@ describe('CampaignsScreen', () => {
     await user.click(within(dialog).getByRole('checkbox', { name: 'Bruno' }))
     await user.click(submit)
 
-    const message = confirm.mock.calls[0]?.[0] as string
+    const message = await answerConfirm(user, true)
     expect(message).toContain('• Centro - N3 — Carlos')
     expect(message).not.toContain('Vila - N5')
-    expect(api.campaigns.designate).toHaveBeenCalledWith('celebracao', ['ana', 'bruno'])
+    await waitFor(() =>
+      expect(api.campaigns.designate).toHaveBeenCalledWith('celebracao', ['ana', 'bruno'])
+    )
   })
 
   it('completing says the territories lose their dirigente and the publishers lose marking', async () => {
     const api = makeApi()
     vi.stubGlobal('api', api)
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValue(true)
     const user = userEvent.setup()
     render(<CampaignsScreen />)
 
@@ -175,13 +176,14 @@ describe('CampaignsScreen', () => {
     const completeButton = within(detail).getByRole('button', { name: 'Marcar como concluída' })
 
     await user.click(completeButton)
+    const message = await answerConfirm(user, false)
     expect(api.campaigns.complete).not.toHaveBeenCalled()
 
     await user.click(completeButton)
-    const message = confirm.mock.calls[0]?.[0] as string
+    await answerConfirm(user, true)
     expect(message).toContain('fica sem dirigente')
     expect(message).toContain('Bruno perde na hora o acesso para marcar quadras')
-    expect(api.campaigns.complete).toHaveBeenCalledWith('visitas')
+    await waitFor(() => expect(api.campaigns.complete).toHaveBeenCalledWith('visitas'))
   })
 
   it('deleting an active campaign shows the refusal the server sends', async () => {

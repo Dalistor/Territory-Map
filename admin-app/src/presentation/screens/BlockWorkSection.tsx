@@ -12,7 +12,6 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Pressable,
   StyleSheet,
@@ -21,7 +20,8 @@ import {
 } from 'react-native';
 
 import type { Block, Publisher, WorkLog } from '../../domain/models';
-import { colors } from '../theme';
+import { Button, QueryState } from '../components';
+import { colors, radius, spacing, touchTarget } from '../theme';
 import { PublisherPicker } from './PublisherPicker';
 
 /** `dd/mm/yyyy` in local time -- how the desktop admin reads a visit too. */
@@ -171,7 +171,10 @@ export function BlockWorkSection({
   const [workedAt, setWorkedAt] = useState<Date>(now);
   const [isPickingDate, setIsPickingDate] = useState(false);
   const [isMarking, setIsMarking] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  // Which record is being removed: only its own button says so, the rest of
+  // the history stays readable (and blocked, so two deletes never race).
+  const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
+  const [historyFailed, setHistoryFailed] = useState(false);
   const deleteInFlight = useRef(false);
 
   const dateIsInTheFuture = isInTheFuture(workedAt, now);
@@ -182,6 +185,7 @@ export function BlockWorkSection({
 
   const loadLogs = useCallback(async () => {
     setIsLoading(true);
+    setHistoryFailed(false);
     try {
       const loaded = await session.run(() => api.listWorkLogs(block.id));
       // Sorted here, not trusted from the API: the panel promises "most recent
@@ -192,10 +196,17 @@ export function BlockWorkSection({
       );
     } catch (thrown) {
       setError(errorMessage(thrown, HISTORY_ERROR_MESSAGE));
+      setHistoryFailed(true);
     } finally {
       setIsLoading(false);
     }
   }, [api, block.id, session]);
+
+  /** "Tentar novamente" on a history that failed to load. */
+  function retryHistory(): void {
+    setError(null);
+    loadLogs();
+  }
 
   useEffect(() => {
     // Load on mount and set state when the promise settles: this project has
@@ -254,7 +265,7 @@ export function BlockWorkSection({
       if (onDeleteLog === undefined) return;
       if (deleteInFlight.current) return;
       deleteInFlight.current = true;
-      setIsDeleting(true);
+      setDeletingLogId(log.id);
       setError(null);
       try {
         await onDeleteLog(log);
@@ -264,7 +275,7 @@ export function BlockWorkSection({
         setError(errorMessage(thrown, DELETE_LOG_ERROR_MESSAGE));
       } finally {
         deleteInFlight.current = false;
-        setIsDeleting(false);
+        setDeletingLogId(null);
       }
     },
     [loadLogs, onChanged, onDeleteLog],
@@ -293,20 +304,32 @@ export function BlockWorkSection({
       accessibilityLabel={`Trabalho da quadra ${block.number}`}
     >
       {error !== null && (
-        <Text
-          accessibilityRole="alert"
-          testID="block-work-error"
-          style={styles.error}
-        >
-          {error}
-        </Text>
+        <View style={styles.errorBox}>
+          <Text
+            accessibilityRole="alert"
+            testID="block-work-error"
+            style={styles.errorText}
+          >
+            {error}
+          </Text>
+          {historyFailed && (
+            <Button label="Tentar novamente" variant="quiet" onPress={retryHistory} />
+          )}
+        </View>
       )}
 
       <Text style={styles.sectionTitle}>Histórico desta quadra</Text>
       {isLoading ? (
-        <ActivityIndicator accessibilityLabel="Carregando" />
+        <QueryState
+          compact
+          kind="loading"
+          title="Carregando histórico"
+          message="Aguarde um momento."
+        />
       ) : logs.length === 0 ? (
-        <Text style={styles.note}>Esta quadra nunca foi trabalhada.</Text>
+        historyFailed ? null : (
+          <Text style={styles.note}>Esta quadra nunca foi trabalhada.</Text>
+        )
       ) : (
         logs.map(log => (
           <View
@@ -314,21 +337,20 @@ export function BlockWorkSection({
             testID={`work-log-${log.id}`}
             style={styles.logRow}
           >
-            <Text style={styles.logName}>{log.publisher.name}</Text>
-            <Text style={styles.logDate}>{formatDateTime(log.workedAt)}</Text>
+            <View style={styles.logText}>
+              <Text style={styles.logName}>{log.publisher.name}</Text>
+              <Text style={styles.logDate}>{formatDateTime(log.workedAt)}</Text>
+            </View>
             {onDeleteLog !== undefined && (
-              <Pressable
-                accessibilityRole="button"
+              <Button
+                label="Apagar"
+                busyLabel="Apagando…"
+                variant="danger"
                 accessibilityLabel={`Apagar registro de ${log.publisher.name}`}
-                accessibilityState={{ disabled: isDeleting, busy: isDeleting }}
-                disabled={isDeleting}
-                style={styles.deleteButton}
+                busy={deletingLogId === log.id}
+                disabled={deletingLogId !== null}
                 onPress={() => requestDeleteLog(log)}
-              >
-                <Text style={styles.deleteButtonText}>
-                  {isDeleting ? 'Apagando…' : 'Apagar'}
-                </Text>
-              </Pressable>
+              />
             )}
           </View>
         ))
@@ -347,10 +369,10 @@ export function BlockWorkSection({
         testID="pick-date"
         accessibilityRole="button"
         accessibilityLabel="Escolher a data"
-        style={styles.dateButton}
+        style={({ pressed }) => [styles.dateButton, pressed && styles.dateButtonPressed]}
         onPress={() => setIsPickingDate(true)}
       >
-        <Text>Data: {formatDate(workedAt)}</Text>
+        <Text style={styles.dateText}>Data: {formatDate(workedAt)}</Text>
       </Pressable>
       {isPickingDate && (
         <DateTimePicker
@@ -366,102 +388,105 @@ export function BlockWorkSection({
         />
       )}
       {dateIsInTheFuture && (
-        <Text style={styles.error}>{FUTURE_DATE_MESSAGE}</Text>
+        <Text style={styles.inlineError}>{FUTURE_DATE_MESSAGE}</Text>
       )}
 
-      <Pressable
+      <Button
         testID="mark-worked"
-        accessibilityRole="button"
-        accessibilityLabel="Marcar como trabalhada"
-        accessibilityState={{ disabled: !canMark, busy: isMarking }}
+        label="Marcar como trabalhada"
+        busyLabel="Registrando…"
+        variant="primary"
         disabled={!canMark}
-        style={[styles.markButton, !canMark && styles.markButtonDisabled]}
+        busy={isMarking}
         onPress={handleMarkPress}
-      >
-        <Text style={styles.markButtonText}>
-          {isMarking ? 'Registrando…' : 'Marcar como trabalhada'}
-        </Text>
-      </Pressable>
+        style={styles.markButton}
+      />
       <Text style={styles.note}>{OVERRIDE_NOTE}</Text>
     </View>
   );
 }
 
-// The literals are the ones this section carried inside `BlocksScreen`, moved
-// unchanged: spec 0013's Task 07 is what replaces them with `theme.ts` tokens,
-// and doing it here would be that task done early and in the wrong place.
 const styles = StyleSheet.create({
   dateButton: {
-    backgroundColor: '#f1f5f9',
-    borderRadius: 8,
-    marginTop: 8,
-    padding: 12,
-  },
-  deleteButton: {
-    backgroundColor: colors.dangerSurface,
-    borderColor: '#fecaca',
-    borderRadius: 8,
+    backgroundColor: colors.surface,
+    borderColor: colors.borderInput,
+    borderRadius: radius.sm,
     borderWidth: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    justifyContent: 'center',
+    marginTop: spacing.sm,
+    minHeight: touchTarget.default,
+    paddingHorizontal: spacing.md,
   },
-  deleteButtonText: {
-    color: '#dc2626',
-    fontSize: 12,
-    fontWeight: '600',
+  dateButtonPressed: {
+    backgroundColor: colors.surfaceSubtle,
   },
-  error: {
-    color: '#dc2626',
-    fontSize: 13,
-    lineHeight: 18,
-    marginBottom: 8,
+  dateText: {
+    color: colors.textPrimary,
+    fontSize: 15,
+  },
+  errorBox: {
+    alignItems: 'center',
+    backgroundColor: colors.dangerSurface,
+    borderColor: colors.dangerBorder,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+    paddingLeft: spacing.sm,
+  },
+  errorText: {
+    color: colors.dangerText,
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+    paddingVertical: spacing.sm,
+  },
+  inlineError: {
+    color: colors.dangerText,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: spacing.xs,
   },
   logDate: {
-    color: '#64748b',
+    color: colors.textSecondary,
     fontSize: 13,
   },
   logName: {
-    color: '#0f172a',
-    flex: 1,
-    fontSize: 14,
+    color: colors.textPrimary,
+    fontSize: 15,
   },
   logRow: {
     alignItems: 'center',
+    borderBottomColor: colors.border,
+    borderBottomWidth: 1,
     flexDirection: 'row',
-    gap: 8,
+    gap: spacing.sm,
     justifyContent: 'space-between',
-    paddingVertical: 4,
+    paddingVertical: spacing.sm,
+  },
+  logText: {
+    flex: 1,
   },
   markButton: {
-    alignItems: 'center',
-    backgroundColor: '#1565c0',
-    borderRadius: 8,
-    marginTop: 12,
-    padding: 14,
-  },
-  markButtonDisabled: {
-    backgroundColor: '#cbd5e1',
-  },
-  markButtonText: {
-    color: '#ffffff',
-    fontWeight: '600',
+    marginTop: spacing.md,
   },
   note: {
-    color: '#64748b',
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 6,
+    color: colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: spacing.xs,
   },
   panel: {
-    borderTopColor: '#e2e8f0',
+    borderTopColor: colors.border,
     borderTopWidth: 1,
-    padding: 16,
+    padding: spacing.md,
   },
   sectionTitle: {
-    color: '#0f172a',
-    fontSize: 14,
+    color: colors.textPrimary,
+    fontSize: 15,
     fontWeight: '600',
-    marginTop: 12,
+    marginTop: spacing.md,
   },
 });
 

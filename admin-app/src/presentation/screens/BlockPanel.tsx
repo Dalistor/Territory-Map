@@ -20,8 +20,10 @@
 import React, { useCallback } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { blockColorCategory } from '../../domain/blockColor';
 import { blockStatusLabel } from '../../domain/blockStatusLabel';
 import type { Block, Territory, WorkLog } from '../../domain/models';
+import { BLOCK_CATEGORY_COLOR } from '../../domain/territoryMap';
 import { colors, radius, spacing } from '../theme';
 import { AssignmentPanel } from './AssignmentPanel';
 import type { AssignmentPanelApi, AssignmentPanelSession } from './AssignmentPanel';
@@ -94,9 +96,22 @@ export function BlockPanel({
             Quadra {block.number}
           </Text>
           <Text style={styles.scopeLabel}>Ações desta quadra</Text>
-          <Text style={styles.status}>
-            {blockStatusLabel(block, moment, territory.rotationDays)}
-          </Text>
+          <View style={styles.statusLine}>
+            <View
+              style={[
+                styles.statusSwatch,
+                {
+                  backgroundColor:
+                    BLOCK_CATEGORY_COLOR[
+                      blockColorCategory(block, moment, territory.rotationDays)
+                    ],
+                },
+              ]}
+            />
+            <Text style={styles.status}>
+              {blockStatusLabel(block, moment, territory.rotationDays)}
+            </Text>
+          </View>
         </View>
 
         <BlockWorkSection
@@ -120,6 +135,7 @@ export function BlockPanel({
           api={api}
           onChanged={onChanged}
           scrollable={false}
+          showTitle={false}
         />
       </View>
     </ScrollView>
@@ -144,7 +160,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   header: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: colors.surface,
     borderBottomColor: colors.border,
     borderBottomWidth: 1,
     padding: spacing.md,
@@ -160,10 +176,20 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: spacing.xs,
   },
-  status: {
-    color: colors.textSecondary,
-    fontSize: 14,
+  statusLine: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
     marginTop: spacing.xs,
+  },
+  statusSwatch: {
+    borderRadius: radius.full,
+    height: 10,
+    width: 10,
+  },
+  status: {
+    color: colors.textPrimary,
+    fontSize: 14,
   },
   // The visible seam between "this block" and "this whole territory": its own
   // surface, its own border, and the note above the card saying so.
@@ -183,8 +209,8 @@ const styles = StyleSheet.create({
   },
   territoryNote: {
     color: colors.textSecondary,
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 13,
+    lineHeight: 18,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.xs,
   },

@@ -22,6 +22,7 @@ import {
 } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
 import { AssignmentsMap } from '../map/AssignmentsMap'
+import { useConfirm } from '../components/ConfirmDialog'
 import { Icon } from '../components/Icon'
 import { SearchField } from '../components/SearchField'
 import { CampaignEditorDialog } from './CampaignEditorDialog'
@@ -33,15 +34,12 @@ import {
   designateCampaignConfirmMessage,
   type ReplacedLeader
 } from './confirmMessages'
+import { formatDate } from '../formatDate'
 
 const GENERIC_ERROR_MESSAGE = 'Não foi possível completar a operação.'
 
 function errorMessage(error: unknown): string {
   return parseIpcError(error, GENERIC_ERROR_MESSAGE).message
-}
-
-function formatDate(date: Date): string {
-  return date.toLocaleDateString()
 }
 
 function territoryCountLabel(count: number): string {
@@ -121,6 +119,7 @@ export function CampaignsScreen({ fallbackCenter }: CampaignsScreenProps): React
   const [territories, setTerritories] = useState<Territory[]>([])
   const [publishers, setPublishers] = useState<Publisher[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const { confirm, confirmDialog } = useConfirm()
   const [loadError, setLoadError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [isActionPending, setIsActionPending] = useState(false)
@@ -237,6 +236,13 @@ export function CampaignsScreen({ fallbackCenter }: CampaignsScreenProps): React
     return options.sort((a, b) => a.name.localeCompare(b.name))
   }, [publishers, selected])
 
+  /** Closes the detail and hands focus back to the row that opened it. */
+  function closeDetail(): void {
+    if (selectedId === null) return
+    document.querySelector<HTMLElement>(`[data-campaign-id="${selectedId}"]`)?.focus()
+    setSelectedId(null)
+  }
+
   async function create(input: CampaignCreateInput): Promise<void> {
     const created = await window.api.campaigns.create(input)
     setDialog(null)
@@ -262,7 +268,8 @@ export function CampaignsScreen({ fallbackCenter }: CampaignsScreenProps): React
         replacedLeaders(added, territories),
         removedNames
       )
-      if (!window.confirm(message)) return
+      const accepted = await confirm({ message, confirmLabel: 'Salvar alterações' })
+      if (!accepted) return
     }
     await window.api.campaigns.update(campaign.id, {
       ...(nameChanged && { name: input.name }),
@@ -281,7 +288,10 @@ export function CampaignsScreen({ fallbackCenter }: CampaignsScreenProps): React
     // territory's own "Designar".
     if (
       replaced.length > 0 &&
-      !window.confirm(designateCampaignConfirmMessage(campaign.name, replaced))
+      !(await confirm({
+        message: designateCampaignConfirmMessage(campaign.name, replaced),
+        confirmLabel: 'Designar'
+      }))
     ) {
       return
     }
@@ -296,14 +306,14 @@ export function CampaignsScreen({ fallbackCenter }: CampaignsScreenProps): React
     await reload()
   }
 
-  const complete = (campaign: Campaign): Promise<void> => {
+  const complete = async (campaign: Campaign): Promise<void> => {
     const names = (campaign.currentDesignation?.publishers ?? []).map((p) => p.name)
     const message = completeCampaignConfirmMessage(
       campaign.name,
       campaign.territories.length,
       names
     )
-    if (!window.confirm(message)) return Promise.resolve()
+    if (!(await confirm({ message, confirmLabel: 'Marcar como concluída' }))) return
     return runAction(async () => {
       await window.api.campaigns.complete(campaign.id)
     })
@@ -311,12 +321,17 @@ export function CampaignsScreen({ fallbackCenter }: CampaignsScreenProps): React
 
   // An active campaign goes straight to the server, which refuses it with a
   // message saying to complete it first -- the one place that rule lives.
-  const remove = (campaign: Campaign): Promise<void> => {
+  const remove = async (campaign: Campaign): Promise<void> => {
     if (
       !campaignIsActive(campaign) &&
-      !window.confirm(deleteCampaignConfirmMessage(campaign.name, campaign.designations.length))
+      !(await confirm({
+        title: `Apagar a campanha "${campaign.name}"?`,
+        message: deleteCampaignConfirmMessage(campaign.name, campaign.designations.length),
+        confirmLabel: 'Apagar campanha',
+        danger: true
+      }))
     ) {
-      return Promise.resolve()
+      return
     }
     return runAction(async () => {
       await window.api.campaigns.delete(campaign.id)
@@ -392,7 +407,12 @@ export function CampaignsScreen({ fallbackCenter }: CampaignsScreenProps): React
                 onChange={setSearch}
               />
               {visibleCampaigns.length === 0 ? (
-                <p className="cell-muted">Nenhuma campanha corresponde à busca.</p>
+                <div className="campaigns-state">
+                  <p>Nenhuma campanha corresponde a “{search.trim()}”.</p>
+                  <button type="button" onClick={() => setSearch('')}>
+                    Limpar busca
+                  </button>
+                </div>
               ) : (
                 <ul className="campaign-list" aria-label="Campanhas">
                   {visibleCampaigns.map((campaign) => (
@@ -400,6 +420,7 @@ export function CampaignsScreen({ fallbackCenter }: CampaignsScreenProps): React
                       <button
                         type="button"
                         className="campaign-row"
+                        data-campaign-id={campaign.id}
                         aria-pressed={campaign.id === selectedId}
                         onClick={() => {
                           setActionError(null)
@@ -420,11 +441,28 @@ export function CampaignsScreen({ fallbackCenter }: CampaignsScreenProps): React
               )}
             </div>
 
+            {selected === undefined && (
+              <div className="campaign-detail-empty">
+                <strong>Escolha uma campanha na lista</strong>
+                <p>
+                  O detalhe mostra quem está designado, os territórios no mapa e os períodos já
+                  trabalhados. Para agrupar territórios novos, use “Nova campanha”.
+                </p>
+              </div>
+            )}
+
             {selected !== undefined && (
-              <section className="campaign-detail" aria-label={`Campanha ${selected.name}`}>
+              <section
+                className="campaign-detail"
+                aria-label={`Campanha ${selected.name}`}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Escape' || dialog !== null) return
+                  event.preventDefault()
+                  closeDetail()
+                }}
+              >
                 <div className="campaign-detail-header">
                   <div>
-                    <p className="eyebrow">Campanha</p>
                     <div className="dialog-title-row">
                       <h2>{selected.name}</h2>
                       <SituationBadge campaign={selected} />
@@ -448,6 +486,15 @@ export function CampaignsScreen({ fallbackCenter }: CampaignsScreenProps): React
                     >
                       <Icon name="trash" />
                       Apagar
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label="Fechar detalhe"
+                      title="Fechar detalhe"
+                      onClick={closeDetail}
+                    >
+                      <Icon name="close" size={18} />
                     </button>
                   </div>
                 </div>
@@ -538,7 +585,7 @@ export function CampaignsScreen({ fallbackCenter }: CampaignsScreenProps): React
                                     {territory?.campaign !== undefined
                                       ? campaignHolderLabel(territory.campaign)
                                       : territory?.assignedUser !== undefined
-                                        ? `Dirigente: ${territory.assignedUser.name}`
+                                        ? `Dirigente atual: ${territory.assignedUser.name}`
                                         : 'Sem dirigente'}
                                   </span>
                                 )}
@@ -566,8 +613,12 @@ export function CampaignsScreen({ fallbackCenter }: CampaignsScreenProps): React
                           <table aria-label={`Períodos de ${selected.name}`}>
                             <thead>
                               <tr>
-                                <th scope="col">Retirada</th>
-                                <th scope="col">Devolução</th>
+                                <th scope="col" className="cell-number">
+                                  Retirada
+                                </th>
+                                <th scope="col" className="cell-number">
+                                  Devolução
+                                </th>
                                 <th scope="col">Publicadores</th>
                               </tr>
                             </thead>
@@ -653,6 +704,7 @@ export function CampaignsScreen({ fallbackCenter }: CampaignsScreenProps): React
             onClose={() => setDialog(null)}
           />
         )}
+        {confirmDialog}
       </main>
     </div>
   )

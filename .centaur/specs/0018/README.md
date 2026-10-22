@@ -1,7 +1,7 @@
 # [0018] Polimento de layout, UX e UI dos três clientes
 
 **Data:** 2026-10-22
-**Status:** Pendente
+**Status:** Em revisão
 **Escopo:** master
 **Responsável:** dalistor
 **Contrato:** —
@@ -88,13 +88,17 @@ sob autorização do usuário; APKs e build desktop são publicação separada.
 
 ## Diferença entre plano e resultado
 
-—
+- Tasks 02–04 começaram em paralelo logo após a auditoria, aplicando só achados sem mudança de hábito; as mudanças de hábito aprovadas pelo usuário chegaram aos executores em seguida. Recusadas: H1 (abrir direto no mapa) e "Uma ação principal" no desktop (H8, H20, H22).
+- O executor do app foi dono do `DESIGN.md` nesta onda (seções "Mobile (Android)" e "Contrast rules"); o coordenador alinhou `text-secondary` a `#5A6B83` nos três clientes.
+- Desktop: o h1 da antiga tela "Mapa" virou "Demarcações", igual ao novo nome da seção na sidebar (H19), em vez de "Mapa".
+- Pendentes registrados nos READMEs 0250–0252: espaçamentos fora da escala e tabelas feitas à mão no desktop; "Retirada" no resumo do território e puxar-para-atualizar no app admin; captura em emulador Android (JDK 17 ausente).
+- Inspector do desktop: FAILs 2 → 0, avisos 52 → 30.
 
 ## Checklist de conclusão
-- [ ] Task 01 — Auditoria visual dos três clientes
-- [ ] Task 02 — App do publicador na linguagem de `DESIGN.md`
-- [ ] Task 03 — Correções da auditoria no app admin
-- [ ] Task 04 — Correções da auditoria no admin desktop
+- [x] Task 01 — Auditoria visual dos três clientes → implements/0253
+- [x] Task 02 — App do publicador na linguagem de `DESIGN.md` → implements/0250
+- [x] Task 03 — Correções da auditoria no app admin → implements/0251
+- [x] Task 04 — Correções da auditoria no admin desktop → implements/0252
 
 ## Execução
 $run master/0018

@@ -26,21 +26,18 @@ import {
   type DataTableSortDirection,
   type DataTableState
 } from '../components/DataTable'
+import { ErrorNotice } from '../components/ErrorNotice'
 import { Icon } from '../components/Icon'
 import { SearchField } from '../components/SearchField'
 import { SegmentedControl } from '../components/SegmentedControl'
 import { TerritoryDetailDialog } from './TerritoryDetailDialog'
 import { daysSince, formatDaysAgo } from './territoryBlocks'
+import { formatDate } from '../formatDate'
 
 const GENERIC_ERROR_MESSAGE = 'Não foi possível completar a operação.'
 
 function errorMessage(error: unknown): string {
   return parseIpcError(error, GENERIC_ERROR_MESSAGE).message
-}
-
-/** The one place a date is turned into text on this screen. */
-function formatDate(date: Date): string {
-  return date.toLocaleDateString()
 }
 
 type SituationFilter = 'all' | 'assigned' | 'free'
@@ -223,8 +220,6 @@ export function DesignationsScreen({
 
   const assignedCount = territories.filter(territoryIsOut).length
   const unassignedCount = territories.length - assignedCount
-  const coveragePercent =
-    territories.length > 0 ? Math.round((assignedCount / territories.length) * 100) : 0
 
   const currentYear = getServiceYear()
   const availableYears = [currentYear - 2, currentYear - 1, currentYear, currentYear + 1]
@@ -334,7 +329,8 @@ export function DesignationsScreen({
     {
       key: 'blocks',
       header: 'Quadras',
-      cell: (territory) => <span className="cell-number">{territory.blocks.length}</span>
+      numeric: true,
+      cell: (territory) => territory.blocks.length
     },
     {
       key: 'last-work',
@@ -364,7 +360,8 @@ export function DesignationsScreen({
           <h1>Territórios</h1>
           {!isLoading && territories.length > 0 && (
             <p>
-              {assignedCount} de {territories.length} territórios designados
+              {assignedCount} de {territories.length} territórios designados · {unassignedCount}{' '}
+              {unassignedCount === 1 ? 'livre' : 'livres'}
             </p>
           )}
         </div>
@@ -400,33 +397,17 @@ export function DesignationsScreen({
       </header>
       <main>
         {actionError !== null && <p role="alert">{actionError}</p>}
-        {loadError !== null && territories.length > 0 && <p role="alert">{loadError}</p>}
+        {loadError !== null && territories.length > 0 && (
+          <ErrorNotice
+            message={loadError}
+            retryDisabled={isRefreshing}
+            onRetry={() => void load()}
+          />
+        )}
         {exportPath !== null && <p role="status">Arquivo salvo em {exportPath}</p>}
         {importStatus !== null && <p role="status">{importStatus}</p>}
 
         <section className="territories-workspace" aria-label="Consulta de territórios">
-          <div className="kpi-strip" aria-label="Resumo de territórios">
-            <div className="kpi-tile">
-              <span className="kpi-label">Territórios</span>
-              <strong className="kpi-value">{territories.length}</strong>
-            </div>
-            <div className="kpi-tile">
-              <span className="kpi-label">Designados</span>
-              <strong className="kpi-value">{assignedCount}</strong>
-            </div>
-            <div className="kpi-tile">
-              <span className="kpi-label">Livres</span>
-              <strong className="kpi-value">{unassignedCount}</strong>
-            </div>
-            <div className="kpi-tile">
-              <span className="kpi-label">Cobertura</span>
-              <strong className="kpi-value">{coveragePercent}%</strong>
-              <span className="kpi-meter" aria-hidden="true">
-                <span style={{ width: `${coveragePercent}%` }} />
-              </span>
-            </div>
-          </div>
-
           <div className="territories-workspace-toolbar">
             <SearchField
               label="Buscar territórios"
@@ -557,58 +538,64 @@ export function DesignationsScreen({
             className="import-modal"
             size="xl"
             title="Importar Registros S-13-T"
+            closeLabel="Fechar"
             onClose={() => setImportPreview(null)}
           >
-            <p className="dialog-subtitle">
-              Arquivo: <strong>{importPreview.fileName}</strong>
-              {importPreview.serviceYear ? ` • Ano de Serviço ${importPreview.serviceYear}` : ''}
-            </p>
+            <div className="dialog-body">
+              <p className="dialog-subtitle">
+                Arquivo: <strong>{importPreview.fileName}</strong>
+                {importPreview.serviceYear ? ` • Ano de Serviço ${importPreview.serviceYear}` : ''}
+              </p>
 
-            <div className="kpi-grid">
-              <div className="kpi-card">
-                <span className="kpi-label">Territórios no Arquivo</span>
-                <strong className="kpi-value">{importPreview.totalTerritoriesFound}</strong>
+              <div className="kpi-grid">
+                <div className="kpi-card">
+                  <span className="kpi-label">Territórios no Arquivo</span>
+                  <strong className="kpi-value">{importPreview.totalTerritoriesFound}</strong>
+                </div>
+                <div className="kpi-card kpi-card-active">
+                  <span className="kpi-label">Correspondidos</span>
+                  <strong className="kpi-value">
+                    {importPreview.matchedTerritoriesCount} de {importPreview.totalTerritoriesFound}
+                  </strong>
+                </div>
+                <div className="kpi-card">
+                  <span className="kpi-label">Designações a Importar</span>
+                  <strong className="kpi-value">{importPreview.totalAssignmentsCount}</strong>
+                </div>
               </div>
-              <div className="kpi-card kpi-card-active">
-                <span className="kpi-label">Correspondidos</span>
-                <strong className="kpi-value">
-                  {importPreview.matchedTerritoriesCount} de {importPreview.totalTerritoriesFound}
-                </strong>
-              </div>
-              <div className="kpi-card">
-                <span className="kpi-label">Designações a Importar</span>
-                <strong className="kpi-value">{importPreview.totalAssignmentsCount}</strong>
-              </div>
-            </div>
 
-            <div className="import-preview-list">
-              <h3>Territórios identificados</h3>
-              <ul>
-                {importPreview.territories.map((terr, idx) => (
-                  <li key={idx} className={terr.matchedTerritoryId ? 'is-matched' : 'is-unmatched'}>
-                    <div className="import-preview-terr-header">
-                      <strong>Território {terr.territoryNumberOrName}</strong>
-                      {terr.matchedTerritoryId ? (
-                        <span className="status-badge status-active">Reconhecido</span>
+              <div className="import-preview-list">
+                <h3>Territórios identificados</h3>
+                <ul>
+                  {importPreview.territories.map((terr, idx) => (
+                    <li
+                      key={idx}
+                      className={terr.matchedTerritoryId ? 'is-matched' : 'is-unmatched'}
+                    >
+                      <div className="import-preview-terr-header">
+                        <strong>Território {terr.territoryNumberOrName}</strong>
+                        {terr.matchedTerritoryId ? (
+                          <span className="status-badge status-active">Reconhecido</span>
+                        ) : (
+                          <span className="status-badge status-pending">Não cadastrado</span>
+                        )}
+                      </div>
+                      {terr.assignments.length > 0 ? (
+                        <span className="import-preview-assignments">
+                          {terr.assignments.map((a, aIdx) => (
+                            <span key={aIdx} className="import-asg-tag">
+                              {a.publisherName} ({a.startedAt || '?'}
+                              {a.completedAt ? ` a ${a.completedAt}` : ' - em andamento'})
+                            </span>
+                          ))}
+                        </span>
                       ) : (
-                        <span className="status-badge status-pending">Não cadastrado</span>
+                        <span className="import-empty-hint">Sem designações registradas</span>
                       )}
-                    </div>
-                    {terr.assignments.length > 0 ? (
-                      <span className="import-preview-assignments">
-                        {terr.assignments.map((a, aIdx) => (
-                          <span key={aIdx} className="import-asg-tag">
-                            {a.publisherName} ({a.startedAt || '?'}
-                            {a.completedAt ? ` a ${a.completedAt}` : ' - em aberto'})
-                          </span>
-                        ))}
-                      </span>
-                    ) : (
-                      <span className="import-empty-hint">Sem designações registradas</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
 
             <div className="dialog-actions">

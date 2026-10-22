@@ -98,10 +98,9 @@ export function BlockHistorySheet({
     <div className="screen screen-block-history">
       <header className="screen-header">
         <div className="screen-title-block">
-          <p className="eyebrow">Histórico da quadra</p>
-          <h2>
+          <h1>
             Quadra {block.number} — {territory.name}
-          </h2>
+          </h1>
         </div>
       </header>
       <main className="screen-body">
@@ -121,19 +120,19 @@ export function BlockHistorySheet({
                 )}
                 <button
                   type="button"
-                  aria-label={`Remover registro de ${log.publisher.name} em ${formatDateTime(log.workedAt)}`}
+                  aria-label={`Apagar registro de ${log.publisher.name} em ${formatDateTime(log.workedAt)}`}
                   className="button-danger button-quiet"
                   disabled={isDeleting}
                   onClick={() => setPendingDeleteId(log.id)}
                 >
-                  Remover
+                  Apagar
                 </button>
               </li>
             ))}
           </ul>
         )}
         {pendingLog && (
-          <Dialog title="Remover registro?" onClose={() => setPendingDeleteId(null)}>
+          <Dialog title="Apagar registro?" onClose={() => setPendingDeleteId(null)}>
             <p>
               A marcação de {pendingLog.publisher.name} em {formatDateTime(pendingLog.workedAt)}{' '}
               será apagada, e a data da última visita da quadra será recalculada.
@@ -143,7 +142,7 @@ export function BlockHistorySheet({
                 Cancelar
               </button>
               <button type="button" disabled={isDeleting} onClick={() => confirmDelete(pendingLog)}>
-                {isDeleting ? 'Removendo…' : 'Remover'}
+                {isDeleting ? 'Apagando…' : 'Apagar'}
               </button>
             </div>
           </Dialog>

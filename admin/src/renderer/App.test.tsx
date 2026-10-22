@@ -5,12 +5,13 @@
 import type { ReactNode } from 'react'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import type { IpcApi } from '../shared/ipc-contract'
 import type { Block, Congregation, Territory } from '../shared/models'
 import type { PolygonEditor } from './map/usePolygonEditor'
 import App from './App'
+import { answerConfirm } from './components/ConfirmDialog.testing'
 
 // `TerritoryEditorScreen`/`BlockEditorScreen` (real here, reached by
 // navigating from `HomeScreen`) pull in `react-leaflet`/`PolygonEditorLayers`,
@@ -188,12 +189,6 @@ function pendingPromise<T>(): Promise<T> {
   return new Promise<T>(() => {})
 }
 
-let confirmSpy: ReturnType<typeof vi.spyOn>
-
-beforeEach(() => {
-  confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
-})
-
 afterEach(() => {
   // Unmount before unstubbing, not after. RTL's automatic cleanup is
   // registered when this file imports `@testing-library/react`, so it runs
@@ -204,7 +199,6 @@ afterEach(() => {
   // happened to be running.
   cleanup()
   vi.unstubAllGlobals()
-  confirmSpy.mockRestore()
 })
 
 describe('App', () => {
@@ -281,8 +275,9 @@ describe('App', () => {
     render(<App />)
 
     expect(
-      await screen.findByRole('heading', { name: 'Congregação Central — São Paulo' })
+      await screen.findByRole('heading', { level: 1, name: 'Demarcações' })
     ).toBeInTheDocument()
+    expect(screen.getByText('Congregação Central')).toBeInTheDocument()
     expect(screen.queryByLabelText('Nome da congregação')).not.toBeInTheDocument()
   })
 
@@ -415,7 +410,8 @@ describe('App', () => {
     const nav = await screen.findByRole('navigation')
     await user.click(within(nav).getByRole('button', { name: 'Sair da congregação' }))
 
-    expect(confirmSpy).toHaveBeenCalledWith(
+    const asked = await answerConfirm(user, true)
+    expect(asked).toContain(
       'Os dados salvos neste computador serão apagados. Nada é removido do servidor: o território, ' +
         'as quadras e o histórico de trabalho continuam lá. Para usar este computador de novo, será ' +
         'preciso digitar o nome, a cidade e a senha da congregação de novo.'
@@ -495,7 +491,7 @@ function authedApi(overrides: Partial<IpcApi> = {}): IpcApi {
 // The permanent navigation shell: a compact sidebar with the congregation at
 // the top, four primary destinations and sign-out isolated at the bottom.
 describe('AuthenticatedApp sidebar shell', () => {
-  it('shows the sidebar with the congregation, the sections, and "Mapa" initially active', async () => {
+  it('shows the sidebar with the congregation, the sections, and "Demarcações" initially active', async () => {
     vi.stubGlobal('api', authedApi())
 
     render(<App />)
@@ -504,7 +500,7 @@ describe('AuthenticatedApp sidebar shell', () => {
     expect(nav).toHaveAccessibleName('Navegação principal')
     expect(within(nav).getByText('Congregação Central')).toBeInTheDocument()
     expect(within(nav).getByText('São Paulo')).toBeInTheDocument()
-    const mapButton = within(nav).getByRole('button', { name: 'Mapa' })
+    const mapButton = within(nav).getByRole('button', { name: 'Demarcações' })
     expect(mapButton).toHaveClass('is-active')
     expect(mapButton).toHaveAttribute('aria-current', 'page')
     expect(within(nav).getByRole('button', { name: 'Territórios' })).not.toHaveAttribute(
@@ -529,7 +525,7 @@ describe('AuthenticatedApp sidebar shell', () => {
       .getAllByRole('button')
       .map((button) => button.textContent)
     expect(labels).toEqual([
-      'Mapa',
+      'Demarcações',
       'Territórios',
       'Campanhas',
       'Publicadores',
@@ -538,7 +534,7 @@ describe('AuthenticatedApp sidebar shell', () => {
     ])
   })
 
-  it('shows the History screen when "Histórico completo" is clicked, and "Mapa" returns home', async () => {
+  it('shows the History screen when "Histórico completo" is clicked, and "Demarcações" returns home', async () => {
     vi.stubGlobal('api', authedApi())
     const user = userEvent.setup()
 
@@ -551,12 +547,14 @@ describe('AuthenticatedApp sidebar shell', () => {
     const historyButton = within(nav).getByRole('button', { name: 'Histórico completo' })
     expect(historyButton).toHaveClass('is-active')
     expect(historyButton).toHaveAttribute('aria-current', 'page')
-    expect(within(nav).getByRole('button', { name: 'Mapa' })).not.toHaveAttribute('aria-current')
+    expect(within(nav).getByRole('button', { name: 'Demarcações' })).not.toHaveAttribute(
+      'aria-current'
+    )
     expect(within(nav).getByRole('button', { name: 'Territórios' })).not.toHaveAttribute(
       'aria-current'
     )
 
-    await user.click(within(nav).getByRole('button', { name: 'Mapa' }))
+    await user.click(within(nav).getByRole('button', { name: 'Demarcações' }))
 
     expect(await screen.findByRole('button', { name: 'Novo território' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Histórico' })).not.toBeInTheDocument()
@@ -582,7 +580,7 @@ describe('AuthenticatedApp sidebar shell', () => {
     expect(within(nav).queryByText('Congregação Central')).not.toBeInTheDocument()
   })
 
-  it('opens the existing Designations workspace from "Territórios", and "Mapa" returns home', async () => {
+  it('opens the existing Designations workspace from "Territórios", and "Demarcações" returns home', async () => {
     vi.stubGlobal('api', authedApi())
     const user = userEvent.setup()
 
@@ -595,16 +593,17 @@ describe('AuthenticatedApp sidebar shell', () => {
     const designationsButton = within(nav).getByRole('button', { name: 'Territórios' })
     expect(designationsButton).toHaveClass('is-active')
     expect(designationsButton).toHaveAttribute('aria-current', 'page')
-    expect(within(nav).getByRole('button', { name: 'Mapa' })).not.toHaveAttribute('aria-current')
+    expect(within(nav).getByRole('button', { name: 'Demarcações' })).not.toHaveAttribute(
+      'aria-current'
+    )
 
-    await user.click(within(nav).getByRole('button', { name: 'Mapa' }))
+    await user.click(within(nav).getByRole('button', { name: 'Demarcações' }))
 
     expect(await screen.findByRole('button', { name: 'Novo território' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Territórios', level: 1 })).not.toBeInTheDocument()
   })
 
   it('does not sign out when the confirmation is declined', async () => {
-    confirmSpy.mockReturnValue(false)
     const signOut = vi.fn().mockResolvedValue(undefined)
     vi.stubGlobal(
       'api',
@@ -623,6 +622,7 @@ describe('AuthenticatedApp sidebar shell', () => {
 
     const nav = await screen.findByRole('navigation')
     await user.click(within(nav).getByRole('button', { name: 'Sair da congregação' }))
+    await answerConfirm(user, false)
 
     expect(signOut).not.toHaveBeenCalled()
     // Still on the authenticated shell, not back at setup.
@@ -649,6 +649,7 @@ describe('AuthenticatedApp sidebar shell', () => {
 
     const nav = await screen.findByRole('navigation')
     await user.click(within(nav).getByRole('button', { name: 'Sair da congregação' }))
+    await answerConfirm(user, true)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Falha ao apagar as credenciais.')
     // Still authenticated -- the shell (and its sidebar) is intact.
@@ -828,7 +829,7 @@ describe('AuthenticatedApp navigation', () => {
     expect(screen.getByRole('button', { name: '← Voltar' })).toBeInTheDocument()
   })
 
-  it('opens the publishers screen from the sidebar and returns home from "Mapa"', async () => {
+  it('opens the publishers screen from the sidebar and returns home from "Demarcações"', async () => {
     const user = userEvent.setup()
     await renderHome(
       authedApi({
@@ -854,7 +855,7 @@ describe('AuthenticatedApp navigation', () => {
     // A sidebar section, not a pushed screen -- there is no back bar to leave by.
     expect(screen.queryByRole('button', { name: '← Voltar' })).not.toBeInTheDocument()
 
-    await user.click(within(nav).getByRole('button', { name: 'Mapa' }))
+    await user.click(within(nav).getByRole('button', { name: 'Demarcações' }))
 
     expect(await screen.findByRole('button', { name: 'Recarregar' })).toBeInTheDocument()
   })

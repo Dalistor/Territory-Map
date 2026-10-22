@@ -13,7 +13,10 @@ import { createApiClient } from '../../data/api-client';
 import { saveSession } from '../../data/session-store';
 import type { Session } from '../../domain/models';
 import { PrimaryButton } from '../components/PrimaryButton';
-import { colors, radius, shadows, spacing } from '../theme';
+import { colors, fontSize, radius, spacing } from '../theme';
+
+/** Codes are always 8 characters long (`ACCESS_CODE_ALPHABET`, server `app/core/security.py`). */
+const ACCESS_CODE_LENGTH = 8;
 
 /**
  * The server already answers an invalid, expired and already-redeemed code
@@ -40,6 +43,7 @@ export default function ActivationScreen({ onActivated }: ActivationScreenProps)
   const trimmedCode = accessCode.trim();
 
   async function handleConfirm(): Promise<void> {
+    if (trimmedCode === '' || busy) return;
     setErrorMessage(null);
     setBusy(true);
     try {
@@ -64,7 +68,7 @@ export default function ActivationScreen({ onActivated }: ActivationScreenProps)
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.card}>
+          <View style={styles.content}>
             <Image
               source={logo}
               style={styles.logo}
@@ -82,17 +86,25 @@ export default function ActivationScreen({ onActivated }: ActivationScreenProps)
               autoCapitalize="characters"
               autoCorrect={false}
               placeholder="ABCDEFGH"
-              placeholderTextColor={colors.textMuted}
+              placeholderTextColor={colors.textPlaceholder}
+              maxLength={ACCESS_CODE_LENGTH}
+              autoFocus
+              returnKeyType="go"
+              onSubmitEditing={handleConfirm}
               editable={!busy}
               value={accessCode}
               onChangeText={setAccessCode}
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}
             />
-            {errorMessage !== null ? <Text style={styles.error}>{errorMessage}</Text> : null}
+            {errorMessage !== null ? (
+              <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.error}>
+                {errorMessage}
+              </Text>
+            ) : null}
             <View style={styles.buttonHolder}>
               <PrimaryButton
-                title="Confirmar"
+                title="Ativar acesso"
                 onPress={handleConfirm}
                 disabled={trimmedCode === ''}
                 busy={busy}
@@ -118,48 +130,44 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: spacing.lg,
   },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    padding: spacing.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...shadows.md,
+  // No card: the screen holds one field, and DESIGN.md keeps resting
+  // surfaces flat -- logo, title, field and button sit on the canvas.
+  content: {
+    width: '100%',
+    maxWidth: 420,
+    alignSelf: 'center',
   },
   logo: {
-    width: 140,
-    height: 160,
+    width: 96,
+    height: 96,
     alignSelf: 'center',
-    marginBottom: spacing.xs,
+    marginBottom: spacing.md,
   },
   title: {
     fontSize: 22,
-    fontWeight: '800',
+    fontWeight: '700',
     color: colors.textPrimary,
     textAlign: 'center',
     marginBottom: spacing.xs,
-    letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: fontSize.body,
     lineHeight: 20,
     color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: spacing.lg,
   },
   label: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
     color: colors.textPrimary,
     marginBottom: spacing.xs,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
   input: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: colors.surface,
     borderWidth: 1.5,
-    borderColor: colors.border,
-    borderRadius: radius.md,
+    borderColor: colors.borderInput,
+    borderRadius: radius.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: 14,
     fontSize: 22,
@@ -169,19 +177,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   inputFocused: {
-    borderColor: colors.primary,
-    backgroundColor: colors.surface,
+    borderColor: colors.focus,
   },
   error: {
     marginTop: spacing.md,
     color: colors.danger,
     backgroundColor: colors.dangerSurface,
-    borderRadius: radius.md,
+    borderRadius: radius.sm,
     padding: spacing.md,
     lineHeight: 20,
     borderWidth: 1,
     borderColor: colors.dangerBorder,
-    fontSize: 13,
+    fontSize: 14,
   },
   buttonHolder: {
     marginTop: spacing.lg,

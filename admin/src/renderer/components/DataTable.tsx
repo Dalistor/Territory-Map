@@ -8,6 +8,8 @@ export interface DataTableColumn<Row> {
   readonly cell: (row: Row) => React.ReactNode
   readonly sortable?: boolean
   readonly sortDirection?: DataTableSortDirection
+  /** Counts and dates line up digit for digit on the right edge. */
+  readonly numeric?: boolean
 }
 
 export type DataTableState =
@@ -113,6 +115,7 @@ export function DataTable<Row>({
                 <th
                   key={column.key}
                   scope="col"
+                  className={column.numeric ? 'cell-number' : undefined}
                   aria-sort={column.sortable ? (column.sortDirection ?? 'none') : undefined}
                 >
                   {column.sortable && onSort !== undefined ? (
@@ -146,7 +149,9 @@ export function DataTable<Row>({
                     onKeyDown={(event) => activateRow(event, row)}
                   >
                     {columns.map((column) => (
-                      <td key={column.key}>{column.cell(row)}</td>
+                      <td key={column.key} className={column.numeric ? 'cell-number' : undefined}>
+                        {column.cell(row)}
+                      </td>
                     ))}
                   </tr>
                 )

@@ -11,8 +11,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AssignmentWithTerritory, Publisher } from '../../shared/models'
 import { publisherHasLiveCode, publisherIsPending } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
+import { useConfirm } from '../components/ConfirmDialog'
 import { Dialog } from '../components/Dialog'
+import { ErrorNotice } from '../components/ErrorNotice'
 import { Icon } from '../components/Icon'
+import { SearchField } from '../components/SearchField'
+import { formatDate } from '../formatDate'
 
 const GENERIC_ERROR_MESSAGE = 'Não foi possível completar a operação.'
 
@@ -21,8 +25,16 @@ export interface PublishersScreenProps {
   readonly now?: Date
 }
 
-/** The one line that tells the admin what state this person is actually in. */
-function statusOf(publisher: Publisher, now: Date): string {
+/** The short badge for this person's state; {@link statusDetailOf} spells it out. */
+const STATUS_LABEL: Record<ReturnType<typeof statusCategory>, string> = {
+  revoked: 'Desativado',
+  'live-code': 'Código válido',
+  pending: 'Sem código válido',
+  active: 'Ativo'
+}
+
+/** The full sentence behind the badge -- what that state means and what to do about it. */
+function statusDetailOf(publisher: Publisher, now: Date): string {
   if (!publisher.isActive) {
     return 'Acesso revogado — o histórico de trabalho continua guardado.'
   }
@@ -104,10 +116,6 @@ interface CodeDialogState {
   readonly code: string
 }
 
-function formatDate(date: Date): string {
-  return date.toLocaleDateString('pt-BR')
-}
-
 function historyCount(total: number): string {
   return `${total} ${total === 1 ? 'território retirado' : 'territórios retirados'}`
 }
@@ -135,6 +143,8 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [newName, setNewName] = useState('')
   const [codeDialog, setCodeDialog] = useState<CodeDialogState | null>(null)
+  const [codeCopied, setCodeCopied] = useState(false)
+  const { confirm, confirmDialog } = useConfirm()
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [selectedPublisherId, setSelectedPublisherId] = useState<string | null>(null)
@@ -234,7 +244,7 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
     await runWrite(async () => {
       const publisher = await window.api.publishers.create(name)
       await load()
-      setCodeDialog({ publisherName: publisher.name, code: publisher.accessCode ?? '—' })
+      openCodeDialog({ publisherName: publisher.name, code: publisher.accessCode ?? '—' })
     })
   }
 
@@ -243,7 +253,7 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
     await runWrite(async () => {
       const updated = await window.api.publishers.regenerateCode(publisher.id)
       await load()
-      setCodeDialog({ publisherName: updated.name, code: updated.accessCode ?? '—' })
+      openCodeDialog({ publisherName: updated.name, code: updated.accessCode ?? '—' })
     })
   }
 
@@ -287,13 +297,15 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
     })
   }
 
-  /**
-   * Asks first -- the same `window.confirm` the rest of the admin uses, for
-   * the same reason: there is no modal component of its own yet.
-   */
+  /** Asks first, in the app's own confirmation. */
   async function deletePublisher(publisher: Publisher): Promise<void> {
     setOpenMenuId(null)
-    if (!window.confirm(deletePublisherConfirmMessage(publisher))) return
+    const accepted = await confirm({
+      message: deletePublisherConfirmMessage(publisher),
+      confirmLabel: 'Apagar publicador',
+      danger: true
+    })
+    if (!accepted) return
     await runWrite(async () => {
       await window.api.publishers.delete(publisher.id)
       if (selectedPublisherId === publisher.id) {
@@ -338,11 +350,23 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
 
   function showExistingCode(publisher: Publisher): void {
     setOpenMenuId(null)
-    setCodeDialog({ publisherName: publisher.name, code: publisher.accessCode ?? '—' })
+    openCodeDialog({ publisherName: publisher.name, code: publisher.accessCode ?? '—' })
+  }
+
+  function openCodeDialog(state: CodeDialogState): void {
+    setCodeCopied(false)
+    setCodeDialog(state)
   }
 
   async function copyCode(code: string): Promise<void> {
     await navigator.clipboard.writeText(code)
+    setCodeCopied(true)
+  }
+
+  async function retryLoad(): Promise<void> {
+    setLoading(true)
+    setLoadError(null)
+    await load()
   }
 
   const filtered = publishers.filter((publisher) =>
@@ -367,7 +391,7 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
           onClick={openCreateForm}
         >
           <Icon name="userPlus" />
-          Cadastrar
+          Cadastrar publicador
         </button>
       </header>
       <main>
@@ -377,20 +401,26 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
           </div>
         )}
 
-        {loading && <div role="progressbar" aria-label="Carregando publicadores" />}
+        {loading && <p role="status">Carregando publicadores…</p>}
 
-        {!loading && loadError && <p role="alert">{loadError}</p>}
+        {!loading && loadError && (
+          <ErrorNotice message={loadError} onRetry={() => void retryLoad()} />
+        )}
 
-        {!loading && !loadError && publishers.length === 0 && <p>Nenhum publicador cadastrado.</p>}
+        {!loading && !loadError && publishers.length === 0 && (
+          <p className="empty-hint">
+            Nenhum publicador cadastrado. Use “Cadastrar publicador” para gerar o código de acesso
+            da primeira pessoa.
+          </p>
+        )}
 
         {!loading && !loadError && publishers.length > 0 && (
-          <input
-            type="search"
+          <SearchField
             className="publishers-search"
-            aria-label="Buscar publicador"
+            label="Buscar publicador"
             placeholder="Buscar por nome…"
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={setSearch}
           />
         )}
 
@@ -400,7 +430,12 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
           >
             <div className="publishers-directory">
               {filtered.length === 0 ? (
-                <p className="publishers-no-results">Nenhum publicador encontrado para a busca.</p>
+                <div className="publishers-no-results">
+                  <p>Nenhum publicador encontrado para a busca.</p>
+                  <button type="button" onClick={() => setSearch('')}>
+                    Limpar busca
+                  </button>
+                </div>
               ) : (
                 <div
                   className="publishers-list"
@@ -467,14 +502,16 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
                           <span
                             className={`status-badge status-${statusCategory(publisher, today)}`}
                             data-testid="publisher-status"
+                            title={statusDetailOf(publisher, today)}
                           >
-                            {statusOf(publisher, today)}
+                            {STATUS_LABEL[statusCategory(publisher, today)]}
                           </span>
                         </span>
                         <button
                           type="button"
                           className="icon-button"
                           aria-label={`Ações de ${publisher.name}`}
+                          aria-haspopup="menu"
                           aria-expanded={openMenuId === publisher.id}
                           onClick={() =>
                             setOpenMenuId(openMenuId === publisher.id ? null : publisher.id)
@@ -543,11 +580,19 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
               <aside
                 className="publisher-history-panel"
                 aria-label={`Histórico de territórios de ${selectedPublisher.name}`}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Escape') return
+                  event.preventDefault()
+                  closeHistory()
+                }}
               >
                 <div className="publisher-history-panel-header">
                   <div>
-                    <h2 className="eyebrow">Histórico de territórios</h2>
+                    <h2 className="publisher-history-title">Histórico de territórios</h2>
                     <p className="publisher-history-name">{selectedPublisher.name}</p>
+                    <p className="publisher-history-count">
+                      {statusDetailOf(selectedPublisher, today)}
+                    </p>
                     {!historyLoading && historyError === null && (
                       <p className="publisher-history-count">{historyCount(historyTotal)}</p>
                     )}
@@ -608,7 +653,7 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
                                 <td>{ongoing ? '—' : formatDate(assignment.completedAt)}</td>
                                 <td>
                                   <span
-                                    className={`assignment-status${ongoing ? ' is-ongoing' : ' is-returned'}`}
+                                    className={`status-badge ${ongoing ? 'status-working' : 'status-idle'}`}
                                   >
                                     {ongoing ? 'Em andamento' : 'Devolvido'}
                                   </span>
@@ -689,8 +734,12 @@ export function PublishersScreen({ now }: PublishersScreenProps): React.JSX.Elem
                 Copiar
               </button>
             </div>
+            <p className="sr-only" aria-live="polite">
+              {codeCopied ? 'Código copiado' : ''}
+            </p>
           </Dialog>
         )}
+        {confirmDialog}
       </main>
     </div>
   )

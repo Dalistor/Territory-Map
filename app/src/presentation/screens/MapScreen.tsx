@@ -7,6 +7,7 @@
 // the per-territory picker), not just the ones assigned to this publisher.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Modal,
   Pressable,
   ScrollView,
@@ -23,6 +24,7 @@ import {
   isTerritoryAssignedToMe,
   myCampaignHolding,
 } from '../../domain/assignment';
+import { blockStatusLabel } from '../../domain/blockStatusLabel';
 import { describeLastWorked, formatDate } from '../../domain/lastWorked';
 import type { Block, Campaign, Session, Territory } from '../../domain/models';
 import { TerritoryMapView } from '../map/TerritoryMapView';
@@ -33,7 +35,7 @@ import {
   visibleTerritories,
   type MapFilter,
 } from '../map/territoryFilter';
-import { colors, radius, shadows, spacing } from '../theme';
+import { colors, fontSize, radius, shadows, spacing, touchTarget } from '../theme';
 
 /**
  * The server's answer when the publisher is no longer allowed to mark in a
@@ -45,6 +47,20 @@ const TERRITORY_NOT_ASSIGNED = 'territory_not_assigned';
 const NO_LONGER_ASSIGNED_MESSAGE =
   'A marcação não foi registrada: este território não está mais designado a você — a designação ' +
   'ou a campanha pode ter sido concluída. O mapa foi atualizado.';
+
+/** How long the "marked" confirmation stays on screen before it goes away on its own. */
+const SUCCESS_NOTICE_MS = 4000;
+
+/**
+ * The one-line strip under the header: a short success after a marking
+ * (it disappears by itself), or an error the publisher can retry and close.
+ */
+interface Notice {
+  readonly kind: 'success' | 'error';
+  readonly message: string;
+  /** Present when trying again makes sense: reloads the map, or reopens the confirmation. */
+  readonly retry?: () => void;
+}
 
 export interface MapScreenProps {
   readonly session: Session;
@@ -102,7 +118,9 @@ export function MapScreen({
   /** True while the server round trip is in flight -- the confirm button must not fire twice. */
   const [saving, setSaving] = useState(false);
   const [readOnlyTarget, setReadOnlyTarget] = useState<BlockTarget | null>(null);
-  const [banner, setBanner] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
+  /** Until the first territory list arrives the map would sit on its fallback view with nothing on it. */
+  const [mapLoaded, setMapLoaded] = useState(false);
   /** What the publisher typed in the search box -- narrows the chip list and suggestions. */
   const [search, setSearch] = useState('');
 
@@ -114,10 +132,24 @@ export function MapScreen({
   const loadMap = useCallback((): void => {
     apiClient
       .listTerritories(session.token)
-      .then(setTerritories)
+      .then((loaded) => {
+        setTerritories(loaded);
+        setMapLoaded(true);
+      })
       // `withOfflineFallback` (App.tsx) already absorbed "no signal with a
       // cache to show"; reaching here means there is truly nothing to draw.
-      .catch(() => setBanner('Não foi possível carregar os territórios. Verifique a conexão.'));
+      .catch(() => {
+        setMapLoaded(true);
+        setNotice({
+          kind: 'error',
+          message: 'Não foi possível carregar os territórios. Verifique a conexão.',
+          retry: () => {
+            setNotice(null);
+            setMapLoaded(false);
+            loadMap();
+          },
+        });
+      });
     // Without the list no campaign territory is offered for marking, which
     // errs on the side the server enforces anyway.
     if (apiClient.listCampaigns === undefined) {
@@ -131,6 +163,12 @@ export function MapScreen({
   }, [apiClient, session.token]);
 
   useEffect(loadMap, [loadMap]);
+
+  useEffect(() => {
+    if (notice?.kind !== 'success') return undefined;
+    const timer = setTimeout(() => setNotice(null), SUCCESS_NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [notice]);
 
   const myCampaigns = campaigns ?? NO_CAMPAIGNS;
 
@@ -204,43 +242,53 @@ export function MapScreen({
    */
   async function handleConfirmWorked(): Promise<void> {
     if (confirmTarget === null) return;
-    const { block } = confirmTarget;
+    const target = confirmTarget;
+    const { block } = target;
+    const reopen = (): void => {
+      setNotice(null);
+      setConfirmTarget(target);
+    };
     const workedAt = effectiveNow;
     setSaving(true);
     try {
       await apiClient.markBlockWorked(session.token, block.id, uuidv4(), workedAt);
     } catch (error) {
       if (error instanceof NetworkException) {
-        setBanner(
-          'Sem conexão com o servidor: a marcação não foi registrada. Tente de novo quando houver internet.',
-        );
+        setNotice({
+          kind: 'error',
+          message:
+            'Sem conexão com o servidor: a marcação não foi registrada. Tente de novo quando houver internet.',
+          retry: reopen,
+        });
       } else if (error instanceof ApiErrorException && error.code === TERRITORY_NOT_ASSIGNED) {
-        setBanner(NO_LONGER_ASSIGNED_MESSAGE);
+        setNotice({ kind: 'error', message: NO_LONGER_ASSIGNED_MESSAGE });
         loadMap();
       } else if (error instanceof ApiErrorException) {
         // The server's own words -- "território não designado", "quadra não
         // encontrada" -- say more than anything this screen could guess.
-        setBanner(`A marcação não foi registrada: ${error.detail}`);
+        setNotice({ kind: 'error', message: `A marcação não foi registrada: ${error.detail}` });
       } else {
-        setBanner('A marcação não foi registrada. Tente novamente.');
+        setNotice({
+          kind: 'error',
+          message: 'A marcação não foi registrada. Tente novamente.',
+          retry: reopen,
+        });
       }
       return;
     } finally {
       setSaving(false);
       setConfirmTarget(null);
     }
-    setBanner(null);
+    setNotice({
+      kind: 'success',
+      message: `Quadra ${block.number} marcada como trabalhada`,
+    });
     setJustWorked((previous) => ({ ...previous, [block.id]: workedAt }));
   }
 
   return (
     <SafeAreaView edges={['bottom']} style={styles.container}>
-      {banner !== null && (
-        <View style={styles.banner}>
-          <Text style={styles.bannerIcon}>⚠️</Text>
-          <Text style={styles.bannerText}>{banner}</Text>
-        </View>
-      )}
+      {notice !== null && <NoticeBar notice={notice} onClose={() => setNotice(null)} />}
       <FilterControl
         filter={filter}
         territories={territories}
@@ -268,6 +316,17 @@ export function MapScreen({
             setFilter({ mode: 'specific', territoryId: territory.id })
           }
         />
+        {!mapLoaded && (
+          <View
+            accessible
+            accessibilityLabel="Carregando territórios"
+            accessibilityState={{ busy: true }}
+            style={styles.loadingOverlay}
+          >
+            <ActivityIndicator color={colors.primary} />
+            <Text style={styles.loadingText}>Carregando territórios…</Text>
+          </View>
+        )}
         {/* Floating selected territory bottom card */}
         {selectedTerritory !== null && (
           <View style={styles.bottomCard}>
@@ -326,22 +385,22 @@ export function MapScreen({
                 </Text>
                 <Text style={styles.modalSubtitle}>{confirmTarget.territory.name}</Text>
               </View>
-              <View style={styles.modalInfoBox}>
-                <Text style={styles.modalInfoLabel}>Status recente:</Text>
-                <Text style={styles.modalDetail}>
-                  {describeLastWorked(confirmTarget.block, effectiveNow)}
-                </Text>
-              </View>
+              <BlockStatusBox
+                label="Status recente:"
+                target={confirmTarget}
+                now={effectiveNow}
+              />
               <View style={styles.modalActions}>
                 <Pressable
                   accessibilityRole="button"
                   onPress={() => setConfirmTarget(null)}
-                  style={({ pressed }) => [styles.textButton, pressed && styles.textButtonPressed]}
+                  style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
                 >
                   <Text style={styles.textButtonLabel}>Cancelar</Text>
                 </Pressable>
                 <Pressable
                   accessibilityRole="button"
+                  accessibilityState={{ disabled: saving, busy: saving }}
                   disabled={saving}
                   onPress={handleConfirmWorked}
                   style={({ pressed }) => [
@@ -351,7 +410,7 @@ export function MapScreen({
                   ]}
                 >
                   <Text style={styles.filledButtonLabel}>
-                    {saving ? 'Registrando…' : 'Confirmar'}
+                    {saving ? 'Registrando…' : 'Marcar como trabalhada'}
                   </Text>
                 </Pressable>
               </View>
@@ -368,12 +427,7 @@ export function MapScreen({
                   Quadra {readOnlyTarget.block.number} — {readOnlyTarget.territory.name}
                 </Text>
               </View>
-              <View style={styles.modalInfoBox}>
-                <Text style={styles.modalInfoLabel}>Status:</Text>
-                <Text style={styles.modalDetail}>
-                  {describeLastWorked(readOnlyTarget.block, effectiveNow)}
-                </Text>
-              </View>
+              <BlockStatusBox label="Status:" target={readOnlyTarget} now={effectiveNow} />
               <Text style={styles.readOnlyHint}>
                 Este território não está designado a você — fale com quem cuida dos territórios na
                 congregação para poder marcar quadras aqui.
@@ -383,11 +437,11 @@ export function MapScreen({
                   accessibilityRole="button"
                   onPress={() => setReadOnlyTarget(null)}
                   style={({ pressed }) => [
-                    styles.filledButton,
-                    pressed && styles.filledButtonPressed,
+                    styles.secondaryButton,
+                    pressed && styles.secondaryButtonPressed,
                   ]}
                 >
-                  <Text style={styles.filledButtonLabel}>Fechar</Text>
+                  <Text style={styles.secondaryButtonLabel}>Fechar</Text>
                 </Pressable>
               </View>
             </View>
@@ -399,6 +453,76 @@ export function MapScreen({
 }
 
 const NO_CAMPAIGNS: readonly Campaign[] = [];
+
+/**
+ * The block's status in words (honouring a status the admin forced) and when
+ * it was last worked. When the two say the same thing ("Nunca trabalhada"),
+ * it is said once.
+ */
+function BlockStatusBox({
+  label,
+  target,
+  now,
+}: {
+  readonly label: string;
+  readonly target: BlockTarget;
+  readonly now: Date;
+}): React.JSX.Element {
+  const status = blockStatusLabel(target.block, now, target.territory.rotationDays);
+  const lastWorked = describeLastWorked(target.block, now);
+  return (
+    <View style={styles.modalInfoBox}>
+      <Text style={styles.modalInfoLabel}>{label}</Text>
+      {status !== lastWorked && <Text style={styles.modalDetail}>{status}</Text>}
+      <Text style={status === lastWorked ? styles.modalDetail : styles.modalDetailSecondary}>
+        {lastWorked}
+      </Text>
+    </View>
+  );
+}
+
+/** The strip under the header: success fades on its own; an error offers retry (when it helps) and close. */
+function NoticeBar({
+  notice,
+  onClose,
+}: {
+  readonly notice: Notice;
+  readonly onClose: () => void;
+}): React.JSX.Element {
+  const isError = notice.kind === 'error';
+  return (
+    <View style={[styles.banner, isError ? styles.bannerError : styles.bannerSuccess]}>
+      <Text
+        accessibilityRole={isError ? 'alert' : 'text'}
+        accessibilityLiveRegion="polite"
+        style={[styles.bannerText, isError ? styles.bannerTextError : styles.bannerTextSuccess]}
+      >
+        {notice.message}
+      </Text>
+      {isError && (
+        <View style={styles.bannerActions}>
+          {notice.retry !== undefined && (
+            <Pressable
+              accessibilityRole="button"
+              onPress={notice.retry}
+              style={({ pressed }) => [styles.bannerButton, pressed && styles.bannerButtonPressed]}
+            >
+              <Text style={styles.bannerButtonPrimaryText}>Tentar novamente</Text>
+            </Pressable>
+          )}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Fechar aviso"
+            onPress={onClose}
+            style={({ pressed }) => [styles.bannerButton, pressed && styles.bannerButtonPressed]}
+          >
+            <Text style={styles.bannerButtonText}>Fechar</Text>
+          </Pressable>
+        </View>
+      )}
+    </View>
+  );
+}
 
 function initialFilter(territoryId?: string, campaignId?: string): MapFilter {
   if (campaignId !== undefined) return { mode: 'campaign', campaignId };
@@ -477,8 +601,8 @@ function FilterChip({
 }): React.JSX.Element {
   return (
     <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
+      accessibilityRole="radio"
+      accessibilityState={{ checked: active }}
       onPress={onPress}
       style={({ pressed }) => [
         styles.filterChip,
@@ -497,7 +621,7 @@ function FilterChip({
  * territory.
  *
  * The search narrows the chips and displays instant suggestions.
- * An explicit Clear button (✕) ensures reliable clearing on Android.
+ * An explicit "Limpar" button ensures reliable clearing on Android.
  */
 function FilterControl({
   filter,
@@ -516,13 +640,12 @@ function FilterControl({
     <View style={styles.filterContainer}>
       <View style={styles.searchBarRow}>
         <View style={styles.searchInputContainer}>
-          <Text style={styles.searchIcon}>🔍</Text>
           <TextInput
             style={styles.searchInput}
             value={search}
             onChangeText={onSearchChange}
             placeholder="Buscar território pelo nome"
-            placeholderTextColor={colors.textSecondary}
+            placeholderTextColor={colors.textPlaceholder}
             accessibilityLabel="Buscar território pelo nome"
             autoCorrect={false}
             returnKeyType="search"
@@ -533,15 +656,22 @@ function FilterControl({
               accessibilityLabel="Limpar busca"
               onPress={() => onSearchChange('')}
               style={styles.clearSearchButton}
-              hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+              hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
             >
-              <Text style={styles.clearSearchIcon}>✕</Text>
+              <Text style={styles.clearSearchText}>Limpar</Text>
             </Pressable>
           )}
         </View>
       </View>
 
-      <ScrollView horizontal style={styles.filterBar} showsHorizontalScrollIndicator={false}>
+      <ScrollView
+        horizontal
+        accessibilityRole="radiogroup"
+        accessibilityLabel="Filtro do mapa"
+        style={styles.filterBar}
+        contentContainerStyle={styles.filterBarContent}
+        showsHorizontalScrollIndicator={false}
+      >
         {/* The two mode chips stay put while searching. */}
         <FilterChip
           label="Meu(s) território(s)"
@@ -589,81 +719,132 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   banner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.warningSurface,
     borderBottomWidth: 1,
-    borderBottomColor: colors.warningBorder,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    gap: spacing.sm,
+    gap: spacing.xs,
     zIndex: 110,
   },
-  bannerIcon: { fontSize: 16 },
+  bannerError: {
+    backgroundColor: colors.dangerSurface,
+    borderBottomColor: colors.dangerBorder,
+  },
+  bannerSuccess: {
+    backgroundColor: colors.successSurface,
+    borderBottomColor: colors.successBorder,
+  },
   bannerText: {
-    flex: 1,
-    color: colors.warningText,
-    fontSize: 13,
+    fontSize: 14,
+    lineHeight: 20,
     fontWeight: '500',
   },
-  // Opaque, elevated container that sits strictly above map markers
+  bannerTextError: {
+    color: colors.danger,
+  },
+  bannerTextSuccess: {
+    color: colors.successText,
+  },
+  bannerActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+  },
+  bannerButton: {
+    minHeight: touchTarget.min,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.sm,
+  },
+  bannerButtonPressed: {
+    backgroundColor: colors.surface,
+  },
+  bannerButtonPrimaryText: {
+    color: colors.primary,
+    fontSize: fontSize.body,
+    fontWeight: '600',
+  },
+  bannerButtonText: {
+    color: colors.textPrimary,
+    fontSize: fontSize.body,
+    fontWeight: '500',
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: '40%',
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.mapOverlay,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    zIndex: 60,
+    ...shadows.sm,
+  },
+  loadingText: {
+    color: colors.textPrimary,
+    fontSize: 14,
+  },
+  // Opaque container that sits strictly above map markers; flat, separated
+  // from the map by its bottom border (DESIGN.md: shadows only on what floats).
   filterContainer: {
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     paddingTop: spacing.sm,
     zIndex: 100,
-    ...shadows.md,
-    elevation: 8,
   },
   searchBarRow: {
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
   searchInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderRadius: radius.sm,
     borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.sm,
-  },
-  searchIcon: {
-    fontSize: 14,
-    marginRight: spacing.xs,
-    color: colors.textSecondary,
+    borderColor: colors.borderInput,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.xs,
+    minHeight: touchTarget.min,
   },
   searchInput: {
     flex: 1,
     paddingVertical: 10,
-    paddingHorizontal: spacing.xs,
     color: colors.textPrimary,
-    fontSize: 15,
+    fontSize: fontSize.body,
   },
   clearSearchButton: {
-    padding: spacing.xs,
+    minHeight: touchTarget.min - 8,
+    paddingHorizontal: spacing.sm,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  clearSearchIcon: {
+  clearSearchText: {
     fontSize: 14,
-    fontWeight: '700',
-    color: colors.textSecondary,
+    fontWeight: '600',
+    color: colors.primary,
   },
   filterBar: {
     flexGrow: 0,
-    paddingHorizontal: spacing.sm,
+  },
+  filterBarContent: {
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
+    alignItems: 'center',
   },
   noMatches: {
     color: colors.textSecondary,
-    paddingVertical: 7,
     paddingHorizontal: spacing.xs,
     fontSize: 14,
   },
   filterChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    minHeight: touchTarget.min,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
     borderRadius: radius.full,
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -676,7 +857,6 @@ const styles = StyleSheet.create({
   filterChipActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
-    ...shadows.sm,
   },
   filterChipText: {
     color: colors.textPrimary,
@@ -687,18 +867,19 @@ const styles = StyleSheet.create({
     color: colors.onPrimary,
     fontWeight: '600',
   },
-  // Floating bottom card
+  // Floating bottom card: the one surface that floats over the map, so the
+  // one that keeps a shadow.
   bottomCard: {
     position: 'absolute',
     bottom: spacing.md,
     left: spacing.md,
     right: spacing.md,
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
-    ...shadows.lg,
+    ...shadows.md,
     zIndex: 50,
   },
   bottomCardHeader: {
@@ -712,7 +893,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   bottomCardTitle: {
-    fontSize: 16,
+    fontSize: fontSize.section,
     fontWeight: '700',
     color: colors.textPrimary,
   },
@@ -725,13 +906,13 @@ const styles = StyleSheet.create({
   badge: {
     backgroundColor: colors.surfaceSubtle,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
+    paddingVertical: spacing.xs,
     borderRadius: radius.full,
     borderWidth: 1,
     borderColor: colors.border,
   },
   badgeText: {
-    fontSize: 12,
+    fontSize: fontSize.small,
     color: colors.textSecondary,
     fontWeight: '500',
   },
@@ -740,44 +921,45 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   badgeMineText: {
-    fontSize: 12,
+    fontSize: fontSize.small,
     color: colors.primary,
     fontWeight: '600',
   },
   clearSelectionButton: {
-    backgroundColor: colors.surfaceSubtle,
+    minHeight: touchTarget.min,
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
+    borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: colors.border,
   },
   clearSelectionButtonPressed: {
-    backgroundColor: colors.border,
+    backgroundColor: colors.surfaceSubtle,
   },
   clearSelectionText: {
     color: colors.textPrimary,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    backgroundColor: colors.scrim,
     justifyContent: 'center',
     padding: spacing.lg,
   },
   modalCard: {
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     padding: spacing.lg,
     gap: spacing.md,
-    ...shadows.lg,
+    ...shadows.md,
   },
   modalHeader: {
     gap: spacing.xs,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: fontSize.title,
     fontWeight: '700',
     color: colors.textPrimary,
   },
@@ -788,27 +970,31 @@ const styles = StyleSheet.create({
   },
   modalInfoBox: {
     backgroundColor: colors.surfaceSubtle,
-    borderRadius: radius.md,
+    borderRadius: radius.sm,
     padding: spacing.md,
     gap: spacing.xs,
     borderWidth: 1,
     borderColor: colors.border,
   },
   modalInfoLabel: {
-    fontSize: 12,
+    fontSize: fontSize.meta,
     fontWeight: '600',
     color: colors.textSecondary,
-    textTransform: 'uppercase',
   },
   modalDetail: {
     color: colors.textPrimary,
-    fontSize: 15,
+    fontSize: fontSize.body,
     fontWeight: '500',
+  },
+  modalDetailSecondary: {
+    color: colors.textSecondary,
+    fontSize: 14,
   },
   modalActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: spacing.sm,
     marginTop: spacing.xs,
   },
@@ -817,25 +1003,34 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontSize: 14,
   },
-  textButton: {
+  secondaryButton: {
+    minHeight: touchTarget.min,
+    justifyContent: 'center',
     paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    borderRadius: radius.md,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
-  textButtonPressed: {
+  secondaryButtonPressed: {
     backgroundColor: colors.surfaceSubtle,
   },
+  secondaryButtonLabel: {
+    color: colors.textPrimary,
+    fontSize: fontSize.body,
+    fontWeight: '600',
+  },
   textButtonLabel: {
-    color: colors.textSecondary,
-    fontSize: 15,
+    color: colors.textPrimary,
+    fontSize: fontSize.body,
     fontWeight: '600',
   },
   filledButton: {
+    minHeight: touchTarget.comfortable,
+    justifyContent: 'center',
     backgroundColor: colors.primary,
-    borderRadius: radius.md,
+    borderRadius: radius.sm,
     paddingHorizontal: spacing.lg,
-    paddingVertical: 12,
-    ...shadows.sm,
   },
   filledButtonPressed: {
     backgroundColor: colors.primaryPressed,
@@ -845,7 +1040,7 @@ const styles = StyleSheet.create({
   },
   filledButtonLabel: {
     color: colors.onPrimary,
-    fontSize: 15,
+    fontSize: fontSize.body,
     fontWeight: '600',
   },
 });

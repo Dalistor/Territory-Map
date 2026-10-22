@@ -10,10 +10,11 @@
 // ever printed anywhere else.
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AssignmentHistoryPage, AssignmentWithTerritory, Publisher } from '../../shared/models'
 import type { IpcApi } from '../../shared/ipc-contract'
 import { PublishersScreen } from './PublishersScreen'
+import { answerConfirm } from '../components/ConfirmDialog.testing'
 
 /** A fixed "now", so "expires in 20 hours" is a date and not a moving target. */
 const now = new Date(2026, 7, 7, 12)
@@ -195,25 +196,13 @@ async function openMenu(user: ReturnType<typeof userEvent.setup>, name: string):
 
 /** Walks the register flow up to the point where the server would be called. */
 async function registerFlow(user: ReturnType<typeof userEvent.setup>, name: string): Promise<void> {
-  await user.click(screen.getByRole('button', { name: 'Cadastrar' }))
+  await user.click(screen.getByRole('button', { name: 'Cadastrar publicador' }))
   await user.type(screen.getByLabelText('Nome da pessoa'), name)
   await user.click(screen.getByRole('button', { name: 'Gerar código' }))
 }
 
-/**
- * `window.confirm` is not implemented in jsdom, and every deletion below goes
- * through it. Stubbed answering "yes" by default, so only the tests that care
- * about backing out have to say so.
- */
-let confirmSpy: ReturnType<typeof vi.spyOn>
-
 describe('PublishersScreen', () => {
-  beforeEach(() => {
-    confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
-  })
-
   afterEach(() => {
-    confirmSpy.mockRestore()
     vi.unstubAllGlobals()
   })
 
@@ -317,7 +306,7 @@ describe('PublishersScreen', () => {
 
     render(<PublishersScreen now={now} />)
 
-    expect(await screen.findByText('Nenhum publicador cadastrado.')).toBeInTheDocument()
+    expect(await screen.findByText(/Nenhum publicador cadastrado\./)).toBeInTheDocument()
   })
 
   it('keeps the publisher register in an accessible internal scrolling region', async () => {
@@ -329,7 +318,7 @@ describe('PublishersScreen', () => {
     const register = await screen.findByRole('region', { name: 'Lista de publicadores' })
     expect(register).toHaveAttribute('tabindex', '0')
     expect(within(register).getByTestId('publisher-row-Daniel')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Cadastrar' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Cadastrar publicador' })).toBeVisible()
     expect(screen.getByLabelText('Buscar publicador')).toBeVisible()
   })
 
@@ -339,8 +328,8 @@ describe('PublishersScreen', () => {
 
     render(<PublishersScreen now={now} />)
 
-    expect(screen.getByRole('button', { name: 'Cadastrar' })).toBeInTheDocument()
-    expect(screen.getByRole('progressbar')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cadastrar publicador' })).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Carregando publicadores…')
   })
 
   it('a refused listing is reported in the server’s own words', async () => {
@@ -371,11 +360,11 @@ describe('PublishersScreen', () => {
     await screen.findByTestId('publisher-row-Ana')
 
     // Revoking takes the access away, not the record of the work done.
-    expect(statusOf('Ana')).toBe('Acesso revogado — o histórico de trabalho continua guardado.')
-    expect(statusOf('Bruno')).toBe('Código válido, aguardando ser usado.')
+    expect(statusOf('Ana')).toBe('Desativado')
+    expect(statusOf('Bruno')).toBe('Código válido')
     // The code is past its 24 hours, so it is as good as absent.
-    expect(statusOf('Carla')).toBe('Sem código válido. Gere um novo para esta pessoa entrar.')
-    expect(statusOf('Daniel')).toBe('Ativo neste aparelho.')
+    expect(statusOf('Carla')).toBe('Sem código válido')
+    expect(statusOf('Daniel')).toBe('Ativo')
   })
 
   it('registering is refused until a name is typed', async () => {
@@ -383,7 +372,7 @@ describe('PublishersScreen', () => {
     const user = userEvent.setup()
     render(<PublishersScreen now={now} />)
 
-    await user.click(screen.getByRole('button', { name: 'Cadastrar' }))
+    await user.click(screen.getByRole('button', { name: 'Cadastrar publicador' }))
 
     const mintButton = (): HTMLElement => screen.getByRole('button', { name: 'Gerar código' })
     expect(mintButton()).toBeDisabled()
@@ -402,7 +391,7 @@ describe('PublishersScreen', () => {
     const user = userEvent.setup()
     render(<PublishersScreen now={now} />)
 
-    await user.click(screen.getByRole('button', { name: 'Cadastrar' }))
+    await user.click(screen.getByRole('button', { name: 'Cadastrar publicador' }))
     await user.type(screen.getByLabelText('Nome da pessoa'), 'Maria{Enter}')
 
     expect(fake.created).toEqual(['Maria'])
@@ -414,7 +403,7 @@ describe('PublishersScreen', () => {
     const user = userEvent.setup()
     render(<PublishersScreen now={now} />)
 
-    await user.click(screen.getByRole('button', { name: 'Cadastrar' }))
+    await user.click(screen.getByRole('button', { name: 'Cadastrar publicador' }))
     await user.type(screen.getByLabelText('Nome da pessoa'), '{Enter}')
 
     expect(fake.created).toEqual([])
@@ -426,7 +415,7 @@ describe('PublishersScreen', () => {
 
     render(<PublishersScreen />)
 
-    expect(await screen.findByText('Nenhum publicador cadastrado.')).toBeInTheDocument()
+    expect(await screen.findByText(/Nenhum publicador cadastrado\./)).toBeInTheDocument()
   })
 
   it('a freshly minted code is shown, with what it is worth, and the list is reloaded', async () => {
@@ -441,7 +430,7 @@ describe('PublishersScreen', () => {
     }
     const user = userEvent.setup()
     render(<PublishersScreen now={now} />)
-    await screen.findByText('Nenhum publicador cadastrado.')
+    await screen.findByText(/Nenhum publicador cadastrado\./)
 
     await registerFlow(user, 'Maria')
 
@@ -481,7 +470,7 @@ describe('PublishersScreen', () => {
     const user = userEvent.setup()
     render(<PublishersScreen now={now} />)
 
-    await user.click(screen.getByRole('button', { name: 'Cadastrar' }))
+    await user.click(screen.getByRole('button', { name: 'Cadastrar publicador' }))
     await user.type(screen.getByLabelText('Nome da pessoa'), 'Maria')
     await user.click(screen.getByRole('button', { name: 'Cancelar' }))
 
@@ -564,7 +553,7 @@ describe('PublishersScreen', () => {
     fake.writeFailure = new Error('Já existe um publicador com esse nome.')
     const user = userEvent.setup()
     render(<PublishersScreen now={now} />)
-    await screen.findByText('Nenhum publicador cadastrado.')
+    await screen.findByText(/Nenhum publicador cadastrado\./)
 
     await registerFlow(user, 'Maria')
 
@@ -590,7 +579,7 @@ describe('PublishersScreen', () => {
       'Muitas tentativas. Tente de novo em um minuto.'
     )
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(statusOf('Daniel')).toBe('Ativo neste aparelho.')
+    expect(statusOf('Daniel')).toBe('Ativo')
   })
 
   it('the summary counts each category present and leaves the zeroed ones out', async () => {
@@ -621,7 +610,7 @@ describe('PublishersScreen', () => {
   it('the search field appears only once a non-empty list has loaded', async () => {
     const empty = installFakeApi()
     const { unmount } = render(<PublishersScreen now={now} />)
-    await screen.findByText('Nenhum publicador cadastrado.')
+    await screen.findByText(/Nenhum publicador cadastrado\./)
 
     // Nobody registered: nothing to search through.
     expect(screen.queryByLabelText('Buscar publicador')).not.toBeInTheDocument()
@@ -704,7 +693,7 @@ describe('PublishersScreen', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Este publicador não existe mais.')
     expect(fake.activeCalls).toEqual([['p2', false]])
     expect(fake.listCalls).toBe(1)
-    expect(statusOf('Bruno')).toBe('Código válido, aguardando ser usado.')
+    expect(statusOf('Bruno')).toBe('Código válido')
   })
   it('every publisher row offers deleting that person', async () => {
     const fake = installFakeApi()
@@ -728,6 +717,7 @@ describe('PublishersScreen', () => {
 
     await openMenu(user, 'Daniel')
     await user.click(screen.getByRole('button', { name: 'Apagar Daniel' }))
+    await answerConfirm(user, true)
 
     await waitFor(() => expect(fake.deleted).toEqual([onDevice.id]))
     await waitFor(() => expect(fake.listCalls).toBe(2))
@@ -736,15 +726,14 @@ describe('PublishersScreen', () => {
   it('backing out of the confirmation deletes nobody', async () => {
     const fake = installFakeApi()
     fake.publishers = [onDevice]
-    confirmSpy.mockReturnValue(false)
     const user = userEvent.setup()
     render(<PublishersScreen now={now} />)
     await screen.findByTestId('publisher-row-Daniel')
 
     await openMenu(user, 'Daniel')
     await user.click(screen.getByRole('button', { name: 'Apagar Daniel' }))
+    await answerConfirm(user, false)
 
-    expect(confirmSpy).toHaveBeenCalledTimes(1)
     expect(fake.deleted).toEqual([])
     expect(fake.listCalls).toBe(1)
     expect(screen.getByTestId('publisher-row-Daniel')).toBeInTheDocument()
@@ -759,8 +748,8 @@ describe('PublishersScreen', () => {
 
     await openMenu(user, 'Daniel')
     await user.click(screen.getByRole('button', { name: 'Apagar Daniel' }))
+    const message = await answerConfirm(user, true)
 
-    const message = String(confirmSpy.mock.calls[0][0])
     expect(message).toMatch(/Daniel/)
     // What goes: the person and her access.
     expect(message).toMatch(/perde o acesso/i)
@@ -788,6 +777,7 @@ describe('PublishersScreen', () => {
 
     await openMenu(user, 'Daniel')
     await user.click(screen.getByRole('button', { name: 'Apagar Daniel' }))
+    await answerConfirm(user, true)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Daniel ainda tem território designado. Conclua a designação antes de apagar o publicador.'
@@ -807,6 +797,7 @@ describe('PublishersScreen', () => {
 
     await openMenu(user, 'Daniel')
     await user.click(screen.getByRole('button', { name: 'Apagar Daniel' }))
+    await answerConfirm(user, true)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('O servidor não respondeu.')
     expect(fake.listCalls).toBe(1)
@@ -996,8 +987,9 @@ describe('PublishersScreen', () => {
 
     await openMenu(user, 'Daniel')
     await user.click(screen.getByRole('button', { name: 'Apagar Daniel' }))
+    await answerConfirm(user, true)
 
-    await screen.findByText('Nenhum publicador cadastrado.')
+    await screen.findByText(/Nenhum publicador cadastrado\./)
     expect(
       screen.queryByRole('heading', { name: 'Histórico de territórios' })
     ).not.toBeInTheDocument()

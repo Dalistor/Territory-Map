@@ -7,7 +7,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { compareTerritoriesByNumber } from '../../domain/models';
 import type { Campaign, CampaignDesignation } from '../../domain/models';
 import { QueryState } from '../components';
-import { colors, radius, shadows, spacing } from '../theme';
+import { colors, radius, spacing } from '../theme';
 import { formatDate } from './BlockWorkSection';
 import { CAMPAIGNS_DESKTOP_ONLY_MESSAGE, campaignPeriodLabel } from './CampaignsScreen';
 
@@ -38,8 +38,11 @@ function publishersLabel(designation: CampaignDesignation): string {
 }
 
 function periodLabel(designation: CampaignDesignation): string {
-  const end = designation.completedAt === null ? 'em andamento' : formatDate(designation.completedAt);
-  return `${formatDate(designation.startedAt)} a ${end}`;
+  const end =
+    designation.completedAt === null
+      ? 'Em andamento'
+      : `Devolução ${formatDate(designation.completedAt)}`;
+  return `Retirada ${formatDate(designation.startedAt)} · ${end}`;
 }
 
 export default function CampaignDetailScreen({
@@ -109,9 +112,16 @@ export default function CampaignDetailScreen({
       </Text>
 
       <Text style={styles.heading}>Territórios ({territories.length})</Text>
-      {territories.map(territory => (
-        <Text key={territory.id} style={styles.row}>{territory.name}</Text>
-      ))}
+      {/* A plain list, not cards: these names are read here, not opened. */}
+      <View style={styles.territoryList}>
+        {territories.map((territory, index) => (
+          <Text
+            key={territory.id}
+            style={[styles.territoryRow, index > 0 && styles.territoryRowDivided]}>
+            {territory.name}
+          </Text>
+        ))}
+      </View>
 
       <Text style={styles.heading}>Períodos</Text>
       {campaign.designations.length === 0 ? (
@@ -140,16 +150,24 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1,
     gap: spacing.xs,
-    padding: spacing.sm,
+    padding: spacing.md,
   },
   periodDates: { color: colors.textSecondary, fontSize: 13, fontWeight: '600' },
-  row: {
+  territoryList: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
     borderRadius: radius.md,
     borderWidth: 1,
+    paddingHorizontal: spacing.md,
+  },
+  territoryRow: {
     color: colors.textPrimary,
-    padding: spacing.sm,
+    fontSize: 15,
+    paddingVertical: spacing.sm,
+  },
+  territoryRowDivided: {
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
   },
   screen: { backgroundColor: colors.background, flex: 1 },
   summary: {
@@ -158,8 +176,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1,
     padding: spacing.md,
-    ...shadows.sm,
   },
   summaryText: { color: colors.textSecondary, fontSize: 14, marginTop: spacing.xs },
-  title: { color: colors.textPrimary, fontSize: 21, fontWeight: '700' },
+  title: { color: colors.textPrimary, fontSize: 20, fontWeight: '700' },
 });

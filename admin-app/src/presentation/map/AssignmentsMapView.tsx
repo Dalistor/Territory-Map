@@ -52,14 +52,26 @@ import {
   type LngLat,
   type PressEventWithFeatures,
 } from '@maplibre/maplibre-react-native';
+import { blockStatusLabel } from '../../domain/blockStatusLabel';
 import type { Block, LatLng, Territory } from '../../domain/models';
 import {
+  BLOCK_CATEGORY_COLOR,
   FALLBACK_CENTER,
   blockMapFeatures,
   territoriesBounds,
   territoryMapFeatures,
 } from '../../domain/territoryMap';
+import { colors, radius, spacing } from '../theme';
 import { MapStatusLegend } from './MapStatusLegend';
+
+/**
+ * The ink of a block number over its domain colour. White reads on red and
+ * green, but only 3.08:1 on the overdue orange, so that one takes the dark
+ * ink (5.11:1). The fill itself is the domain's and never changes here.
+ */
+function blockLabelInk(fill: string): string {
+  return fill === BLOCK_CATEGORY_COLOR.overdue ? colors.mapLabelInk : colors.onPrimary;
+}
 
 const OSM_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 const OSM_ATTRIBUTION = '© OpenStreetMap contributors';
@@ -158,10 +170,19 @@ export function AssignmentsMapView({
   // Every decision about the blocks -- which colour, which number, where it
   // sits, which ones are drawable at all -- is made by `blockMapFeatures`,
   // which is tested. Nothing is recomputed here.
-  const blocks = useMemo(
-    () => blockMapFeatures(territories, now ?? new Date()),
-    [territories, now],
-  );
+  // The status in words rides along for the screen reader: the colour alone
+  // must never be the only place a block's state is said.
+  const blocks = useMemo(() => {
+    const moment = now ?? new Date();
+    return blockMapFeatures(territories, moment).map(feature => ({
+      ...feature,
+      statusLabel: blockStatusLabel(
+        feature.block,
+        moment,
+        feature.territory.rotationDays,
+      ),
+    }));
+  }, [territories, now]);
 
   const blockPolygons = useMemo(
     (): GeoJSON.FeatureCollection => ({
@@ -346,10 +367,12 @@ export function AssignmentsMapView({
                 handle the press so it is guaranteed on every device. */}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Quadra ${feature.label}`}
+              accessibilityLabel={`Quadra ${feature.label}, ${feature.statusLabel}`}
               onPress={() => onSelectBlock?.(feature.block, feature.territory)}
               style={[styles.blockLabel, { backgroundColor: feature.color }]}>
-              <Text style={styles.blockLabelText}>{feature.label}</Text>
+              <Text style={[styles.blockLabelText, { color: blockLabelInk(feature.color) }]}>
+                {feature.label}
+              </Text>
             </Pressable>
           </Marker>
         ))}
@@ -369,35 +392,36 @@ const styles = StyleSheet.create({
   map: { flex: 1 },
   label: {
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    backgroundColor: colors.mapOverlay,
+    borderColor: colors.border,
+    borderRadius: radius.xs,
+    borderWidth: 1,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
   },
-  labelName: { color: '#37474f', fontSize: 11, fontWeight: '600' },
-  labelLeader: { color: '#263238', fontSize: 11 },
-  labelNoLeader: { color: '#78909c', fontStyle: 'italic' },
+  labelName: { color: colors.mapLabelInk, fontSize: 11, fontWeight: '600' },
+  labelLeader: { color: colors.mapLabelInk, fontSize: 11 },
+  labelNoLeader: { color: colors.textSecondary, fontStyle: 'italic' },
   blockLabel: {
     alignItems: 'center',
-    borderColor: '#ffffff',
-    borderRadius: 12,
+    borderColor: colors.surface,
+    borderRadius: radius.md,
     borderWidth: 2,
-    height: 24,
     justifyContent: 'center',
+    minHeight: 24,
     minWidth: 24,
-    paddingHorizontal: 4,
+    paddingHorizontal: spacing.xs,
   },
-  blockLabelText: { color: '#ffffff', fontSize: 11, fontWeight: '700' },
+  blockLabelText: { fontSize: 11, fontWeight: '700' },
   attribution: {
-    backgroundColor: 'rgba(255,255,255,0.8)',
-    borderRadius: 4,
-    bottom: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    backgroundColor: colors.mapOverlay,
+    borderRadius: radius.xs,
+    bottom: spacing.xs,
+    paddingHorizontal: spacing.xs,
     position: 'absolute',
-    right: 4,
+    right: spacing.xs,
   },
-  attributionText: { color: '#333333', fontSize: 10 },
+  attributionText: { color: colors.mapLabelInk, fontSize: 11 },
 });
 
 export default AssignmentsMapView;

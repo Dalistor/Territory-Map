@@ -149,7 +149,6 @@ export function TerritoryEditorScreen({
     <div className="editor-split screen-workbench">
       <aside className="editor-panel screen-card">
         <div>
-          <p className="eyebrow">Demarcação</p>
           <h1>{territory === undefined ? 'Novo território' : `Editar ${territory.name}`}</h1>
         </div>
 

@@ -82,6 +82,7 @@ export function SetupScreen({ reason }: SetupScreenProps): React.JSX.Element {
             replaces both the old emoji mark and the <h1> — keeping the
             heading would print the name twice, stacked. */}
         <img className="setup-logo" src={logo} alt="Territory Map" />
+        <h1 className="sr-only">Configurar a congregação</h1>
         <p>
           Informe os dados da congregação. Eles ficam guardados neste computador e não serão pedidos
           de novo.
@@ -100,9 +101,12 @@ export function SetupScreen({ reason }: SetupScreenProps): React.JSX.Element {
               value={name}
               onChange={(event) => setName(event.target.value)}
               aria-invalid={fieldErrors.name !== undefined}
+              aria-describedby={fieldErrors.name !== undefined ? 'setup-name-error' : undefined}
             />
             {fieldErrors.name !== undefined && (
-              <span className="field-error">{fieldErrors.name}</span>
+              <span id="setup-name-error" className="field-error">
+                {fieldErrors.name}
+              </span>
             )}
           </div>
           <div className="field">
@@ -113,9 +117,12 @@ export function SetupScreen({ reason }: SetupScreenProps): React.JSX.Element {
               value={city}
               onChange={(event) => setCity(event.target.value)}
               aria-invalid={fieldErrors.city !== undefined}
+              aria-describedby={fieldErrors.city !== undefined ? 'setup-city-error' : undefined}
             />
             {fieldErrors.city !== undefined && (
-              <span className="field-error">{fieldErrors.city}</span>
+              <span id="setup-city-error" className="field-error">
+                {fieldErrors.city}
+              </span>
             )}
           </div>
           <div className="field">
@@ -126,9 +133,14 @@ export function SetupScreen({ reason }: SetupScreenProps): React.JSX.Element {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               aria-invalid={fieldErrors.password !== undefined}
+              aria-describedby={
+                fieldErrors.password !== undefined ? 'setup-password-error' : undefined
+              }
             />
             {fieldErrors.password !== undefined && (
-              <span className="field-error">{fieldErrors.password}</span>
+              <span id="setup-password-error" className="field-error">
+                {fieldErrors.password}
+              </span>
             )}
           </div>
           {serverError !== null && <p role="alert">{serverError}</p>}

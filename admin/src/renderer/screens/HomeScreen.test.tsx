@@ -4,10 +4,11 @@
 // by `session.test.ts` and `api-client.test.ts`.
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { IpcApi } from '../../shared/ipc-contract'
 import type { Block, Publisher, Territory } from '../../shared/models'
 import { HomeScreen } from './HomeScreen'
+import { answerConfirm } from '../components/ConfirmDialog.testing'
 
 // The real TerritoryMap pulls in react-leaflet, which needs a real DOM layout
 // jsdom does not provide. HomeScreen's own job -- the header, the territory
@@ -144,15 +145,8 @@ function makeApi(overrides: DeepPartialIpcApi = {}): IpcApi {
   }
 }
 
-let confirmSpy: ReturnType<typeof vi.spyOn>
-
-beforeEach(() => {
-  confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
-})
-
 afterEach(() => {
   vi.unstubAllGlobals()
-  confirmSpy.mockRestore()
 })
 
 describe('HomeScreen loading and header', () => {
@@ -167,17 +161,14 @@ describe('HomeScreen loading and header', () => {
     expect(api.territories.listWithBlocks).toHaveBeenCalledTimes(1)
   })
 
-  it('shows a generic title before the congregation is known, then the name and city once passed', async () => {
+  it('names the screen in its h1 instead of repeating the congregation', async () => {
     const api = makeApi()
     vi.stubGlobal('api', api)
 
-    const { rerender } = render(<HomeScreen />)
+    render(<HomeScreen />)
     await waitFor(() => expect(screen.queryByText(/carregando/i)).not.toBeInTheDocument())
-    expect(screen.getByRole('heading', { name: 'Territory Map' })).toBeInTheDocument()
 
-    rerender(<HomeScreen congregation={{ id: 'c1', name: 'Centro', city: 'Recife' }} />)
-
-    expect(screen.getByRole('heading', { name: 'Centro — Recife' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Demarcações' })).toBeInTheDocument()
   })
 
   it('shows a visible error message, not an unhandled rejection, when loading fails', async () => {
@@ -251,7 +242,7 @@ describe('HomeScreen loading and header', () => {
     expect(within(territoryRow as HTMLElement).getByText('Designado a Maria')).toBeInTheDocument()
     expect(
       within(territoryRow as HTMLElement).getByText(
-        `Último trabalho: João — ${workedAt.toLocaleDateString()}`
+        `Último trabalho: João — ${workedAt.toLocaleDateString('pt-BR')}`
       )
     ).toBeInTheDocument()
   })
@@ -287,7 +278,7 @@ async function openTerritoryMenu(
 }
 
 describe('HomeScreen territory actions', () => {
-  it('keeps Quadras and Configurações visible as quick actions alongside the options menu', async () => {
+  it('keeps Adicionar quadra and Configurações visible as quick actions alongside the options menu', async () => {
     const territory = makeTerritory({ name: 'Bairro Sul' })
     const api = makeApi({
       territories: {
@@ -304,7 +295,7 @@ describe('HomeScreen territory actions', () => {
 
     render(<HomeScreen onAddBlock={onAddBlock} onOpenSettings={onOpenSettings} />)
 
-    await user.click(await screen.findByRole('button', { name: 'Quadras' }))
+    await user.click(await screen.findByRole('button', { name: 'Adicionar quadra' }))
     await user.click(screen.getByRole('button', { name: 'Configurações' }))
 
     expect(onAddBlock).toHaveBeenCalledWith(territory)
@@ -680,9 +671,8 @@ describe('HomeScreen deleting a territory', () => {
     await user.click(
       await screen.findByRole('menuitem', { name: /apagar território.*bairro sul/i })
     )
+    const message = await answerConfirm(user, true)
 
-    expect(confirmSpy).toHaveBeenCalledTimes(1)
-    const message = confirmSpy.mock.calls[0]?.[0] as string
     expect(message).not.toMatch(/histórico/i)
     await waitFor(() => expect(deleteTerritory).toHaveBeenCalledWith('territory-1'))
     expect(listWithBlocks).toHaveBeenCalledTimes(2)
@@ -710,15 +700,14 @@ describe('HomeScreen deleting a territory', () => {
     await user.click(
       await screen.findByRole('menuitem', { name: /apagar território.*bairro sul/i })
     )
+    const message = await answerConfirm(user, true)
 
-    const message = confirmSpy.mock.calls[0]?.[0] as string
     expect(message).toMatch(/histórico/i)
     expect(message).toMatch(/2/)
     await waitFor(() => expect(deleteTerritory).toHaveBeenCalledWith('territory-1'))
   })
 
   it('does not call the API when the confirmation is declined', async () => {
-    confirmSpy.mockReturnValue(false)
     const territory = makeTerritory({ name: 'Bairro Sul' })
     const deleteTerritory = vi.fn()
     const api = makeApi({
@@ -737,6 +726,7 @@ describe('HomeScreen deleting a territory', () => {
     await user.click(
       await screen.findByRole('menuitem', { name: /apagar território.*bairro sul/i })
     )
+    await answerConfirm(user, false)
 
     expect(deleteTerritory).not.toHaveBeenCalled()
   })
@@ -759,6 +749,7 @@ describe('HomeScreen deleting a territory', () => {
     await user.click(
       await screen.findByRole('menuitem', { name: /apagar território.*bairro sul/i })
     )
+    await answerConfirm(user, true)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('O território tem uma pendência.')
   })
@@ -925,20 +916,20 @@ describe('HomeScreen tapping a block on the map', () => {
     const { block, user } = await renderWithOneBlock({}, api)
 
     await user.click(screen.getByRole('button', { name: 'Apagar quadra' }))
+    const message = await answerConfirm(user, true)
 
-    const message = confirmSpy.mock.calls[0]?.[0] as string
     expect(message).toMatch(/histórico/i)
     await waitFor(() => expect(deleteBlock).toHaveBeenCalledWith(block.id))
   })
 
   it('does not delete the block when the confirmation is declined', async () => {
-    confirmSpy.mockReturnValue(false)
     const deleteBlock = vi.fn()
     const api = makeApi()
     api.blocks.delete = deleteBlock
     const { user } = await renderWithOneBlock({}, api)
 
     await user.click(screen.getByRole('button', { name: 'Apagar quadra' }))
+    await answerConfirm(user, false)
 
     expect(deleteBlock).not.toHaveBeenCalled()
   })
@@ -949,6 +940,7 @@ describe('HomeScreen tapping a block on the map', () => {
     const { user } = await renderWithOneBlock({}, api)
 
     await user.click(screen.getByRole('button', { name: 'Apagar quadra' }))
+    await answerConfirm(user, true)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('A quadra tem um registro pendente.')
   })

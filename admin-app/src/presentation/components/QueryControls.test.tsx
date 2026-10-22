@@ -44,7 +44,7 @@ describe('QuerySegmentedControl', () => {
       />,
     );
 
-    expect(screen.getByRole('tab', { name: 'Lista, selecionado' }).props.accessibilityState).toEqual({
+    expect(screen.getByRole('tab', { name: 'Lista' }).props.accessibilityState).toEqual({
       selected: true,
     });
     await fireEvent.press(screen.getByRole('tab', { name: 'Mapa' }));

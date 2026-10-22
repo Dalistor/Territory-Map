@@ -20,9 +20,20 @@ export function isUpdateMandatory(currentCode: number, minVersionCode: number): 
   return currentCode < minVersionCode;
 }
 
-export function parseAppRelease(payload: any): AppRelease {
+/** The release manifest as the server sends it (snake_case JSON). */
+interface AppReleasePayload {
+  readonly app: string;
+  readonly version_code: number;
+  readonly version_name: string;
+  readonly min_version_code?: unknown;
+  readonly download_url: string;
+  readonly changelog?: string;
+  readonly published_at?: string;
+}
+
+export function parseAppRelease(payload: AppReleasePayload): AppRelease {
   return {
-    app: payload.app,
+    app: payload.app as AppRelease['app'],
     versionCode: payload.version_code,
     versionName: payload.version_name,
     minVersionCode: typeof payload.min_version_code === 'number' ? payload.min_version_code : 1,

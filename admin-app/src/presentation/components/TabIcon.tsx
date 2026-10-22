@@ -29,9 +29,13 @@ export default function TabIcon({ name, color, size, focused }: TabIconProps): R
   const testID = `tab-icon-${name}`;
 
   return (
+    // Hidden from TalkBack: the tab already reads its own label, and an
+    // accessible icon inside it made the name be read twice.
     <View
       accessibilityLabel={`Ícone de ${labelFor[name]}`}
-      accessible
+      accessible={false}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
       style={[styles.canvas, { width: size, height: size }]}
       testID={testID}
     >

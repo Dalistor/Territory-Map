@@ -225,7 +225,7 @@ describe('App', () => {
     await screen.findByLabelText('Código de acesso')
 
     await fireEvent.changeText(screen.getByLabelText('Código de acesso'), 'ABC123XY')
-    await fireEvent.press(screen.getByRole('button', { name: 'Confirmar' }))
+    await fireEvent.press(screen.getByRole('button', { name: 'Ativar acesso' }))
 
     expect(await screen.findByText('Nenhuma quadra trabalhada ainda')).toBeTruthy()
     expect(activate).toHaveBeenCalledWith('ABC123XY')

@@ -36,9 +36,10 @@ describe('PublisherHistoryScreen', () => {
     expect(await screen.findByText('Centro - N5')).toBeOnTheScreen();
     expect(listAllAssignments).toHaveBeenCalledWith({ publisherId: 'publisher-1', page: 1 });
     expect(screen.getByText('1 território retirado')).toBeOnTheScreen();
-    expect(screen.getByText('RETIRADA')).toBeOnTheScreen();
-    expect(screen.getByText('DEVOLUÇÃO')).toBeOnTheScreen();
-    expect(screen.getByText('Em andamento')).toBeOnTheScreen();
+    expect(screen.getByText('Retirada')).toBeOnTheScreen();
+    expect(screen.getByText('Devolução')).toBeOnTheScreen();
+    // The status pill and the missing return date both say it.
+    expect(screen.getAllByText('Em andamento')).not.toHaveLength(0);
     expect(screen.queryByText('Carlos antigo')).not.toBeOnTheScreen();
   });
 

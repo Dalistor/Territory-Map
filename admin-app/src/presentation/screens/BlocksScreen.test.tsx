@@ -182,7 +182,11 @@ describe('BlocksScreen', () => {
     const labels = screen
       .getAllByTestId(/^block-row-/)
       .map(row => row.props.accessibilityLabel);
-    expect(labels).toEqual(['Quadra 1', 'Quadra 2', 'Quadra 3']);
+    expect(labels).toEqual([
+      'Quadra 1, Nunca trabalhada',
+      'Quadra 2, Nunca trabalhada',
+      'Quadra 3, Nunca trabalhada',
+    ]);
   });
 
   it('mostra "Nunca trabalhada" e nenhuma data numa quadra que nunca foi visitada', async () => {
@@ -193,7 +197,7 @@ describe('BlocksScreen', () => {
     );
 
     expect(screen.getByText('Nunca trabalhada')).toBeTruthy();
-    expect(screen.queryByText(/Última visita/)).toBeNull();
+    expect(screen.queryByText(/Último trabalho/)).toBeNull();
   });
 
   it('mostra o status por extenso e a data da última visita numa quadra já trabalhada', async () => {
@@ -208,7 +212,7 @@ describe('BlocksScreen', () => {
 
     // 22 days ago, on a 30-day rotation: still inside the cycle.
     expect(screen.getByText('Em dia')).toBeTruthy();
-    expect(screen.getByText('Última visita: 01/08/2026')).toBeTruthy();
+    expect(screen.getByText('Último trabalho: 01/08/2026')).toBeTruthy();
   });
 
   it('usa a rotação do território para decidir o status, não o padrão de 120 dias', async () => {
@@ -477,7 +481,7 @@ describe('BlocksScreen', () => {
 
     expect(api.getTerritory).toHaveBeenCalledWith('territory-1');
     expect(await screen.findByText('Em dia')).toBeTruthy();
-    expect(screen.getByText('Última visita: 23/08/2026')).toBeTruthy();
+    expect(screen.getByText('Último trabalho: 23/08/2026')).toBeTruthy();
     expect(screen.queryByText('Nunca trabalhada (forçado)')).toBeNull();
   });
 

@@ -20,6 +20,11 @@ export function formatDate(date: Date): string {
   return `${twoDigits(date.getDate())}/${twoDigits(date.getMonth() + 1)}/${date.getFullYear()}`
 }
 
+/** `14:30`, 24-hour clock, built by hand for the same Hermes reason as `formatDate`. */
+export function formatTime(date: Date): string {
+  return `${twoDigits(date.getHours())}:${twoDigits(date.getMinutes())}`
+}
+
 /**
  * Whole calendar days between the two dates, ignoring the time of day.
  *

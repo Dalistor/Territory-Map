@@ -5,10 +5,10 @@ import {
   Text,
   View,
   ScrollView,
-  Pressable,
 } from 'react-native';
 import type { AppRelease } from '../../domain/appUpdate';
-import { colors, radius, spacing } from '../theme';
+import { colors, radius, shadows, spacing } from '../theme';
+import { Button } from './Button';
 
 export interface UpdateModalProps {
   readonly visible: boolean;
@@ -64,7 +64,13 @@ export function UpdateModal({
 
           {downloading ? (
             <View style={styles.progressContainer}>
-              <View style={styles.progressBarTrack}>
+              <View
+                accessible
+                accessibilityRole="progressbar"
+                accessibilityLabel="Download da atualização"
+                accessibilityValue={{ min: 0, max: 100, now: downloadProgress }}
+                style={styles.progressBarTrack}
+              >
                 <View
                   style={[
                     styles.progressBarFill,
@@ -79,38 +85,20 @@ export function UpdateModal({
           ) : null}
 
           {error ? (
-            <Text style={styles.errorText}>{error}</Text>
+            <Text accessibilityRole="alert" style={styles.errorText}>{error}</Text>
           ) : null}
 
           <View style={styles.actions}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Atualizar agora"
-              disabled={downloading}
+            <Button
+              label="Atualizar agora"
+              variant="primary"
+              busy={downloading}
+              busyLabel="Baixando..."
               onPress={onUpdate}
-              style={({ pressed }) => [
-                styles.primaryButton,
-                pressed && styles.primaryButtonPressed,
-                downloading && styles.buttonDisabled,
-              ]}
-            >
-              <Text style={styles.primaryButtonText}>
-                {downloading ? 'Baixando...' : 'Atualizar agora'}
-              </Text>
-            </Pressable>
+            />
 
             {!isMandatory && onDismiss && !downloading ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Depois"
-                onPress={onDismiss}
-                style={({ pressed }) => [
-                  styles.outlineButton,
-                  pressed && styles.outlineButtonPressed,
-                ]}
-              >
-                <Text style={styles.outlineButtonText}>Depois</Text>
-              </Pressable>
+              <Button label="Depois" onPress={onDismiss} />
             ) : null}
           </View>
         </View>
@@ -122,7 +110,7 @@ export function UpdateModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    backgroundColor: colors.scrim,
     justifyContent: 'center',
     alignItems: 'center',
     padding: spacing.md,
@@ -131,13 +119,9 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 380,
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     padding: spacing.lg,
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
+    ...shadows.md,
   },
   title: {
     fontSize: 20,
@@ -180,7 +164,7 @@ const styles = StyleSheet.create({
   changelogTitle: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.textSecondary,
+    color: colors.textPrimary,
     marginBottom: spacing.xs,
   },
   changelogText: {
@@ -210,46 +194,12 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 13,
-    color: colors.danger,
+    color: colors.dangerText,
     textAlign: 'center',
     marginBottom: spacing.md,
   },
   actions: {
     gap: spacing.sm,
     marginTop: spacing.xs,
-  },
-  primaryButton: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryButtonPressed: {
-    backgroundColor: colors.primaryPressed,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  primaryButtonText: {
-    color: colors.onPrimary,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  outlineButton: {
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  outlineButtonPressed: {
-    backgroundColor: colors.surfaceSubtle,
-  },
-  outlineButtonText: {
-    color: colors.textSecondary,
-    fontSize: 15,
-    fontWeight: '600',
   },
 });

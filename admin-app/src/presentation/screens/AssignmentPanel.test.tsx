@@ -10,6 +10,7 @@ import {
 } from '@testing-library/react-native';
 import type { Assignment, Publisher, Territory } from '../../domain/models';
 import { ApiError } from '../../data/api-client';
+import { formatDate } from './BlockWorkSection';
 import { AssignmentPanel, campaignLockMessage } from './AssignmentPanel';
 import type { AssignmentPanelSession } from './AssignmentPanel';
 
@@ -155,9 +156,10 @@ describe('AssignmentPanel', () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText(`Bruno — desde ${startedAt.toLocaleDateString()}`),
+        screen.getByText(`Retirada: ${formatDate(startedAt)} · Em andamento`),
       ).toBeTruthy(),
     );
+    expect(screen.getByText('Bruno')).toBeTruthy();
     expect(screen.queryByText('Sem designação')).toBeNull();
     expect(screen.getByText('Marcar como concluído')).toBeTruthy();
   });
@@ -200,14 +202,16 @@ describe('AssignmentPanel', () => {
     const rows = screen.getAllByTestId('assignment-history-row');
     expect(
       within(rows[0]).getByText(
-        `Carla — ${newer.startedAt.toLocaleDateString()} a ${newer.completedAt!.toLocaleDateString()}`,
+        `Retirada: ${formatDate(newer.startedAt)} · Devolução: ${formatDate(newer.completedAt!)}`,
       ),
     ).toBeTruthy();
+    expect(within(rows[0]).getByText('Carla')).toBeTruthy();
     expect(
       within(rows[1]).getByText(
-        `Ana — ${older.startedAt.toLocaleDateString()} a ${older.completedAt!.toLocaleDateString()}`,
+        `Retirada: ${formatDate(older.startedAt)} · Devolução: ${formatDate(older.completedAt!)}`,
       ),
     ).toBeTruthy();
+    expect(within(rows[1]).getByText('Ana')).toBeTruthy();
   });
 
   it('designa o publicador escolhido num território livre, recarrega o cartão e avisa o chamador', async () => {
@@ -230,7 +234,7 @@ describe('AssignmentPanel', () => {
 
     await waitFor(() => expect(screen.getByText('Bruno')).toBeTruthy());
     await fireEvent.press(screen.getByText('Bruno'));
-    await fireEvent.press(screen.getByText('Designar'));
+    await fireEvent.press(screen.getByText('Designar publicador'));
 
     await waitFor(() =>
       expect(api.designate).toHaveBeenCalledWith('terr-7', 'pub-9'),
@@ -262,7 +266,7 @@ describe('AssignmentPanel', () => {
 
     await waitFor(() => expect(screen.getByText('Bruno')).toBeTruthy());
     await fireEvent.press(screen.getByText('Bruno'));
-    await fireEvent.press(screen.getByText('Designar'));
+    await fireEvent.press(screen.getByText('Designar publicador'));
 
     expect(Alert.alert).toHaveBeenCalledTimes(1);
     const { message } = lastAlert();
@@ -295,7 +299,7 @@ describe('AssignmentPanel', () => {
 
     await waitFor(() => expect(screen.getByText('Bruno')).toBeTruthy());
     await fireEvent.press(screen.getByText('Bruno'));
-    await fireEvent.press(screen.getByText('Designar'));
+    await fireEvent.press(screen.getByText('Designar publicador'));
     await confirmLastAlert();
 
     await waitFor(() =>
@@ -414,7 +418,7 @@ describe('AssignmentPanel', () => {
 
     await waitFor(() => expect(screen.getByText('Bruno')).toBeTruthy());
     await fireEvent.press(screen.getByText('Bruno'));
-    await fireEvent.press(screen.getByText('Designar'));
+    await fireEvent.press(screen.getByText('Designar publicador'));
 
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(
@@ -423,7 +427,7 @@ describe('AssignmentPanel', () => {
     );
     // Still the same panel, still usable: the admin can pick again.
     expect(screen.getByText('Designações de Centro')).toBeTruthy();
-    expect(screen.getByText('Designar')).toBeTruthy();
+    expect(screen.getByText('Designar publicador')).toBeTruthy();
     expect(onChanged).not.toHaveBeenCalled();
   });
 
@@ -498,11 +502,12 @@ describe('AssignmentPanel', () => {
     expect(screen.getByLabelText('Apagar designação de Ana')).toBeTruthy();
   });
 
-  it('mostra o erro de carregar o cartão em vez de um cartão vazio', async () => {
+  it('mostra o erro de carregar o cartão em vez de um cartão vazio, e tenta de novo', async () => {
     const api = makeApi({
-      listAssignments: jest.fn(async () => {
-        throw new Error('Sem conexão com o servidor.');
-      }),
+      listAssignments: jest
+        .fn<Promise<Assignment[]>, [string]>()
+        .mockRejectedValueOnce(new Error('Sem conexão com o servidor.'))
+        .mockResolvedValue([]),
     });
 
     await render(
@@ -515,11 +520,15 @@ describe('AssignmentPanel', () => {
 
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(
-        'Sem conexão com o servidor.',
+        /Sem conexão com o servidor\./,
       ),
     );
     // A failed load must not read as "this territory has nobody assigned".
     expect(screen.queryByText('Sem designação')).toBeNull();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Tentar novamente' }));
+    await waitFor(() => expect(screen.getByText('Sem designação')).toBeTruthy());
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('só designa depois de escolher um publicador', async () => {
@@ -538,10 +547,10 @@ describe('AssignmentPanel', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Bruno')).toBeTruthy());
-    await fireEvent.press(screen.getByText('Designar'));
+    await fireEvent.press(screen.getByText('Designar publicador'));
 
     expect(api.designate).not.toHaveBeenCalled();
-    expect(screen.getByText('Designar')).toBeDisabled();
+    expect(screen.getByText('Designar publicador')).toBeDisabled();
   });
 
   it('filtra publicadores sem diferenciar maiúsculas e mantém a seleção até confirmar', async () => {
@@ -587,7 +596,7 @@ describe('AssignmentPanel', () => {
     await act(async () => {
       fireEvent.changeText(screen.getByTestId('publisher-search'), 'bru');
     });
-    await fireEvent.press(screen.getByText('Designar'));
+    await fireEvent.press(screen.getByText('Designar publicador'));
 
     await waitFor(() =>
       expect(api.designate).toHaveBeenCalledWith('terr-1', 'pub-9'),
@@ -618,7 +627,7 @@ describe('AssignmentPanel', () => {
     );
     await waitFor(() => expect(screen.getByText('Bruno')).toBeTruthy());
     await fireEvent.press(screen.getByText('Bruno'));
-    await fireEvent.press(screen.getByText('Designar'));
+    await fireEvent.press(screen.getByText('Designar publicador'));
 
     const designateButton = screen.getByText('Atualizando…');
     expect(designateButton).toBeDisabled();
@@ -626,7 +635,7 @@ describe('AssignmentPanel', () => {
     expect(designate).toHaveBeenCalledTimes(1);
 
     resolveDesignate();
-    await waitFor(() => expect(screen.getByText('Designar')).toBeEnabled());
+    await waitFor(() => expect(screen.getByText('Designar publicador')).toBeEnabled());
   });
 
   it('não oferece publicador desativado como opção de designação', async () => {
@@ -671,7 +680,7 @@ describe('AssignmentPanel', () => {
 
     await waitFor(() => expect(screen.getByText('Bruno')).toBeTruthy());
     await fireEvent.press(screen.getByText('Bruno'));
-    await fireEvent.press(screen.getByText('Designar'));
+    await fireEvent.press(screen.getByText('Designar publicador'));
 
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(
@@ -797,13 +806,13 @@ describe('AssignmentPanel', () => {
       />,
     );
 
-    expect(await screen.findByText(/Campanha: Celebração — desde/)).toBeTruthy();
+    expect(await screen.findByText('Campanha: Celebração')).toBeTruthy();
     expect(screen.getByText(campaignLockMessage('Celebração'))).toBeTruthy();
     expect(screen.queryByText('Designar a…')).toBeNull();
-    expect(screen.queryByText('Designar')).toBeNull();
+    expect(screen.queryByText('Designar publicador')).toBeNull();
     expect(screen.queryByText('Marcar como concluído')).toBeNull();
     expect(screen.queryByLabelText('Editar designação de Campanha: Celebração')).toBeNull();
-    expect(screen.getByText(/Campanha: Congresso —/)).toBeTruthy();
+    expect(screen.getByText('Campanha: Congresso')).toBeTruthy();
     expect(screen.queryByLabelText('Apagar designação de Campanha: Congresso')).toBeNull();
     expect(screen.queryByLabelText('Editar designação de Campanha: Congresso')).toBeNull();
     // An individual line of the same card keeps its actions.
@@ -824,7 +833,7 @@ describe('AssignmentPanel', () => {
     );
 
     await fireEvent.press(await screen.findByText('Bruno'));
-    await fireEvent.press(screen.getByText('Designar'));
+    await fireEvent.press(screen.getByText('Designar publicador'));
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(detail));
   });

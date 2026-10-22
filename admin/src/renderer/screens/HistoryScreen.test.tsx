@@ -1,9 +1,10 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { IpcApi } from '../../shared/ipc-contract'
 import type { AssignmentHistoryPage, AssignmentWithTerritory } from '../../shared/models'
 import { HistoryScreen } from './HistoryScreen'
+import { answerConfirm } from '../components/ConfirmDialog.testing'
 
 function makeEntry(overrides: Partial<AssignmentWithTerritory> = {}): AssignmentWithTerritory {
   return {
@@ -90,13 +91,8 @@ function expectedLocalDay(day: string): string {
   return new Date(year!, month! - 1, date!).toISOString()
 }
 
-let confirmSpy: ReturnType<typeof vi.spyOn>
-beforeEach(() => {
-  confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
-})
 afterEach(() => {
   vi.unstubAllGlobals()
-  confirmSpy.mockRestore()
 })
 
 describe('HistoryScreen', () => {
@@ -170,7 +166,7 @@ describe('HistoryScreen', () => {
     vi.stubGlobal('api', makeApi({ assignments: { listAll } as unknown as IpcApi['assignments'] }))
     render(<HistoryScreen />)
     await screen.findByText('1–1 de 51')
-    await user.click(screen.getByRole('button', { name: 'Próxima página' }))
+    await user.click(screen.getByRole('button', { name: 'Próxima' }))
     await screen.findByText('51–51 de 51')
     await user.type(screen.getByLabelText('De'), '2026-03-01')
     await waitFor(() =>
@@ -248,6 +244,7 @@ describe('HistoryScreen', () => {
     )
     render(<HistoryScreen />)
     await user.click(await screen.findByRole('button', { name: /Apagar designação/ }))
+    await answerConfirm(user, true)
     await waitFor(() => expect(remove).toHaveBeenCalledWith('t1', 'assignment-1'))
     await waitFor(() => expect(listAll).toHaveBeenLastCalledWith({ page: 1 }))
   })

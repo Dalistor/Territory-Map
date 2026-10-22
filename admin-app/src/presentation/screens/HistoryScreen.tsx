@@ -15,7 +15,7 @@ import {
   QueryPagination,
   QueryState,
 } from '../components';
-import { colors, radius, shadows, spacing } from '../theme';
+import { colors, radius, spacing } from '../theme';
 
 const PAGE_SIZE = 50;
 
@@ -82,7 +82,7 @@ function filtersFor(days: SelectedDays, page: number): AssignmentHistoryFilters 
 function assignmentDetails(assignment: AssignmentWithTerritory): readonly string[] {
   return [
     `Retirada: ${formatDate(assignment.startedAt)}`,
-    assignment.completedAt === null ? 'Devolução: —' : `Devolução: ${formatDate(assignment.completedAt)}`,
+    assignment.completedAt === null ? 'Devolução: Em andamento' : `Devolução: ${formatDate(assignment.completedAt)}`,
   ];
 }
 
@@ -101,7 +101,16 @@ export default function HistoryScreen({
   const [pickerField, setPickerField] = useState<DateField | null>(null);
   const queryVersion = useRef(0);
 
+  // "De" after "Até" is not a query anyone meant: nothing is sent, and the
+  // screen says how to fix it instead (UX-CONTRACT, date filters).
+  const periodIsInverted =
+    days.from !== undefined &&
+    days.to !== undefined &&
+    new Date(days.from.getFullYear(), days.from.getMonth(), days.from.getDate()).getTime() >
+      new Date(days.to.getFullYear(), days.to.getMonth(), days.to.getDate()).getTime();
+
   const load = useCallback(async () => {
+    if (periodIsInverted) return;
     const version = ++queryVersion.current;
     setIsLoading(true);
     setError(null);
@@ -113,7 +122,7 @@ export default function HistoryScreen({
     } finally {
       if (version === queryVersion.current) setIsLoading(false);
     }
-  }, [api, days, page, session]);
+  }, [api, days, page, periodIsInverted, session]);
 
   useEffect(() => {
     load();
@@ -183,16 +192,24 @@ export default function HistoryScreen({
           />
         )}
 
-        {isLoading && result === null && (
+        {periodIsInverted && (
+          <Text accessibilityRole="alert" style={styles.periodError}>
+            A data “De” é posterior à data “Até”. Escolha um “De” igual ou anterior ao “Até”.
+          </Text>
+        )}
+
+        {!periodIsInverted && isLoading && result === null && (
           <QueryState kind="loading" title="Carregando histórico" message="Buscando designações…" />
         )}
 
-        {error !== null && (
+        {!periodIsInverted && error !== null && (
           <QueryState kind="error" title="Não foi possível carregar" message={error} onRetry={load} />
         )}
 
-        {!isLoading && error === null && result !== null && !hasItems && (
+        {!periodIsInverted && !isLoading && error === null && result !== null && !hasItems && (
           <QueryState
+            onClear={hasPeriodFilter ? clearPeriod : undefined}
+            clearLabel="Limpar filtros"
             kind={hasPeriodFilter ? 'no-results' : 'empty'}
             title={hasPeriodFilter ? 'Sem resultados neste período' : 'Histórico vazio'}
             message={hasPeriodFilter
@@ -201,8 +218,8 @@ export default function HistoryScreen({
           />
         )}
 
-        {hasItems && result !== null && (
-          <View style={styles.cards}>
+        {!periodIsInverted && hasItems && result !== null && (
+          <View style={[styles.cards, isLoading && styles.cardsLoading]}>
             {result.items.map(assignment => (
               <AssignmentCard
                 key={assignment.id}
@@ -212,7 +229,7 @@ export default function HistoryScreen({
           </View>
         )}
 
-        {result !== null && error === null && (
+        {!periodIsInverted && result !== null && error === null && (
           <QueryPagination
             isBusy={isLoading}
             onPageChange={setPage}
@@ -231,7 +248,10 @@ function AssignmentCard({ assignment }: { readonly assignment: AssignmentWithTer
   const ongoing = assignment.completedAt === null;
   const holder = assignmentHolderLabel(assignment);
   return (
-    <View accessibilityLabel={`${assignment.territory.name}, ${holder}`} style={styles.assignmentCard}>
+    <View
+      accessible
+      accessibilityLabel={`${assignment.territory.name}, ${holder}, ${assignmentDetails(assignment).join(', ')}, ${ongoing ? 'Em andamento' : 'Devolvida'}`}
+      style={styles.assignmentCard}>
       <View style={styles.assignmentContent}>
         <Text style={styles.assignmentTitle}>{assignment.territory.name}</Text>
         <Text style={styles.assignmentPublisher}>{holder}</Text>
@@ -269,7 +289,7 @@ function DateButton({
 }
 
 const styles = StyleSheet.create({
-  assignmentCard: { ...shadows.sm, alignItems: 'flex-start', backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, flexDirection: 'row', gap: spacing.sm, minHeight: 96, padding: spacing.md },
+  assignmentCard: { alignItems: 'flex-start', backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, flexDirection: 'row', gap: spacing.sm, minHeight: 96, padding: spacing.md },
   assignmentContent: { flex: 1, gap: spacing.xs },
   assignmentDates: { color: colors.textSecondary, fontSize: 13, lineHeight: 18 },
   assignmentPublisher: { color: colors.textSecondary, fontSize: 14 },
@@ -278,18 +298,20 @@ const styles = StyleSheet.create({
   assignmentStatusReturned: { backgroundColor: colors.successSurface, color: colors.successText },
   assignmentTitle: { color: colors.textPrimary, fontSize: 16, fontWeight: '700' },
   cards: { gap: spacing.sm },
+  cardsLoading: { opacity: 0.6 },
   clearButton: { alignSelf: 'flex-start', minHeight: 48, justifyContent: 'center', paddingHorizontal: spacing.sm },
   clearText: { color: colors.primary, fontSize: 15, fontWeight: '700' },
   content: { gap: spacing.md, padding: spacing.md, paddingBottom: spacing.xl },
-  dateButton: { backgroundColor: colors.surface, borderColor: colors.borderStrong, borderRadius: radius.sm, borderWidth: 1, flex: 1, minHeight: 64, padding: spacing.sm },
+  dateButton: { backgroundColor: colors.surface, borderColor: colors.borderInput, borderRadius: radius.sm, borderWidth: 1, flex: 1, minHeight: 64, padding: spacing.sm },
   dateLabel: { color: colors.textSecondary, fontSize: 12, fontWeight: '700' },
   dateRow: { flexDirection: 'row', gap: spacing.sm },
   dateValue: { color: colors.textPrimary, fontSize: 15, fontWeight: '600', marginTop: spacing.xs },
   heading: { gap: spacing.xs },
-  periodCard: { ...shadows.sm, backgroundColor: colors.surfaceSubtle, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, gap: spacing.sm, padding: spacing.md },
+  periodCard: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, gap: spacing.sm, padding: spacing.md },
+  periodError: { backgroundColor: colors.dangerSurface, borderColor: colors.dangerBorder, borderRadius: radius.md, borderWidth: 1, color: colors.dangerText, fontSize: 14, lineHeight: 20, padding: spacing.md },
   periodTitle: { color: colors.textPrimary, fontSize: 16, fontWeight: '700' },
   pressed: { opacity: 0.72 },
   safeArea: { backgroundColor: colors.background, flex: 1 },
   subtitle: { color: colors.textSecondary, fontSize: 14, lineHeight: 20 },
-  title: { color: colors.textPrimary, fontSize: 24, fontWeight: '800' },
+  title: { color: colors.textPrimary, fontSize: 20, fontWeight: '700' },
 });

@@ -1,4 +1,4 @@
-// The "Mapa" section of the sidebar shell (spec 0006): the map and the
+// The "Demarcações" section of the sidebar shell (spec 0006): the map and the
 // territory list. Navigation between sections and sign-out belong to the
 // sidebar in `App.tsx`, and assigning a territory to a publisher lives in
 // `DesignationsScreen` -- this screen only shows "Designado a {nome}" as
@@ -9,26 +9,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { LatLngTuple } from 'leaflet'
 import { campaignHolderLabel, compareTerritoriesByNumber } from '../../shared/models'
-import type { Block, Congregation, Territory } from '../../shared/models'
+import type { Block, Territory } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
 import { TerritoryMap } from '../map/TerritoryMap'
 import { Dialog } from '../components/Dialog'
+import { useConfirm, type ConfirmRequest } from '../components/ConfirmDialog'
+import { ErrorNotice } from '../components/ErrorNotice'
 import { deleteBlockConfirmMessage, deleteTerritoryConfirmMessage } from './confirmMessages'
 import { MarkWorkedForm } from './MarkWorkedForm'
+import { formatDate } from '../formatDate'
 
 const GENERIC_ERROR_MESSAGE = 'Não foi possível completar a operação.'
 
-function formatDate(date: Date): string {
-  return date.toLocaleDateString()
-}
-
 export interface HomeScreenProps {
-  /**
-   * `undefined`/`null` until the caller knows it (e.g. while a silent
-   * sign-in is still running) -- the header falls back to a generic title
-   * until then.
-   */
-  readonly congregation?: Congregation | null
   /**
    * Signals the intent to open the territory editor in create mode, handing
    * over every territory currently loaded as non-editable drawing context.
@@ -60,7 +53,6 @@ function errorMessage(error: unknown): string {
 }
 
 export function HomeScreen({
-  congregation,
   onNewTerritory,
   onEditTerritory,
   onOpenSettings,
@@ -184,34 +176,49 @@ export function HomeScreen({
 
   /**
    * The shape every *destructive* action shares on top of {@link runAction}:
-   * ask first, run only on "yes". `window.confirm` is a deliberately small
-   * choice here -- the admin has no modal component of its own yet, and the
-   * text it shows is exactly what each acceptance criterion asks for.
+   * ask first in the app's own confirmation, run only on "yes".
    */
+  const { confirm, confirmDialog } = useConfirm()
   const runConfirmed = useCallback(
-    (message: string, action: () => Promise<void>) => {
-      if (!window.confirm(message)) return Promise.resolve()
-      return runAction(action)
+    async (request: ConfirmRequest, action: () => Promise<void>) => {
+      if (!(await confirm(request))) return
+      await runAction(action)
     },
-    [runAction]
+    [confirm, runAction]
   )
 
   const handleDeleteTerritory = useCallback(
     (territory: Territory) =>
-      runConfirmed(deleteTerritoryConfirmMessage(territory), async () => {
-        await window.api.territories.delete(territory.id)
-        await load()
-      }),
+      runConfirmed(
+        {
+          title: `Apagar o território "${territory.name}"?`,
+          message: deleteTerritoryConfirmMessage(territory),
+          confirmLabel: 'Apagar território',
+          danger: true
+        },
+        async () => {
+          await window.api.territories.delete(territory.id)
+          await load()
+        }
+      ),
     [load, runConfirmed]
   )
 
   const handleDeleteBlock = useCallback(
     (territory: Territory, block: Block) =>
-      runConfirmed(deleteBlockConfirmMessage(territory, block), async () => {
-        setActiveBlock(null)
-        await window.api.blocks.delete(block.id)
-        await load()
-      }),
+      runConfirmed(
+        {
+          title: `Apagar a quadra ${block.number}?`,
+          message: deleteBlockConfirmMessage(territory, block),
+          confirmLabel: 'Apagar quadra',
+          danger: true
+        },
+        async () => {
+          setActiveBlock(null)
+          await window.api.blocks.delete(block.id)
+          await load()
+        }
+      ),
     [load, runConfirmed]
   )
 
@@ -247,14 +254,17 @@ export function HomeScreen({
     [activeBlock, closeMarkWorked, load, runAction]
   )
 
-  const title = congregation ? `${congregation.name} — ${congregation.city}` : 'Territory Map'
-
   return (
     <div className="screen screen-map">
       <header className="screen-header">
         <div className="screen-title-block">
-          <p className="eyebrow">Mapa da congregação</p>
-          <h1>{title}</h1>
+          <h1>Demarcações</h1>
+          {territories.length > 0 && (
+            <p className="screen-subtitle">
+              {territories.length === 1 ? '1 território' : `${territories.length} territórios`} no
+              mapa da congregação
+            </p>
+          )}
         </div>
         <button
           className="button-secondary"
@@ -266,16 +276,19 @@ export function HomeScreen({
       </header>
       <main className="screen-body">
         {actionError !== null && <p role="alert">{actionError}</p>}
-        {isLoading && <p>Carregando…</p>}
-        {!isLoading && loadError !== null && <p role="alert">{loadError}</p>}
-        {!isLoading && loadError === null && (
+        {isLoading && territories.length === 0 && <p role="status">Carregando territórios…</p>}
+        {loadError !== null && (
+          <ErrorNotice
+            message={loadError}
+            retryDisabled={isRefreshing}
+            onRetry={() => void load()}
+          />
+        )}
+        {(territories.length > 0 || (!isLoading && loadError === null)) && (
           <div className="home-split">
             <aside className="home-panel" aria-label="Territórios no mapa">
               <div className="workbench-panel-heading">
-                <div>
-                  <p className="eyebrow">Desenho e quadras</p>
-                  <h2>Territórios</h2>
-                </div>
+                <h2>Territórios</h2>
                 <span className="workbench-count">{sortedTerritories.length}</span>
               </div>
               <button
@@ -285,7 +298,10 @@ export function HomeScreen({
                 Novo território
               </button>
               {sortedTerritories.length === 0 ? (
-                <p>Nenhum território cadastrado ainda.</p>
+                <p className="empty-hint">
+                  Nenhum território cadastrado ainda. Use “Novo território” para desenhar a primeira
+                  demarcação no mapa.
+                </p>
               ) : (
                 <div className="territory-list">
                   <ul>
@@ -311,6 +327,7 @@ export function HomeScreen({
                           type="button"
                           className="icon-button"
                           aria-label={`Opções de ${territory.name}`}
+                          aria-haspopup="menu"
                           aria-expanded={openTerritoryMenuId === territory.id}
                           onClick={() =>
                             setOpenTerritoryMenuId(
@@ -379,7 +396,7 @@ export function HomeScreen({
                           aria-label={`Ações rápidas de ${territory.name}`}
                         >
                           <button type="button" onClick={() => onAddBlock?.(territory)}>
-                            Quadras
+                            Adicionar quadra
                           </button>
                           <button type="button" onClick={() => onOpenSettings?.(territory)}>
                             Configurações
@@ -407,18 +424,9 @@ export function HomeScreen({
           <Dialog
             className="block-actions-modal"
             title={`Quadra ${activeBlock.block.number} — ${activeBlock.territory.name}`}
+            closeLabel="Fechar"
             onClose={() => setActiveBlock(null)}
           >
-            <div className="block-actions-modal-header">
-              <button
-                type="button"
-                className="icon-button"
-                aria-label="Fechar"
-                onClick={() => setActiveBlock(null)}
-              >
-                ×
-              </button>
-            </div>
             <button
               className="block-action"
               onClick={() => {
@@ -462,6 +470,7 @@ export function HomeScreen({
             </button>
           </Dialog>
         )}
+        {confirmDialog}
       </main>
     </div>
   )

@@ -8,7 +8,6 @@ import React, {
   useState,
 } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   BackHandler,
   Pressable,
@@ -27,11 +26,12 @@ import {
 import type { Block, LatLng, Territory } from '../../domain/models';
 import { AssignmentsMapView } from '../map/AssignmentsMapView';
 import {
+  Button,
   QuerySearchField,
   QuerySegmentedControl,
   QueryState,
 } from '../components';
-import { colors, radius, shadows, spacing } from '../theme';
+import { colors, radius, spacing } from '../theme';
 import AssignmentPanel from './AssignmentPanel';
 import type { AssignmentPanelApi } from './AssignmentPanel';
 import BlockPanel from './BlockPanel';
@@ -143,13 +143,49 @@ const TERRITORY_VIEW_SEGMENTS = [
 
 const NO_SEARCH_RESULTS_MESSAGE = 'Nenhum território corresponde à busca.';
 
+/** Which segment the territory detail opens on. */
+export type TerritoryDetailSegment = 'assignments' | 'blocks';
+
+type TerritorySituation = 'campaign' | 'ongoing' | 'available';
+
+/**
+ * One situation per row, said in words and drawn with the status tokens:
+ * "Em andamento" is the warning pair here exactly as in the history screens,
+ * a free territory is neutral, and a campaign takes the primary tint.
+ */
+function territorySituation(territory: Territory): TerritorySituation {
+  if (territory.campaign) return 'campaign';
+  return territoryIsHeld(territory) ? 'ongoing' : 'available';
+}
+
+const SITUATION_LABEL: Record<TerritorySituation, string> = {
+  campaign: 'Em campanha',
+  ongoing: 'Em andamento',
+  available: 'Disponível',
+};
+
+/** What TalkBack reads for a row: the territory, who leads it and its situation. */
+function territoryRowLabel(territory: Territory): string {
+  return (
+    `Abrir território ${territory.name}, ` +
+    `dirigente ${territoryLeaderLabel(territory)}, ` +
+    `situação ${SITUATION_LABEL[territorySituation(territory)]}`
+  );
+}
+
 export interface DesignationsScreenProps {
   readonly session: DesignationsScreenSession;
   readonly api: DesignationsScreenApi;
   /** Where the map centres while there is no territory to frame -- the congregation's city. */
   readonly fallbackCenter?: LatLng;
-  /** The app stack supplies this; isolated uses retain the local overlay. */
-  readonly onOpenTerritory?: (territoryId: string) => void;
+  /**
+   * The app stack supplies this, with the segment the detail opens on; isolated
+   * uses retain the local overlay.
+   */
+  readonly onOpenTerritory?: (
+    territoryId: string,
+    initialSegment?: TerritoryDetailSegment,
+  ) => void;
 }
 
 export function DesignationsScreen({
@@ -159,11 +195,17 @@ export function DesignationsScreen({
   onOpenTerritory,
 }: DesignationsScreenProps): React.JSX.Element {
   const [territories, setTerritories] = useState<Territory[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  // Whether a list has ever arrived. Only the first load replaces the screen
+  // with a loading state; a refresh keeps the list, the search and the
+  // selection on screen while it runs (UX-CONTRACT, `refresh`).
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(true);
   const refreshInFlight = useRef(false);
+  // A failed read and a failed write are different facts: the first may leave
+  // nothing to show and offers to try again, the second never hides the list.
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [isWriting, setIsWriting] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [writingTerritoryId, setWritingTerritoryId] = useState<string | null>(null);
   const writeInFlight = useRef(false);
   const [view, setView] = useState<TerritoryView>('list');
   const [search, setSearch] = useState('');
@@ -228,14 +270,14 @@ export function DesignationsScreen({
     if (refreshInFlight.current) return;
     refreshInFlight.current = true;
     setIsRefreshing(true);
-    setIsLoading(true);
     setLoadError(null);
+    setActionError(null);
     try {
       setTerritories(await session.run(() => api.listTerritoriesWithBlocks()));
+      setHasLoaded(true);
     } catch (thrown) {
       setLoadError(errorMessage(thrown));
     } finally {
-      setIsLoading(false);
       refreshInFlight.current = false;
       setIsRefreshing(false);
     }
@@ -269,16 +311,16 @@ export function DesignationsScreen({
                 return;
               }
               writeInFlight.current = true;
-              setIsWriting(true);
-              setLoadError(null);
+              setWritingTerritoryId(territory.id);
+              setActionError(null);
               try {
                 await session.run(() => api.completeAssignment(territory.id));
               } catch (thrown) {
-                setLoadError(errorMessage(thrown));
+                setActionError(errorMessage(thrown));
                 return;
               } finally {
                 writeInFlight.current = false;
-                setIsWriting(false);
+                setWritingTerritoryId(null);
               }
               await load();
             },
@@ -298,14 +340,17 @@ export function DesignationsScreen({
     setDetail(null);
   }, []);
 
-  const openTerritoryDetail = useCallback((territory: Territory) => {
-    setSelectedTerritoryId(territory.id);
-    if (onOpenTerritory !== undefined) {
-      onOpenTerritory(territory.id);
-      return;
-    }
-    setDetail({ territoryId: territory.id, view: 'assignments' });
-  }, [onOpenTerritory]);
+  const openTerritoryDetail = useCallback(
+    (territory: Territory, segment: TerritoryDetailSegment) => {
+      setSelectedTerritoryId(territory.id);
+      if (onOpenTerritory !== undefined) {
+        onOpenTerritory(territory.id, segment);
+        return;
+      }
+      setDetail({ territoryId: territory.id, view: segment });
+    },
+    [onOpenTerritory],
+  );
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener(
@@ -327,189 +372,195 @@ export function DesignationsScreen({
    * One alert element, rendered wherever the admin can see it. The overlay is
    * opaque and absolutely positioned, so a failed reload announced underneath
    * it would be invisible to the person who caused it -- and closing the panel
-   * to show the message would throw away where he was.
+   * to show the message would throw away where he was. The list it refers to
+   * stays on screen either way: a failed refresh offers to try again, a failed
+   * write just says what went wrong.
    */
+  const bannerMessage = hasLoaded ? loadError ?? actionError : actionError;
   const errorBanner =
-    loadError === null ? null : (
-      <Text accessible accessibilityRole="alert" style={styles.error}>
-        {loadError}
-      </Text>
+    bannerMessage === null ? null : (
+      <View style={styles.banner}>
+        <Text accessible accessibilityRole="alert" style={styles.bannerText}>
+          {bannerMessage}
+        </Text>
+        {hasLoaded && loadError !== null && (
+          <Button label="Tentar novamente" variant="quiet" onPress={() => load()} />
+        )}
+      </View>
     );
+
+  const isFirstLoad = !hasLoaded && isRefreshing;
+  const searchHasNoResults = ordered.length > 0 && visibleTerritories.length === 0;
+  const clearSearch = useCallback(() => setSearch(''), []);
 
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        {!isLoading && loadError === null && (
-          <Text style={styles.summary}>
-            {assignedCount} de {territories.length} territórios designados
-          </Text>
-        )}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Recarregar"
-          accessibilityState={{
-            disabled: isLoading || isRefreshing,
-            busy: isRefreshing,
-          }}
-          disabled={isLoading || isRefreshing}
+        <Text style={styles.summary}>
+          {hasLoaded
+            ? `${assignedCount} de ${territories.length} territórios designados`
+            : ''}
+        </Text>
+        <Button
+          label="Recarregar"
+          busyLabel="Atualizando…"
+          busy={isRefreshing}
           onPress={() => load()}
-          style={({ pressed }) => [
-            styles.headerButton,
-            pressed && styles.pressed,
-          ]}
-        >
-          <Text style={styles.headerButtonLabel}>
-            {isLoading || isRefreshing ? 'Atualizando…' : 'Recarregar'}
-          </Text>
-        </Pressable>
+        />
       </View>
 
       {!isDetailOpen && errorBanner}
 
-      {isLoading ? (
-        <ActivityIndicator
-          accessibilityRole="progressbar"
-          accessibilityLabel="Carregando"
-          color={colors.primary}
-        />
+      {isFirstLoad ? (
+        <View style={styles.stateArea}>
+          <QueryState
+            kind="loading"
+            title="Carregando territórios"
+            message="Aguarde um momento."
+          />
+        </View>
+      ) : !hasLoaded ? (
+        <View style={styles.stateArea}>
+          <QueryState
+            kind="error"
+            title="Não foi possível carregar"
+            message={loadError ?? LOAD_ERROR_MESSAGE}
+            onRetry={() => load()}
+          />
+        </View>
       ) : (
-        loadError === null && (
-          <>
-            <View style={styles.queryControls}>
-              <QuerySegmentedControl
-                accessibilityLabel="Visualização de territórios"
-                segments={TERRITORY_VIEW_SEGMENTS}
-                value={view}
-                onChange={nextView => setView(nextView as TerritoryView)}
+        <>
+          <View style={styles.queryControls}>
+            <QuerySegmentedControl
+              accessibilityLabel="Visualização de territórios"
+              segments={TERRITORY_VIEW_SEGMENTS}
+              value={view}
+              onChange={nextView => setView(nextView as TerritoryView)}
+            />
+            <QuerySearchField
+              accessibilityLabel="Buscar territórios"
+              placeholder="Buscar território ou dirigente"
+              value={search}
+              onChangeText={setSearch}
+            />
+          </View>
+          {view === 'map' ? (
+            <View style={styles.map}>
+              {/* On the map a territory opens its blocks: there the admin is
+                  already looking at them, and "what has been worked" is the
+                  question. Designating stays one tap away on the list row. */}
+              <AssignmentsMapView
+                territories={visibleTerritories}
+                fallbackCenter={fallbackCenter}
+                onSelectTerritory={territory =>
+                  openTerritoryDetail(territory, 'blocks')
+                }
+                onSelectBlock={(block, territory) => {
+                  setSelectedTerritoryId(territory.id);
+                  setDetail({
+                    territoryId: territory.id,
+                    view: 'block',
+                    blockId: block.id,
+                  });
+                }}
               />
-              <QuerySearchField
-                accessibilityLabel="Buscar territórios"
-                placeholder="Buscar território ou dirigente"
-                value={search}
-                onChangeText={setSearch}
-              />
-            </View>
-            {view === 'map' ? (
-              <View style={styles.map}>
-                <AssignmentsMapView
-                  territories={visibleTerritories}
-                  fallbackCenter={fallbackCenter}
-                  onSelectTerritory={openTerritoryDetail}
-                  onSelectBlock={(block, territory) => {
-                    setSelectedTerritoryId(territory.id);
-                    setDetail({
-                      territoryId: territory.id,
-                      view: 'block',
-                      blockId: block.id,
-                    });
-                  }}
-                />
-              </View>
-            ) : (
-              <ScrollView contentContainerStyle={styles.list}>
-                {ordered.length === 0 && (
-                  <Text style={styles.emptyMessage}>
-                    {NO_TERRITORIES_MESSAGE}
-                  </Text>
-                )}
-                {ordered.length > 0 && visibleTerritories.length === 0 && (
+              {searchHasNoResults && (
+                <View style={styles.mapNotice}>
                   <QueryState
+                    compact
                     kind="no-results"
                     title="Nenhum território encontrado"
                     message={NO_SEARCH_RESULTS_MESSAGE}
+                    onClear={clearSearch}
                   />
-                )}
-              {visibleTerritories.map(territory => (
-                <View
-                  key={territory.id}
-                  testID={`territory-row-${territory.id}`}
-                  style={[
-                    styles.card,
-                    selectedTerritoryId === territory.id && styles.cardSelected,
-                  ]}
-                >
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Ver designações de ${territory.name}`}
-                    accessibilityState={{ selected: selectedTerritoryId === territory.id }}
-                    onPress={() =>
-                      openTerritoryDetail(territory)
-                    }
-                    style={({ pressed }) => [
-                      styles.cardMain,
-                      pressed && styles.pressed,
+                </View>
+              )}
+            </View>
+          ) : (
+            <ScrollView
+              contentContainerStyle={styles.list}
+              keyboardShouldPersistTaps="handled"
+            >
+              {ordered.length === 0 && (
+                <QueryState
+                  kind="empty"
+                  title="Nenhum território"
+                  message={NO_TERRITORIES_MESSAGE}
+                />
+              )}
+              {searchHasNoResults && (
+                <QueryState
+                  kind="no-results"
+                  title="Nenhum território encontrado"
+                  message={NO_SEARCH_RESULTS_MESSAGE}
+                  onClear={clearSearch}
+                />
+              )}
+              {visibleTerritories.map(territory => {
+                const situation = territorySituation(territory);
+                const isWritingRow = writingTerritoryId === territory.id;
+                return (
+                  <View
+                    key={territory.id}
+                    testID={`territory-row-${territory.id}`}
+                    style={[
+                      styles.card,
+                      selectedTerritoryId === territory.id && styles.cardSelected,
                     ]}
                   >
-                    <View style={styles.cardHeader}>
-                      <Text style={styles.territoryName}>{territory.name}</Text>
-                      <View
-                        style={[
-                          styles.statusBadge,
-                          territoryIsHeld(territory)
-                            ? styles.statusBadgeWorking
-                            : styles.statusBadgeIdle,
-                        ]}
-                      >
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={territoryRowLabel(territory)}
+                      accessibilityState={{ selected: selectedTerritoryId === territory.id }}
+                      onPress={() => openTerritoryDetail(territory, 'assignments')}
+                      style={({ pressed }) => [
+                        styles.cardMain,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <View style={styles.cardHeader}>
+                        <Text style={styles.territoryName}>{territory.name}</Text>
+                        <View style={[styles.statusBadge, badgeStyles[situation]]}>
+                          <View style={[styles.statusDot, dotStyles[situation]]} />
+                          <Text style={[styles.statusBadgeText, badgeTextStyles[situation]]}>
+                            {SITUATION_LABEL[situation]}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.leaderRow}>
                         <View
                           style={[
-                            styles.statusDot,
-                            territoryIsHeld(territory)
-                              ? styles.statusDotWorking
-                              : styles.statusDotIdle,
-                          ]}
-                        />
-                        <Text
-                          style={[
-                            styles.statusBadgeText,
-                            territoryIsHeld(territory)
-                              ? styles.statusBadgeTextWorking
-                              : styles.statusBadgeTextIdle,
+                            styles.leaderAvatar,
+                            !territoryIsHeld(territory) &&
+                              styles.leaderAvatarEmpty,
                           ]}
                         >
-                          {territory.campaign
-                            ? 'Em campanha'
-                            : territoryIsHeld(territory)
-                              ? 'Em andamento'
-                              : 'Disponível'}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.leaderRow}>
-                      <View
-                        style={[
-                          styles.leaderAvatar,
-                          !territoryIsHeld(territory) &&
-                            styles.leaderAvatarEmpty,
-                        ]}
-                      >
-                        <Text style={styles.leaderAvatarText}>
-                          {leaderInitial(territory)}
-                        </Text>
-                      </View>
-                      <View style={styles.leaderInfo}>
+                          <Text
+                            style={[
+                              styles.leaderAvatarText,
+                              !territoryIsHeld(territory) &&
+                                styles.leaderAvatarTextEmpty,
+                            ]}
+                          >
+                            {leaderInitial(territory)}
+                          </Text>
+                        </View>
                         <Text
                           style={[
                             styles.leader,
-                            !territoryIsHeld(territory) &&
-                              styles.leaderAbsent,
+                            !territoryIsHeld(territory) && styles.leaderAbsent,
                           ]}
                         >
                           {territoryLeaderLabel(territory)}
                         </Text>
                       </View>
-                    </View>
 
-                    <View style={styles.metaRow}>
-                      <View style={styles.metaBadge}>
-                        <Text style={styles.metaIcon}>🧱</Text>
-                        <Text style={styles.blockCount}>
+                      <View style={styles.metaRow}>
+                        <Text style={styles.meta}>
                           {blockCountLabel(territory.blocks.length)}
                         </Text>
-                      </View>
-                      <View style={styles.metaBadge}>
-                        <Text style={styles.metaIcon}>🗓️</Text>
-                        <Text style={styles.lastWork}>
+                        <Text style={styles.meta}>
                           {territory.lastWork
                             ? `Último trabalho: ${
                                 territory.lastWork.publisher.name
@@ -517,57 +568,35 @@ export function DesignationsScreen({
                             : 'Nunca trabalhado'}
                         </Text>
                       </View>
-                    </View>
-                  </Pressable>
-
-                  <View style={styles.cardActionsContainer}>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={`Ver quadras de ${territory.name}`}
-                      onPress={() =>
-                        setDetail({ territoryId: territory.id, view: 'blocks' })
-                      }
-                      style={({ pressed }) => [
-                        styles.cardActionBtn,
-                        pressed && styles.pressed,
-                      ]}
-                    >
-                      <Text style={styles.cardActionLabel}>Quadras</Text>
                     </Pressable>
 
-                    {territory.assignedPublisher !== null && (
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`Marcar ${territory.name} como concluído`}
-                        accessibilityState={{
-                          disabled: isWriting,
-                          busy: isWriting,
-                        }}
-                        disabled={isWriting}
-                        onPress={() => requestComplete(territory)}
-                        style={({ pressed }) => [
-                          styles.cardActionBtn,
-                          styles.cardActionBtnPrimary,
-                          pressed && styles.pressed,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.cardActionLabel,
-                            styles.cardActionLabelPrimary,
-                          ]}
-                        >
-                          {isWriting ? 'Atualizando…' : 'Marcar como concluído'}
-                        </Text>
-                      </Pressable>
-                    )}
+                    <View style={styles.cardActionsContainer}>
+                      <Button
+                        label="Quadras"
+                        variant="quiet"
+                        accessibilityLabel={`Ver quadras de ${territory.name}`}
+                        onPress={() => openTerritoryDetail(territory, 'blocks')}
+                        style={styles.cardAction}
+                      />
+
+                      {territory.assignedPublisher !== null && (
+                        <Button
+                          label="Marcar como concluído"
+                          busyLabel="Atualizando…"
+                          variant="quiet"
+                          accessibilityLabel={`Marcar ${territory.name} como concluído`}
+                          busy={isWritingRow}
+                          onPress={() => requestComplete(territory)}
+                          style={[styles.cardAction, styles.cardActionDivided]}
+                        />
+                      )}
+                    </View>
                   </View>
-                </View>
-              ))}
-              </ScrollView>
-            )}
-          </>
-        )
+                );
+              })}
+            </ScrollView>
+          )}
+        </>
       )}
 
       {/* The detail covers the list instead of replacing it: the list stays
@@ -580,17 +609,12 @@ export function DesignationsScreen({
       {isDetailOpen && detailTerritory !== null && (
         <SafeAreaView style={styles.overlay}>
           <View style={styles.header}>
-            <Pressable
-              accessibilityRole="button"
+            <Button
+              label="← Voltar"
+              variant="quiet"
               accessibilityLabel="Voltar para a lista"
               onPress={closeDetail}
-              style={({ pressed }) => [
-                styles.headerButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.headerButtonLabel}>← Voltar</Text>
-            </Pressable>
+            />
           </View>
           {errorBanner}
           {detail?.view === 'assignments' && (
@@ -639,44 +663,60 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     justifyContent: 'space-between',
-    padding: spacing.md,
-  },
-  headerButton: {
-    borderColor: colors.borderStrong,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-  },
-  headerButtonLabel: {
-    color: colors.textPrimary,
-    fontWeight: '600',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   pressed: {
     opacity: 0.6,
   },
-  error: {
+  banner: {
+    alignItems: 'center',
     backgroundColor: colors.dangerSurface,
     borderColor: colors.dangerBorder,
     borderRadius: radius.md,
     borderWidth: 1,
-    color: colors.danger,
+    flexDirection: 'row',
+    gap: spacing.sm,
     margin: spacing.md,
-    padding: spacing.sm,
+    marginBottom: 0,
+    paddingLeft: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  bannerText: {
+    color: colors.dangerText,
+    flex: 1,
+    fontSize: 14,
+    paddingVertical: spacing.sm,
   },
   summary: {
     color: colors.textPrimary,
+    flexShrink: 1,
     fontSize: 15,
     fontWeight: '600',
+  },
+  stateArea: {
+    padding: spacing.md,
+  },
+  queryControls: {
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
   },
   /** The selected map gets the consultation area without displacing its controls. */
   map: {
     flex: 1,
+    marginTop: spacing.sm,
     // Clips the MapLibre `Marker`s to the map's own box. They are native
     // React Native views positioned over the map, and Android does not clip
     // children to the parent's bounds on its own -- without this, a block
     // number sitting above the top edge renders up into the header.
     overflow: 'hidden',
+  },
+  mapNotice: {
+    left: spacing.md,
+    position: 'absolute',
+    right: spacing.md,
+    top: spacing.md,
   },
   list: {
     gap: spacing.sm,
@@ -687,11 +727,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.md,
     borderWidth: 1,
-    ...shadows.sm,
   },
   cardSelected: {
     borderColor: colors.primary,
-    borderWidth: 2,
   },
   cardMain: {
     padding: spacing.md,
@@ -699,6 +737,7 @@ const styles = StyleSheet.create({
   cardHeader: {
     alignItems: 'center',
     flexDirection: 'row',
+    gap: spacing.sm,
     justifyContent: 'space-between',
     marginBottom: spacing.xs,
   },
@@ -707,38 +746,19 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     borderWidth: 1,
     flexDirection: 'row',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  statusBadgeWorking: {
-    backgroundColor: '#ecfdf5',
-    borderColor: '#a7f3d0',
-  },
-  statusBadgeIdle: {
-    backgroundColor: '#f0f9ff',
-    borderColor: '#bae6fd',
+    flexShrink: 0,
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
   },
   statusDot: {
     borderRadius: radius.full,
     height: 6,
-    marginRight: 5,
     width: 6,
   },
-  statusDotWorking: {
-    backgroundColor: '#10b981',
-  },
-  statusDotIdle: {
-    backgroundColor: '#0284c7',
-  },
   statusBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  statusBadgeTextWorking: {
-    color: '#047857',
-  },
-  statusBadgeTextIdle: {
-    color: '#0369a1',
+    fontSize: 12,
+    fontWeight: '600',
   },
   leaderRow: {
     alignItems: 'center',
@@ -749,72 +769,46 @@ const styles = StyleSheet.create({
   leaderAvatar: {
     alignItems: 'center',
     backgroundColor: colors.primaryLight,
-    borderRadius: 14,
+    borderRadius: radius.full,
     height: 28,
     justifyContent: 'center',
     width: 28,
   },
   leaderAvatarEmpty: {
     backgroundColor: colors.surfaceSubtle,
+    borderColor: colors.border,
+    borderWidth: 1,
   },
   leaderAvatarText: {
-    color: colors.primary,
+    color: colors.primaryPressed,
     fontSize: 12,
     fontWeight: '700',
   },
-  leaderInfo: {
-    flex: 1,
-  },
-  leaderLabel: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+  leaderAvatarTextEmpty: {
+    color: colors.textSecondary,
   },
   metaRow: {
+    columnGap: spacing.md,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing.sm,
     marginTop: spacing.xs,
+    rowGap: spacing.xs,
   },
-  metaBadge: {
-    alignItems: 'center',
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: radius.sm,
-    flexDirection: 'row',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  metaIcon: {
-    fontSize: 12,
+  meta: {
+    color: colors.textSecondary,
+    fontSize: 13,
   },
   cardActionsContainer: {
     borderTopColor: colors.border,
     borderTopWidth: 1,
     flexDirection: 'row',
   },
-  cardActionBtn: {
-    alignItems: 'center',
+  cardAction: {
+    borderRadius: 0,
     flex: 1,
-    justifyContent: 'center',
-    minHeight: 44,
-    paddingVertical: 10,
   },
-  cardActionBtnPrimary: {
-    backgroundColor: colors.surfaceSubtle,
+  cardActionDivided: {
     borderLeftColor: colors.border,
-    borderLeftWidth: 1,
-  },
-  cardActionLabel: {
-    color: colors.textPrimary,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  cardActionLabelPrimary: {
-    color: colors.primary,
-    fontWeight: '700',
   },
   overlay: {
     backgroundColor: colors.background,
@@ -826,11 +820,14 @@ const styles = StyleSheet.create({
   },
   territoryName: {
     color: colors.textPrimary,
+    flex: 1,
+    flexShrink: 1,
     fontSize: 16,
     fontWeight: '700',
   },
   leader: {
     color: colors.textPrimary,
+    flex: 1,
     fontSize: 14,
     fontWeight: '500',
   },
@@ -838,30 +835,24 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontStyle: 'italic',
   },
-  blockCount: {
-    color: colors.textSecondary,
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  situation: {
-    color: colors.textSecondary,
-    fontSize: 13,
-  },
-  queryControls: {
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-  },
-  lastWork: {
-    color: colors.textSecondary,
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  emptyMessage: {
-    color: colors.textSecondary,
-    fontSize: 15,
-    lineHeight: 22,
-  },
+});
+
+const badgeStyles = StyleSheet.create({
+  campaign: { backgroundColor: colors.primaryLight, borderColor: colors.primaryLight },
+  ongoing: { backgroundColor: colors.warningSurface, borderColor: colors.warningBorder },
+  available: { backgroundColor: colors.surface, borderColor: colors.border },
+});
+
+const dotStyles = StyleSheet.create({
+  campaign: { backgroundColor: colors.primary },
+  ongoing: { backgroundColor: colors.warning },
+  available: { backgroundColor: colors.textMuted },
+});
+
+const badgeTextStyles = StyleSheet.create({
+  campaign: { color: colors.primaryPressed },
+  ongoing: { color: colors.warningText },
+  available: { color: colors.textSecondary },
 });
 
 export default DesignationsScreen;

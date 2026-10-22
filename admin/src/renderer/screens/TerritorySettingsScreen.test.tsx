@@ -9,6 +9,7 @@ import '@testing-library/jest-dom/vitest'
 import type { IpcApi } from '../../shared/ipc-contract'
 import type { Block, Territory } from '../../shared/models'
 import { TerritorySettingsScreen } from './TerritorySettingsScreen'
+import { answerConfirm } from '../components/ConfirmDialog.testing'
 
 const NOW = new Date('2026-08-19T12:00:00')
 
@@ -291,7 +292,6 @@ describe('TerritorySettingsScreen summary', () => {
 
 describe('TerritorySettingsScreen deleting', () => {
   it('asks for confirmation, deletes and reports back when the admin confirms', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const deleteTerritory = vi.fn().mockResolvedValue(undefined)
     vi.stubGlobal('api', makeApi({ delete: deleteTerritory }))
     const onDeleted = vi.fn()
@@ -306,11 +306,9 @@ describe('TerritorySettingsScreen deleting', () => {
     )
 
     await user.click(screen.getByRole('button', { name: /apagar território/i }))
-
-    expect(confirmSpy).toHaveBeenCalledTimes(1)
     // The same warning `HomeScreen` shows, reused rather than retyped: the
     // blocks and their whole work history go with the territory.
-    const message = confirmSpy.mock.calls[0]?.[0] as string
+    const message = await answerConfirm(user, true)
     expect(message).toContain('Bairro Sul - N7')
     expect(message).toMatch(/histórico de trabalho/i)
     await waitFor(() => expect(deleteTerritory).toHaveBeenCalledWith('territory-1'))
@@ -318,7 +316,6 @@ describe('TerritorySettingsScreen deleting', () => {
   })
 
   it('does not delete anything when the admin cancels the confirmation', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false)
     const deleteTerritory = vi.fn().mockResolvedValue(undefined)
     vi.stubGlobal('api', makeApi({ delete: deleteTerritory }))
     const onDeleted = vi.fn()
@@ -327,13 +324,13 @@ describe('TerritorySettingsScreen deleting', () => {
     render(<TerritorySettingsScreen territory={makeTerritory()} now={NOW} onDeleted={onDeleted} />)
 
     await user.click(screen.getByRole('button', { name: /apagar território/i }))
+    await answerConfirm(user, false)
 
     expect(deleteTerritory).not.toHaveBeenCalled()
     expect(onDeleted).not.toHaveBeenCalled()
   })
 
   it('shows a failed deletion on screen and stays put', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const deleteTerritory = vi.fn().mockRejectedValue(new Error('O território não existe mais.'))
     vi.stubGlobal('api', makeApi({ delete: deleteTerritory }))
     const onDeleted = vi.fn()
@@ -342,6 +339,7 @@ describe('TerritorySettingsScreen deleting', () => {
     render(<TerritorySettingsScreen territory={makeTerritory()} now={NOW} onDeleted={onDeleted} />)
 
     await user.click(screen.getByRole('button', { name: /apagar território/i }))
+    await answerConfirm(user, true)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('O território não existe mais.')
     expect(onDeleted).not.toHaveBeenCalled()
@@ -386,7 +384,7 @@ describe('TerritorySettingsScreen block status column', () => {
     // Words, not only a colour: the admin has to be able to read the status
     // out loud, and 45 days is past a 30-day rotation while 10 is not.
     expect(blockRows().map((row) => within(row).getAllByRole('cell')[1]?.textContent)).toEqual([
-      'Recente',
+      'Em dia',
       'Vencida',
       'Nunca trabalhada'
     ])
@@ -405,8 +403,8 @@ describe('TerritorySettingsScreen block status column', () => {
     // 10 and 45 days are both inside the default 120-day rotation; only the
     // 200-day-old one is past it.
     expect(blockRows().map((row) => within(row).getAllByRole('cell')[1]?.textContent)).toEqual([
-      'Recente',
-      'Recente',
+      'Em dia',
+      'Em dia',
       'Nunca trabalhada',
       'Vencida'
     ])
@@ -531,7 +529,7 @@ describe('TerritorySettingsScreen reacting to the work panel', () => {
     await waitFor(() =>
       expect(within(blockRows()[0]!).getAllByRole('cell')[2]).toHaveTextContent('18/08/2026')
     )
-    expect(within(blockRows()[0]!).getAllByRole('cell')[1]).toHaveTextContent('Recente')
+    expect(within(blockRows()[0]!).getAllByRole('cell')[1]).toHaveTextContent('Em dia')
     expect(screen.getByTestId('summary-never-count')).toHaveTextContent('0')
     expect(screen.getByTestId('summary-last-visit')).toHaveTextContent('18/08/2026')
   })

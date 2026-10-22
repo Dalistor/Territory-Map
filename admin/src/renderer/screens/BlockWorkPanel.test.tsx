@@ -245,7 +245,7 @@ describe('BlockWorkPanel — apagar registro', () => {
     installApi({ listFor: vi.fn(async () => [log]) })
     renderPanel()
 
-    await user.click(await screen.findByRole('button', { name: /remover registro/i }))
+    await user.click(await screen.findByRole('button', { name: /apagar registro/i }))
 
     const dialog = await screen.findByRole('dialog')
     expect(dialog).toHaveTextContent('Maria Souza')
@@ -257,7 +257,7 @@ describe('BlockWorkPanel — apagar registro', () => {
     const api = installApi({ listFor: vi.fn(async () => [makeLog()]) })
     const { onChanged } = renderPanel()
 
-    await user.click(await screen.findByRole('button', { name: /remover registro/i }))
+    await user.click(await screen.findByRole('button', { name: /apagar registro/i }))
     await user.click(await screen.findByRole('button', { name: 'Cancelar' }))
 
     expect(api.deleteLog).not.toHaveBeenCalled()
@@ -269,9 +269,9 @@ describe('BlockWorkPanel — apagar registro', () => {
     const api = installApi({ listFor: vi.fn(async () => [makeLog()]) })
     const { onChanged } = renderPanel()
 
-    await user.click(await screen.findByRole('button', { name: /remover registro/i }))
+    await user.click(await screen.findByRole('button', { name: /apagar registro/i }))
     const dialog = await screen.findByRole('dialog')
-    await user.click(within(dialog).getByRole('button', { name: 'Remover' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Apagar' }))
 
     expect(api.deleteLog).toHaveBeenCalledWith('log-1')
     expect(api.listFor).toHaveBeenCalledTimes(2)
@@ -286,9 +286,9 @@ describe('BlockWorkPanel — apagar registro', () => {
     })
     const { onChanged } = renderPanel()
 
-    await user.click(await screen.findByRole('button', { name: /remover registro/i }))
+    await user.click(await screen.findByRole('button', { name: /apagar registro/i }))
     const dialog = await screen.findByRole('dialog')
-    await user.click(within(dialog).getByRole('button', { name: 'Remover' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Apagar' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('não deu')
     expect(onChanged).not.toHaveBeenCalled()

@@ -1,18 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useConfirm } from '../components/ConfirmDialog'
 import { DataTable } from '../components/DataTable'
 import type { AssignmentHistoryQuery, AssignmentWithTerritory } from '../../shared/models'
 import { assignmentHolderName, assignmentIsCampaign, assignmentIsOpen } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
 import { Icon } from '../components/Icon'
+import { formatDate } from '../formatDate'
 
 const GENERIC_ERROR_MESSAGE = 'Não foi possível completar a operação.'
 
 function errorMessage(error: unknown): string {
   return parseIpcError(error, GENERIC_ERROR_MESSAGE).message
-}
-
-function formatDate(date: Date): string {
-  return date.toLocaleDateString()
 }
 
 function localDayStart(value: string): Date | undefined {
@@ -70,6 +68,7 @@ function pageFromResponse(response: Awaited<ReturnType<typeof window.api.assignm
 }
 
 export function HistoryScreen(): React.JSX.Element {
+  const { confirm, confirmDialog } = useConfirm()
   const [entries, setEntries] = useState<AssignmentWithTerritory[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -123,7 +122,13 @@ export function HistoryScreen(): React.JSX.Element {
 
   const deleteEntry = useCallback(
     async (entry: AssignmentWithTerritory) => {
-      if (!window.confirm(deleteConfirmMessage(entry)) || actionInFlight.current) return
+      if (actionInFlight.current) return
+      const accepted = await confirm({
+        message: deleteConfirmMessage(entry),
+        confirmLabel: 'Apagar registro',
+        danger: true
+      })
+      if (!accepted || actionInFlight.current) return
       actionInFlight.current = true
       setIsActionPending(true)
       setActionError(null)
@@ -137,7 +142,7 @@ export function HistoryScreen(): React.JSX.Element {
         setIsActionPending(false)
       }
     },
-    [load]
+    [confirm, load]
   )
 
   const hasPeriod = fromDay !== '' || toDay !== ''
@@ -167,7 +172,6 @@ export function HistoryScreen(): React.JSX.Element {
     <section className="history-screen" aria-labelledby="history-title">
       <header className="page-header">
         <div className="header-title-block">
-          <p className="eyebrow">Consulta da congregação</p>
           <h1 id="history-title">Histórico completo</h1>
           <p>Designações que se sobrepõem ao período selecionado.</p>
         </div>
@@ -225,11 +229,13 @@ export function HistoryScreen(): React.JSX.Element {
             {
               key: 'started',
               header: 'Retirada',
+              numeric: true,
               cell: (entry: AssignmentWithTerritory) => formatDate(entry.startedAt)
             },
             {
               key: 'completed',
               header: 'Devolução',
+              numeric: true,
               cell: (entry: AssignmentWithTerritory) =>
                 entry.completedAt === undefined ? '—' : formatDate(entry.completedAt)
             },
@@ -278,17 +284,18 @@ export function HistoryScreen(): React.JSX.Element {
               disabled={page <= 1 || isActionPending}
               onClick={() => void load(page - 1)}
             >
-              Página anterior
+              Anterior
             </button>
             <button
               type="button"
               disabled={page >= lastPage || isActionPending}
               onClick={() => void load(page + 1)}
             >
-              Próxima página
+              Próxima
             </button>
           </nav>
         )}
+        {confirmDialog}
       </main>
     </section>
   )

@@ -7,7 +7,7 @@ import {
   ScrollView,
 } from 'react-native';
 import type { AppRelease } from '../../domain/appUpdate';
-import { colors, radius, spacing } from '../theme';
+import { colors, radius, shadows, spacing } from '../theme';
 import { PrimaryButton } from './PrimaryButton';
 
 export interface UpdateModalProps {
@@ -64,7 +64,12 @@ export function UpdateModal({
 
           {downloading ? (
             <View style={styles.progressContainer}>
-              <View style={styles.progressBarTrack}>
+              <View
+                accessibilityRole="progressbar"
+                accessibilityLabel="Download da atualização"
+                accessibilityValue={{ min: 0, max: 100, now: downloadProgress }}
+                style={styles.progressBarTrack}
+              >
                 <View
                   style={[
                     styles.progressBarFill,
@@ -109,7 +114,7 @@ export function UpdateModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    backgroundColor: colors.scrim,
     justifyContent: 'center',
     alignItems: 'center',
     padding: spacing.md,
@@ -118,13 +123,9 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 380,
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     padding: spacing.lg,
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
+    ...shadows.md,
   },
   title: {
     fontSize: 20,
@@ -157,7 +158,9 @@ const styles = StyleSheet.create({
   changelogScroll: {
     maxHeight: 140,
     backgroundColor: colors.surfaceSubtle,
-    borderRadius: radius.md,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
     padding: spacing.sm,
     marginBottom: spacing.md,
   },
@@ -180,7 +183,7 @@ const styles = StyleSheet.create({
   },
   progressBarTrack: {
     height: 8,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: colors.border,
     borderRadius: radius.full,
     overflow: 'hidden',
     marginBottom: spacing.xs,

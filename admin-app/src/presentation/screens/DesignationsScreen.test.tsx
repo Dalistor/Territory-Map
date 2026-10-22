@@ -295,7 +295,7 @@ describe('DesignationsScreen', () => {
     await screen.findByTestId('territory-row-territory-5');
 
     expect(screen.queryByTestId('assignments-map')).not.toBeOnTheScreen();
-    expect(screen.getByRole('tab', { name: 'Lista, selecionado' })).toBeOnTheScreen();
+    expect(screen.getByRole('tab', { name: 'Lista' })).toBeOnTheScreen();
 
     await press(screen.getByRole('tab', { name: 'Mapa' }));
 
@@ -325,14 +325,15 @@ describe('DesignationsScreen', () => {
     await showMap();
     await press(screen.getByRole('button', { name: 'Território Vila Nova no mapa' }));
 
-    expect(await screen.findByText('Sem designação')).toBeOnTheScreen();
+    // On the map a territory opens its blocks (H11, spec 0018).
+    expect(await screen.findByText(/ainda não tem nenhuma quadra/)).toBeOnTheScreen();
     await press(screen.getByRole('button', { name: 'Voltar para a lista' }));
 
-    expect(screen.getByRole('tab', { name: 'Mapa, selecionado' })).toBeOnTheScreen();
+    expect(screen.getByRole('tab', { name: 'Mapa' })).toBeOnTheScreen();
     expect(screen.getByLabelText('Buscar territórios')).toHaveProp('value', 'Vila');
     await press(screen.getByRole('tab', { name: 'Lista' }));
     expect(
-      (await screen.findByRole('button', { name: 'Ver designações de Vila Nova' })).props
+      (await screen.findByRole('button', { name: /^Abrir território Vila Nova,/ })).props
         .accessibilityState,
     ).toMatchObject({ selected: true });
   });
@@ -474,10 +475,13 @@ describe('DesignationsScreen', () => {
     // The server's own words, in a region a screen reader announces -- a
     // silent empty list would read as "there is nothing here".
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Sem conexão com o servidor.',
+      /Sem conexão com o servidor\./,
     );
     expect(
       screen.getByRole('button', { name: 'Recarregar' }),
+    ).toBeOnTheScreen();
+    expect(
+      screen.getByRole('button', { name: 'Tentar novamente' }),
     ).toBeOnTheScreen();
   });
 
@@ -532,7 +536,7 @@ describe('DesignationsScreen', () => {
     let rejectReload: (error: unknown) => void = () => {};
     const listTerritoriesWithBlocks = jest
       .fn<Promise<Territory[]>, []>()
-      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([makeTerritory({ id: 'territory-1', name: 'Centro' })])
       .mockImplementationOnce(
         () =>
           new Promise<Territory[]>((_resolve, reject) => {
@@ -542,12 +546,16 @@ describe('DesignationsScreen', () => {
     const api = makeApi({ listTerritoriesWithBlocks });
 
     await renderScreen(api);
+    await screen.findByTestId('territory-row-territory-1');
     await press(screen.getByRole('button', { name: 'Recarregar' }));
+    // A refresh never blanks the list it is refreshing.
+    expect(screen.getByTestId('territory-row-territory-1')).toBeOnTheScreen();
     rejectReload(new Error('Falha ao recarregar.'));
 
     await act(async () => {});
     expect(screen.getByRole('button', { name: 'Recarregar' })).toBeEnabled();
     expect(screen.getByRole('alert')).toHaveTextContent('Falha ao recarregar.');
+    expect(screen.getByTestId('territory-row-territory-1')).toBeOnTheScreen();
   });
 
   it('opens the S-13 panel of the territory that was tapped, and not of another', async () => {
@@ -567,7 +575,7 @@ describe('DesignationsScreen', () => {
     await renderScreen(api);
     await screen.findByTestId('territory-row-territory-2');
     await press(
-      screen.getByRole('button', { name: 'Ver designações de Vila Nova' }),
+      screen.getByRole('button', { name: /^Abrir território Vila Nova,/ }),
     );
 
     expect(screen.getByText('Designações de Vila Nova')).toBeOnTheScreen();
@@ -605,10 +613,10 @@ describe('DesignationsScreen', () => {
     await renderScreen(api);
     await screen.findByTestId('territory-row-territory-1');
     await press(
-      screen.getByRole('button', { name: 'Ver designações de Centro' }),
+      screen.getByRole('button', { name: /^Abrir território Centro,/ }),
     );
     await press(screen.getByRole('radio', { name: 'Ana' }));
-    await press(screen.getByRole('button', { name: 'Designar' }));
+    await press(screen.getByRole('button', { name: 'Designar publicador' }));
 
     expect(api.designate).toHaveBeenCalledWith('territory-1', 'publisher-1');
     // Behind the panel, without the admin having to leave the screen and come
@@ -619,7 +627,7 @@ describe('DesignationsScreen', () => {
     expect(screen.getByText('1 de 1 territórios designados')).toBeOnTheScreen();
   });
 
-  it('hands the loaded territories to the map and opens the same territory detail', async () => {
+  it('hands the loaded territories to the map and opens the blocks of the territory tapped', async () => {
     const api = makeApi({
       listTerritoriesWithBlocks: jest.fn(async () => [
         makeTerritory({ id: 'territory-1', name: 'Centro' }),
@@ -640,9 +648,10 @@ describe('DesignationsScreen', () => {
       screen.getByRole('button', { name: 'Território Vila Nova no mapa' }),
     );
 
-    // The same territory detail opens from both visualizations. A block keeps
-    // its specific combined detail, but a territory is always the S-13 detail.
-    expect(screen.getByText('Designações de Vila Nova')).toBeOnTheScreen();
+    // On the map the admin is already looking at blocks, so a territory opens
+    // its blocks there (H11, spec 0018); the S-13 card is the list row's.
+    expect(screen.getByLabelText(/^Quadra 9,/)).toBeOnTheScreen();
+    expect(screen.queryByText('Designações de Vila Nova')).not.toBeOnTheScreen();
   });
 
   it('opens the blocks of a territory from its own row', async () => {
@@ -669,7 +678,7 @@ describe('DesignationsScreen', () => {
     await screen.findByTestId('territory-row-territory-1');
     await press(screen.getByRole('button', { name: 'Ver quadras de Centro' }));
 
-    expect(screen.getByLabelText('Quadra 7')).toBeOnTheScreen();
+    expect(screen.getByLabelText(/^Quadra 7,/)).toBeOnTheScreen();
     // The blocks and the S-13 card are two different questions: opening one
     // must not open the other on top of it.
     expect(screen.queryByText('Designações de Centro')).not.toBeOnTheScreen();
@@ -685,13 +694,13 @@ describe('DesignationsScreen', () => {
     await renderScreen(api);
     await screen.findByTestId('territory-row-territory-1');
     await press(
-      screen.getByRole('button', { name: 'Ver designações de Centro' }),
+      screen.getByRole('button', { name: /^Abrir território Centro,/ }),
     );
     await press(screen.getByRole('button', { name: 'Voltar para a lista' }));
 
     expect(screen.queryByText('Designações de Centro')).not.toBeOnTheScreen();
     expect(
-      screen.getByRole('button', { name: 'Ver designações de Centro' }),
+      screen.getByRole('button', { name: /^Abrir território Centro,/ }),
     ).toBeOnTheScreen();
   });
 
@@ -714,7 +723,7 @@ describe('DesignationsScreen', () => {
     await renderScreen(api);
     await screen.findByTestId('territory-row-territory-1');
     await press(
-      screen.getByRole('button', { name: 'Ver designações de Centro' }),
+      screen.getByRole('button', { name: /^Abrir território Centro,/ }),
     );
 
     await act(async () => {
@@ -723,7 +732,7 @@ describe('DesignationsScreen', () => {
 
     expect(screen.queryByText('Designações de Centro')).not.toBeOnTheScreen();
     expect(
-      screen.getByRole('button', { name: 'Ver designações de Centro' }),
+      screen.getByRole('button', { name: /^Abrir território Centro,/ }),
     ).toBeOnTheScreen();
   });
 
@@ -751,7 +760,7 @@ describe('DesignationsScreen', () => {
     });
 
     expect(
-      screen.getByRole('button', { name: 'Ver designações de Centro' }),
+      screen.getByRole('button', { name: /^Abrir território Centro,/ }),
     ).toBeOnTheScreen();
   });
 
@@ -786,7 +795,7 @@ describe('DesignationsScreen', () => {
     expect(api.listAssignments).toHaveBeenCalledWith('territory-2');
   });
 
-  it('opens the same territory detail from the map instead of a block detail', async () => {
+  it('opens the blocks of a territory tapped on the map, not a block detail', async () => {
     const api = makeApi({
       listTerritoriesWithBlocks: jest.fn(async () => [
         makeTerritory({
@@ -804,7 +813,8 @@ describe('DesignationsScreen', () => {
       screen.getByRole('button', { name: 'Território Centro no mapa' }),
     );
 
-    expect(screen.getByText('Designações de Centro')).toBeOnTheScreen();
+    expect(screen.getByLabelText(/^Quadra 7,/)).toBeOnTheScreen();
+    expect(screen.queryByText('Designações de Centro')).not.toBeOnTheScreen();
     // The note only the combined block panel carries -- tapping a territory
     // never lands on a specific block.
     expect(screen.queryByText(TERRITORY_SCOPE_NOTE)).not.toBeOnTheScreen();
@@ -857,7 +867,7 @@ describe('DesignationsScreen', () => {
     await screen.findByTestId('assignments-map');
     await press(screen.getByRole('button', { name: 'Quadra 7 no mapa' }));
     await pressTerritoryPublisher('Ana');
-    await press(screen.getByRole('button', { name: 'Designar' }));
+    await press(screen.getByRole('button', { name: 'Designar publicador' }));
 
     // The block's colour and the territory's leader are both drawn behind this
     // panel, so a write in here has to pull the list again.
@@ -890,7 +900,7 @@ describe('DesignationsScreen', () => {
     await screen.findByTestId('assignments-map');
     await press(screen.getByRole('button', { name: 'Quadra 7 no mapa' }));
     await pressTerritoryPublisher('Ana');
-    await press(screen.getByRole('button', { name: 'Designar' }));
+    await press(screen.getByRole('button', { name: 'Designar publicador' }));
 
     // The write landed; only the refresh failed. Closing the panel would hide
     // that from the admin and throw away where he was.
@@ -936,7 +946,7 @@ describe('DesignationsScreen', () => {
     await renderScreen(api);
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Não foi possível carregar os territórios.',
+      /Não foi possível carregar os territórios\./,
     );
   });
 
@@ -952,7 +962,7 @@ describe('DesignationsScreen', () => {
     await renderScreen(api);
     await screen.findByTestId('territory-row-territory-1');
     await press(
-      screen.getByRole('button', { name: 'Ver designações de Centro' }),
+      screen.getByRole('button', { name: /^Abrir território Centro,/ }),
     );
     await press(screen.getByRole('button', { name: 'Recarregar' }));
 
@@ -1175,6 +1185,8 @@ describe('DesignationsScreen', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Designação já encerrada.',
     );
+    // A refused write does not hide the list it was made from.
+    expect(screen.getByTestId('territory-row-territory-1')).toBeOnTheScreen();
     // Uma escrita recusada não mudou nada no servidor: recarregar só apagaria o
     // aviso da tela antes de o admin lê-lo.
     expect(listTerritoriesWithBlocks).toHaveBeenCalledTimes(1);

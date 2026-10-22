@@ -160,7 +160,7 @@ describe('BlockHistorySheet', () => {
     render(<BlockHistorySheet territory={TERRITORY} block={BLOCK} />)
     await screen.findByText('Maria Souza')
 
-    await user.click(screen.getByRole('button', { name: /remover registro de maria souza/i }))
+    await user.click(screen.getByRole('button', { name: /apagar registro de maria souza/i }))
 
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByText(/maria souza/i)).toBeInTheDocument()
@@ -180,7 +180,7 @@ describe('BlockHistorySheet', () => {
 
     render(<BlockHistorySheet territory={TERRITORY} block={BLOCK} />)
     await screen.findByText('Maria Souza')
-    await user.click(screen.getByRole('button', { name: /remover registro de maria souza/i }))
+    await user.click(screen.getByRole('button', { name: /apagar registro de maria souza/i }))
     const dialog = await screen.findByRole('dialog')
 
     await user.click(within(dialog).getByRole('button', { name: 'Cancelar' }))
@@ -202,10 +202,10 @@ describe('BlockHistorySheet', () => {
       <BlockHistorySheet territory={TERRITORY} block={BLOCK} onWorkLogDeleted={onWorkLogDeleted} />
     )
     await screen.findByText('Maria Souza')
-    await user.click(screen.getByRole('button', { name: /remover registro de maria souza/i }))
+    await user.click(screen.getByRole('button', { name: /apagar registro de maria souza/i }))
     const dialog = await screen.findByRole('dialog')
 
-    await user.click(within(dialog).getByRole('button', { name: 'Remover' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Apagar' }))
 
     expect(deleteFn).toHaveBeenCalledWith('log-1')
     expect(await screen.findByText('Esta quadra nunca foi trabalhada.')).toBeInTheDocument()
@@ -228,10 +228,10 @@ describe('BlockHistorySheet', () => {
       <BlockHistorySheet territory={TERRITORY} block={BLOCK} onWorkLogDeleted={onWorkLogDeleted} />
     )
     await screen.findByText('Maria Souza')
-    await user.click(screen.getByRole('button', { name: /remover registro de maria souza/i }))
+    await user.click(screen.getByRole('button', { name: /apagar registro de maria souza/i }))
     const dialog = await screen.findByRole('dialog')
 
-    await user.click(within(dialog).getByRole('button', { name: 'Remover' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Apagar' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível remover agora.')
     expect(onWorkLogDeleted).not.toHaveBeenCalled()

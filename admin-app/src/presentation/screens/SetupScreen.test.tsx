@@ -42,7 +42,7 @@ async function fillIn({
 }
 
 function confirmButton() {
-  return screen.getByRole('button', { name: 'Confirmar' });
+  return screen.getByRole('button', { name: 'Entrar' });
 }
 
 describe('SetupScreen', () => {

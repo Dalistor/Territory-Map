@@ -8,9 +8,10 @@ import {
   View,
 } from 'react-native';
 
-import { colors, radius, shadows, spacing } from '../theme';
+import { colors, radius, spacing, touchTarget } from '../theme';
+import { Button } from './Button';
 
-const MINIMUM_TOUCH_TARGET = 48;
+const MINIMUM_TOUCH_TARGET = touchTarget.default;
 
 export interface QuerySearchFieldProps {
   readonly value: string;
@@ -41,7 +42,7 @@ export function QuerySearchField({
         ref={input}
         accessibilityLabel={accessibilityLabel}
         placeholder={placeholder}
-        placeholderTextColor={colors.textMuted}
+        placeholderTextColor={colors.textPlaceholder}
         value={value}
         onChangeText={onChangeText}
         style={styles.searchInput}
@@ -92,7 +93,7 @@ export function QuerySegmentedControl({
           <Pressable
             key={segment.value}
             accessibilityRole="tab"
-            accessibilityLabel={selected ? `${segment.label}, selecionado` : segment.label}
+            accessibilityLabel={segment.label}
             accessibilityState={{ selected }}
             onPress={() => onChange(segment.value)}
             style={({ pressed }) => [
@@ -103,7 +104,6 @@ export function QuerySegmentedControl({
             <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>
               {segment.label}
             </Text>
-            {selected && <Text style={styles.segmentState}>Selecionado</Text>}
           </Pressable>
         );
       })}
@@ -171,6 +171,12 @@ export interface QueryStateProps {
   readonly title: string;
   readonly message: string;
   readonly onRetry?: () => void;
+  /** For `no-results`: undoes the search or filter that emptied the list. */
+  readonly onClear?: () => void;
+  /** What `onClear` undoes; "Limpar busca" unless the caller says otherwise. */
+  readonly clearLabel?: string;
+  /** A shorter block for overlays (over the map) where 164 dp would hide too much. */
+  readonly compact?: boolean;
 }
 
 /** Stable-height feedback for a query area, so a refresh does not jump surrounding content. */
@@ -179,26 +185,36 @@ export function QueryState({
   title,
   message,
   onRetry,
+  onClear,
+  clearLabel = 'Limpar busca',
+  compact = false,
 }: QueryStateProps): React.JSX.Element {
   const isLoading = kind === 'loading';
 
+  // The text is one accessible group and the action its sibling: a button
+  // nested inside an `accessible` view cannot be reached by TalkBack.
   return (
     <View
-      accessible
-      accessibilityLabel={`${title}. ${message}`}
-      accessibilityLiveRegion="polite"
-      style={[styles.queryState, kind === 'error' && styles.queryStateError]}>
-      {isLoading && <ActivityIndicator accessibilityLabel="Carregando" color={colors.primary} />}
-      <Text style={styles.queryStateTitle}>{title}</Text>
-      <Text style={styles.queryStateMessage}>{message}</Text>
+      style={[
+        styles.queryState,
+        compact && styles.queryStateCompact,
+        kind === 'error' && styles.queryStateError,
+      ]}>
+      <View
+        accessible
+        accessibilityRole={kind === 'error' ? 'alert' : undefined}
+        accessibilityLabel={`${title}. ${message}`}
+        accessibilityLiveRegion="polite"
+        style={styles.queryStateText}>
+        {isLoading && <ActivityIndicator accessibilityLabel="Carregando" color={colors.primary} />}
+        <Text style={styles.queryStateTitle}>{title}</Text>
+        <Text style={styles.queryStateMessage}>{message}</Text>
+      </View>
       {kind === 'error' && onRetry !== undefined && (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Tentar novamente"
-          onPress={onRetry}
-          style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}>
-          <Text style={styles.retryText}>Tentar novamente</Text>
-        </Pressable>
+        <Button label="Tentar novamente" onPress={onRetry} style={styles.queryStateAction} />
+      )}
+      {kind === 'no-results' && onClear !== undefined && (
+        <Button label={clearLabel} variant="quiet" onPress={onClear} style={styles.queryStateAction} />
       )}
     </View>
   );
@@ -273,32 +289,32 @@ const styles = StyleSheet.create({
   clearButton: { alignItems: 'center', justifyContent: 'center', minHeight: MINIMUM_TOUCH_TARGET, paddingHorizontal: spacing.sm },
   clearText: { color: colors.primary, fontSize: 14, fontWeight: '700' },
   disclosure: { color: colors.textMuted, fontSize: 28, lineHeight: 32 },
-  listItem: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, flexDirection: 'row', minHeight: 80, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, ...shadows.sm },
+  listItem: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, flexDirection: 'row', minHeight: 80, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   listItemAside: { alignItems: 'flex-end', gap: spacing.xs, marginLeft: spacing.sm },
-  listItemDescription: { color: colors.textSecondary, fontSize: 14, marginTop: 2 },
-  listItemDetails: { color: colors.textMuted, fontSize: 13, marginTop: spacing.xs },
+  listItemDescription: { color: colors.textSecondary, fontSize: 14, marginTop: spacing.xs },
+  listItemDetails: { color: colors.textSecondary, fontSize: 13, marginTop: spacing.xs },
   listItemMain: { flex: 1, minWidth: 0 },
   listItemTitle: { color: colors.textPrimary, fontSize: 16, fontWeight: '700' },
   pagination: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between', paddingVertical: spacing.sm },
-  paginationButton: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.borderStrong, borderRadius: radius.sm, borderWidth: 1, justifyContent: 'center', minHeight: MINIMUM_TOUCH_TARGET, minWidth: 88, paddingHorizontal: spacing.sm },
-  paginationPageText: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
+  paginationButton: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.borderInput, borderRadius: radius.sm, borderWidth: 1, justifyContent: 'center', minHeight: MINIMUM_TOUCH_TARGET, minWidth: 88, paddingHorizontal: spacing.sm },
+  paginationPageText: { color: colors.textSecondary, fontSize: 12, marginTop: spacing.xs },
   paginationRange: { alignItems: 'center', flex: 1 },
   paginationRangeText: { color: colors.textPrimary, fontSize: 14, fontWeight: '700' },
   paginationText: { color: colors.textPrimary, fontSize: 14, fontWeight: '700' },
   pressed: { opacity: 0.72 },
   queryState: { alignItems: 'center', backgroundColor: colors.surfaceSubtle, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, justifyContent: 'center', minHeight: 164, padding: spacing.lg },
+  queryStateCompact: { minHeight: 0, padding: spacing.md },
   queryStateError: { backgroundColor: colors.dangerSurface, borderColor: colors.dangerBorder },
+  queryStateAction: { marginTop: spacing.md },
   queryStateMessage: { color: colors.textSecondary, fontSize: 14, lineHeight: 20, marginTop: spacing.xs, textAlign: 'center' },
+  queryStateText: { alignItems: 'center' },
   queryStateTitle: { color: colors.textPrimary, fontSize: 16, fontWeight: '700', marginTop: spacing.sm, textAlign: 'center' },
-  retryButton: { alignItems: 'center', backgroundColor: colors.danger, borderRadius: radius.sm, justifyContent: 'center', marginTop: spacing.md, minHeight: MINIMUM_TOUCH_TARGET, paddingHorizontal: spacing.md },
-  retryText: { color: colors.onPrimary, fontSize: 14, fontWeight: '700' },
-  searchField: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.borderStrong, borderRadius: radius.sm, borderWidth: 1, flexDirection: 'row', minHeight: MINIMUM_TOUCH_TARGET },
+  searchField: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.borderInput, borderRadius: radius.sm, borderWidth: 1, flexDirection: 'row', minHeight: MINIMUM_TOUCH_TARGET },
   searchInput: { color: colors.textPrimary, flex: 1, fontSize: 16, minHeight: MINIMUM_TOUCH_TARGET, paddingHorizontal: spacing.md, paddingVertical: 0 },
-  segment: { alignItems: 'center', borderRadius: radius.sm, flex: 1, justifyContent: 'center', minHeight: MINIMUM_TOUCH_TARGET, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
+  segment: { alignItems: 'center', borderColor: 'transparent', borderRadius: radius.sm, borderWidth: 1, flex: 1, justifyContent: 'center', minHeight: MINIMUM_TOUCH_TARGET, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   segmentedControl: { backgroundColor: colors.surfaceSubtle, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, flexDirection: 'row', gap: spacing.xs, padding: spacing.xs },
-  segmentSelected: { backgroundColor: colors.surface, borderColor: colors.primary, borderWidth: 1, ...shadows.sm },
-  segmentState: { color: colors.primary, fontSize: 11, fontWeight: '700', marginTop: 1 },
+  segmentSelected: { backgroundColor: colors.primaryLight, borderColor: colors.primary, borderWidth: 1 },
   segmentText: { color: colors.textSecondary, fontSize: 14, fontWeight: '700', textAlign: 'center' },
-  segmentTextSelected: { color: colors.primary },
-  statusPill: { backgroundColor: colors.primaryLight, borderRadius: radius.full, color: colors.primaryPressed, fontSize: 12, fontWeight: '700', overflow: 'hidden', paddingHorizontal: spacing.sm, paddingVertical: 3 },
+  segmentTextSelected: { color: colors.primaryPressed },
+  statusPill: { backgroundColor: colors.primaryLight, borderRadius: radius.full, color: colors.primaryPressed, fontSize: 12, fontWeight: '700', overflow: 'hidden', paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
 });

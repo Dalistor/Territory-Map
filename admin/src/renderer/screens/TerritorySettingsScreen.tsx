@@ -7,6 +7,7 @@ import type { BlockColorCategory } from '../map/blockColor'
 import { DEFAULT_ROTATION_DAYS, blockColorCategory } from '../map/blockColor'
 import { deleteTerritoryConfirmMessage } from './confirmMessages'
 import { BlockWorkPanel } from './BlockWorkPanel'
+import { useConfirm } from '../components/ConfirmDialog'
 
 /** `dd/mm/yyyy` in local time -- the same shape `BlockHistorySheet` shows a visit in. */
 function formatDate(moment: Date): string {
@@ -22,7 +23,7 @@ function formatDate(moment: Date): string {
 const CATEGORY_LABEL: Record<BlockColorCategory, string> = {
   never: 'Nunca trabalhada',
   overdue: 'Vencida',
-  recent: 'Recente'
+  recent: 'Em dia'
 }
 
 const BLANK_NAME_ERROR_MESSAGE = 'O nome do território não pode ficar em branco.'
@@ -123,6 +124,7 @@ export function TerritorySettingsScreen({
 
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const { confirm, confirmDialog } = useConfirm()
   const deleteInFlight = useRef(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -172,8 +174,14 @@ export function TerritorySettingsScreen({
   }
 
   async function handleDelete(): Promise<void> {
-    if (!window.confirm(deleteTerritoryConfirmMessage(current))) return
     if (deleteInFlight.current) return
+    const accepted = await confirm({
+      title: `Apagar o território "${current.name}"?`,
+      message: deleteTerritoryConfirmMessage(current),
+      confirmLabel: 'Apagar território',
+      danger: true
+    })
+    if (!accepted || deleteInFlight.current) return
     deleteInFlight.current = true
     setDeleting(true)
     setError(null)
@@ -192,8 +200,7 @@ export function TerritorySettingsScreen({
     <div className="screen screen-settings">
       <header className="screen-header">
         <div className="screen-title-block">
-          <p className="eyebrow">Territórios</p>
-          <h2>Configurações de {current.name}</h2>
+          <h1>Configurações de {current.name}</h1>
         </div>
       </header>
       <main className="screen-body settings-screen">
@@ -337,6 +344,7 @@ export function TerritorySettingsScreen({
             {deleting ? 'Apagando…' : 'Apagar território'}
           </button>
         </section>
+        {confirmDialog}
       </main>
     </div>
   )

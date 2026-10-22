@@ -184,16 +184,17 @@ describe('App', () => {
     expect(session.isConfigured).toHaveBeenCalledTimes(1);
   });
 
-  it('renders a local, labelled icon for each primary tab', async () => {
+  it('renders a local icon for each primary tab, hidden from the screen reader', async () => {
     const session = makeSession({ isConfigured: jest.fn(async () => true) });
 
     await render(<App session={session} api={makeApi()} />);
     await screen.findByText(DESIGNATIONS_TEXT);
 
     const expectIcon = (name: string, label: string): void => {
-      const icons = screen.getAllByTestId(`tab-icon-${name}`);
+      const icons = screen.getAllByTestId(`tab-icon-${name}`, { includeHiddenElements: true });
       expect(icons).not.toHaveLength(0);
       expect(icons.some(icon => icon.props.accessibilityLabel === label)).toBe(true);
+      expect(icons.every(icon => icon.props.importantForAccessibility === 'no-hide-descendants')).toBe(true);
     };
 
     expectIcon('territories', 'Ícone de Territórios');
@@ -229,7 +230,7 @@ describe('App', () => {
     await render(<App session={session} api={api} renderDesignations={openDetail} />);
     await fireEvent.press(await screen.findByRole('button', { name: 'Abrir Centro' }));
 
-    expect(await screen.findByText('Designação atual')).toBeOnTheScreen();
+    expect(await screen.findByText('Dirigente atual')).toBeOnTheScreen();
   });
 
   it('moves from the setup screen to the designations without restarting the app', async () => {
@@ -239,7 +240,7 @@ describe('App', () => {
     await render(<App session={session} api={makeApi()} />);
     await screen.findByLabelText('Nome da congregação');
     await fillSetupForm();
-    await fireEvent.press(screen.getByRole('button', { name: 'Confirmar' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Entrar' }));
 
     expect(await screen.findByText(DESIGNATIONS_TEXT)).toBeOnTheScreen();
     expect(screen.queryByLabelText('Nome da congregação')).not.toBeOnTheScreen();

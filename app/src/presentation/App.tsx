@@ -150,6 +150,32 @@ async function refreshCampaignCache(
   }
 }
 
+/** The two navigation events `subscribeToReturn` needs, as the native stack exposes them. */
+interface FocusEvents {
+  addListener(event: 'focus' | 'blur', listener: () => void): () => void;
+}
+
+/**
+ * Calls `onReturn` each time the screen regains focus *after* having lost it
+ * -- coming back from the map -- and never for the first focus, which the
+ * screen's own mount already loads for.
+ */
+function subscribeToReturn(navigation: FocusEvents, onReturn: () => void): () => void {
+  let away = false;
+  const offBlur = navigation.addListener('blur', () => {
+    away = true;
+  });
+  const offFocus = navigation.addListener('focus', () => {
+    if (!away) return;
+    away = false;
+    onReturn();
+  });
+  return () => {
+    offBlur();
+    offFocus();
+  };
+}
+
 type BootstrapState =
   | { readonly status: 'loading' }
   | { readonly status: 'activation' }
@@ -306,13 +332,15 @@ export default function App({ dependencies }: AppProps): React.JSX.Element {
       <NavigationContainer>
         <Stack.Navigator
           screenOptions={{
-            headerStyle: { backgroundColor: colors.primary },
-            headerTintColor: colors.onPrimary,
-            headerTitleStyle: { fontWeight: '600' },
-            // The blue header extends under the (translucent) status bar, so
-            // its icons must flip to light there; the header-less Activation
-            // screen keeps the global dark-content set above.
-            statusBarStyle: 'light',
+            // A light header (DESIGN.md: the accent belongs to data and the
+            // primary action, not to the chrome), separated from the content
+            // by its bottom edge. Dark status-bar icons on it, as on the
+            // header-less Activation screen.
+            headerStyle: { backgroundColor: colors.surface },
+            headerTintColor: colors.textPrimary,
+            headerTitleStyle: { fontWeight: '700', fontSize: 18, color: colors.textPrimary },
+            headerShadowVisible: true,
+            statusBarStyle: 'dark',
             contentStyle: { backgroundColor: colors.background },
           }}
         >
@@ -341,6 +369,7 @@ export default function App({ dependencies }: AppProps): React.JSX.Element {
                     onOpenCampaign={(campaign) =>
                       navigation.navigate('Map', { campaignId: campaign.id })
                     }
+                    subscribeToReturn={(onReturn) => subscribeToReturn(navigation, onReturn)}
                   />
                 )}
               </Stack.Screen>

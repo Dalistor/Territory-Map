@@ -11,29 +11,67 @@ colors:
   surface: "#FFFFFF"
   surface-subtle: "#F8FAFC"
   text-primary: "#10233F"
-  text-secondary: "#5F7088"
+  text-secondary: "#5A6B83"
   border: "#DCE4ED"
   focus: "#1769D1"
   success: "#25834A"
   warning: "#AA6812"
   danger: "#C63D37"
+  # Spec 0018 (Task 02): tokens that already existed in the clients and were
+  # missing here. None changes a value the admins already use.
+  danger-surface: "#FFF1F0"
+  success-surface: "#EEFAF1"
+  warning-surface: "#FFF8E8"
+  success-ink: "#1F7642"
+  warning-ink: "#955B0E"
+  danger-text: "#B91C1C"
+  border-strong: "#B8C6D6"
+  border-input: "#7B8BA1"
+  border-control: "#8696AB"
+  text-placeholder: "#5A6B83"
+  text-tertiary: "#7B8AA0"
+  selection-text: "#123F80"
+  scrim: "rgba(16, 35, 63, 0.5)"
+  map-overlay: "rgba(255, 255, 255, 0.94)"
+  map-label-ink: "#10233F"
 typography:
   interface:
     fontFamily: "-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif"
   data:
     fontFamily: "-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif"
+  mobile:
+    title: "20/700"
+    section: "16/600"
+    body: "15/400"
+    meta: "13/400"
+    small: "12/400"
+    map-label: "11/600"
 rounded:
   DEFAULT: "0.5rem"
   sm: "0.25rem"
   md: "0.5rem"
   lg: "0.75rem"
   pill: "9999px"
+  sheet: "1rem"
 spacing:
   xs: "0.25rem"
   sm: "0.5rem"
+  ms: "0.75rem"
   md: "1rem"
   lg: "1.5rem"
   xl: "2rem"
+shadows:
+  sm: "0 1px 2px 0 rgba(0, 0, 0, 0.05)"
+  md: "0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05)"
+  mobile-sm: "elevation 2"
+  mobile-md: "elevation 6"
+motion:
+  ease-out: "cubic-bezier(0.2, 0.8, 0.2, 1)"
+  duration-fast: "150ms"
+  duration-base: "200ms"
+touch-target:
+  min: "44dp"
+  primary: "48dp"
 components:
   navigation: {}
   query-list: {}
@@ -78,6 +116,38 @@ organizam a densidade; bordas fazem a maior parte do trabalho de separação, e 
 Verde, âmbar e vermelho são reservados a sucesso, andamento/atenção e perigo. Nenhum estado depende
 somente da cor. O foco usa `focus` com contraste visível. As cores próprias do estado das quadras
 continuam no domínio e não pertencem a esta paleta de interface.
+
+### Contrast rules (spec 0018)
+
+Every tier that carries words reaches 4.5:1 on the surface it sits on, placeholders included.
+
+- `text-secondary` (`#5A6B83`) passes on `surface` (5,43:1), `surface-subtle` and `primary-soft`
+  (4,79:1). It replaced `#5F7088`, which fell to 4,45:1 on the selected/blue-soft tint.
+- `text-placeholder` = `text-secondary`. Lighter greys (`#94A3B8`, 2,3–2,6:1) are banned as text.
+- `text-tertiary` (`#7B8AA0`, 3,10–3,51:1) is **non-text only** (icons, decorative rules). The
+  admin desktop still uses it for `.cell-sub`, `.cell-muted` and `.block-status-forced`; those
+  classes must move to `text-secondary` (audit 0018, admin global, first row).
+- `success` and `warning` do not reach 4.5:1 on their own surfaces (4,43 and 4,22:1): text on
+  those surfaces uses `success-ink` / `warning-ink` (5,25:1 each). `danger` on `danger-surface`
+  passes (4,63:1); `danger-text` (5,91:1) is the stronger ink the admin app adopts.
+- Input and control edges need 3:1 against their background: `border-input` (3,47:1) on mobile,
+  `border-control` (3,02:1) on desktop. `border` (`#DCE4ED`) only separates surfaces.
+- Over the block-status colours of the map (domain, unchanged) the number ink is chosen per
+  colour: white on red and green, `map-label-ink` on the overdue orange (5,11:1; white there is
+  3,08:1).
+
+### Mobile (Android)
+
+The two Android apps use the same palette with `canvas-mobile` as the screen ground and white
+surfaces bordered by `border`. Controls 8 dp, panels 12 dp, chips full, and `sheet` (16) only on
+the top corners of a bottom sheet. Type follows `typography.mobile`; nothing under 12 except the
+map's own labels and attribution (11). Every pressable control is at least `touch-target.min`
+(44 dp) tall; primary buttons use `touch-target.primary` (48 dp). Headers are light (`surface`,
+`text-primary` title 18/700, bottom edge), never filled with `primary`. Shadows (`mobile-sm`,
+`mobile-md`) are only for what floats: the card over the map, a modal, a map overlay. Controls over
+the map (legend, labels, attribution) sit on `map-overlay` with a `border` edge. Modals use `scrim`.
+
+`rounded.sm` is 4 px here; the admin desktop still uses 6 px (`--radius-sm`) and should align.
 
 ## Typography
 

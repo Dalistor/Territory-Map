@@ -14,7 +14,7 @@
 .search-field-control {
   align-items: center;
   background: var(--surface-raised);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius, 8px);
   display: flex;
   min-height: 2.625rem;
@@ -113,15 +113,22 @@
 }
 
 .data-table th {
-  background: var(--surface-subtle);
+  /* Opaque so rows scrolling under the sticky header stay hidden; same tone as
+     the table, no band. The header's rule is the strongest line in the table. */
+  background: var(--surface-raised);
+  border-bottom-color: var(--border-strong);
   color: var(--text-secondary);
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-size: 0.8125rem;
+  font-weight: 600;
   position: sticky;
-  text-transform: uppercase;
   top: 0;
   z-index: 1;
+}
+
+.data-table th.cell-number,
+.data-table td.cell-number {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .data-table tbody tr:last-child td {

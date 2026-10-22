@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { ApiError } from '../../data/api-client';
 import { campaignLabel } from '../../domain/assignment';
 import type { Block, Territory } from '../../domain/models';
-import { QuerySegmentedControl } from '../components';
+import { Button, QuerySegmentedControl, QueryState } from '../components';
 import { colors, radius, spacing } from '../theme';
 import { AssignmentPanel } from './AssignmentPanel';
 import type { AssignmentPanelApi, AssignmentPanelSession } from './AssignmentPanel';
@@ -12,8 +12,11 @@ import { BlockPanel } from './BlockPanel';
 import type { BlockPanelApi } from './BlockPanel';
 import { BlocksScreen } from './BlocksScreen';
 import type { BlocksScreenApi } from './BlocksScreen';
+import { formatDate } from './BlockWorkSection';
+import { blockCountLabel } from './DesignationsScreen';
+import type { TerritoryDetailSegment } from './DesignationsScreen';
 
-type DetailSegment = 'assignments' | 'blocks';
+type DetailSegment = TerritoryDetailSegment;
 
 const DETAIL_SEGMENTS = [
   { value: 'assignments', label: 'Designações' },
@@ -35,6 +38,8 @@ export interface TerritoryDetailScreenProps {
   readonly api: TerritoryDetailScreenApi;
   /** The stack uses this to return instead of retaining a record deleted elsewhere. */
   readonly onTerritoryRemoved?: () => void;
+  /** Which segment opens first: the map and the row's "Quadras" open the blocks. */
+  readonly initialSegment?: DetailSegment;
 }
 
 function messageFor(error: unknown): string {
@@ -53,9 +58,10 @@ export function TerritoryDetailScreen({
   session,
   api,
   onTerritoryRemoved,
+  initialSegment = 'assignments',
 }: TerritoryDetailScreenProps): React.JSX.Element {
   const [territory, setTerritory] = useState<Territory | null>(null);
-  const [segment, setSegment] = useState<DetailSegment>('assignments');
+  const [segment, setSegment] = useState<DetailSegment>(initialSegment);
   const [selectedBlock, setSelectedBlock] = useState<Block | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -90,6 +96,18 @@ export function TerritoryDetailScreen({
     }
   }, [selectedBlock, territory]);
 
+  // The block detail is state inside this screen, not a stack route, so the
+  // hardware back would leave the whole territory. While a block is open it
+  // closes the block instead and lands back on the blocks (UX-CONTRACT).
+  useEffect(() => {
+    if (selectedBlock === null) return undefined;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      setSelectedBlock(null);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [selectedBlock]);
+
   const handleChanged = useCallback(async () => {
     await loadTerritory();
   }, [loadTerritory]);
@@ -99,13 +117,13 @@ export function TerritoryDetailScreen({
     if (currentBlock !== undefined) {
       return (
         <View style={styles.blockDetail}>
-          <Pressable
-            accessibilityRole="button"
+          <Button
+            label="← Quadras"
+            variant="quiet"
             accessibilityLabel="Voltar para as quadras"
             onPress={() => setSelectedBlock(null)}
-            style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
-            <Text style={styles.backButtonText}>← Quadras</Text>
-          </Pressable>
+            style={styles.backButton}
+          />
           <BlockPanel
             block={currentBlock}
             territory={territory}
@@ -119,16 +137,22 @@ export function TerritoryDetailScreen({
   }
 
   if (isLoading && territory === null) {
-    return <View style={styles.centered}><ActivityIndicator accessibilityLabel="Carregando território" color={colors.primary} /></View>;
+    return (
+      <View style={styles.centered}>
+        <QueryState kind="loading" title="Carregando território" message="Aguarde um momento." />
+      </View>
+    );
   }
 
   if (error !== null || territory === null) {
     return (
       <View style={styles.centered}>
-        <Text accessibilityRole="alert" style={styles.error}>{error ?? 'Este território não está mais disponível.'}</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel="Tentar novamente" onPress={() => { loadTerritory(); }} style={styles.retryButton}>
-          <Text style={styles.retryText}>Tentar novamente</Text>
-        </Pressable>
+        <QueryState
+          kind="error"
+          title="Não foi possível carregar"
+          message={error ?? 'Este território não está mais disponível.'}
+          onRetry={() => { loadTerritory(); }}
+        />
       </View>
     );
   }
@@ -144,6 +168,14 @@ export function TerritoryDetailScreen({
               ? 'Disponível para designação'
               : `Dirigente atual: ${territory.assignedPublisher.name}`}
         </Text>
+        <Text style={styles.summaryMeta}>
+          {[
+            blockCountLabel(territory.blocks.length),
+            territory.lastWork
+              ? `Último trabalho: ${formatDate(territory.lastWork.workedAt)}`
+              : 'Nunca trabalhado',
+          ].join(' · ')}
+        </Text>
       </View>
       <QuerySegmentedControl
         accessibilityLabel="Detalhes do território"
@@ -152,13 +184,21 @@ export function TerritoryDetailScreen({
         onChange={value => setSegment(value as DetailSegment)}
       />
       {segment === 'assignments' ? (
-        <AssignmentPanel territory={territory} session={session} api={api} onChanged={handleChanged} scrollable={false} />
+        <AssignmentPanel
+          territory={territory}
+          session={session}
+          api={api}
+          onChanged={handleChanged}
+          scrollable={false}
+          showTitle={false}
+        />
       ) : (
         <BlocksScreen
           territory={territory}
           session={session}
           api={api}
           scrollable={false}
+          showTitle={false}
           onOpenBlock={setSelectedBlock}
         />
       )}
@@ -170,16 +210,12 @@ const styles = StyleSheet.create({
   screen: { backgroundColor: colors.background, flex: 1 },
   content: { gap: spacing.md, padding: spacing.md, paddingBottom: spacing.xl },
   summary: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, padding: spacing.md },
-  title: { color: colors.textPrimary, fontSize: 21, fontWeight: '700' },
-  summaryText: { color: colors.textSecondary, fontSize: 14, marginTop: spacing.xs },
-  centered: { alignItems: 'center', backgroundColor: colors.background, flex: 1, justifyContent: 'center', padding: spacing.lg },
-  error: { backgroundColor: colors.dangerSurface, borderColor: colors.dangerBorder, borderRadius: radius.md, borderWidth: 1, color: colors.danger, padding: spacing.md },
-  retryButton: { backgroundColor: colors.primary, borderRadius: radius.sm, marginTop: spacing.md, minHeight: 48, paddingHorizontal: spacing.md, justifyContent: 'center' },
-  retryText: { color: colors.onPrimary, fontWeight: '600' },
+  title: { color: colors.textPrimary, fontSize: 20, fontWeight: '700' },
+  summaryText: { color: colors.textPrimary, fontSize: 15, marginTop: spacing.xs },
+  summaryMeta: { color: colors.textSecondary, fontSize: 13, marginTop: spacing.xs },
+  centered: { backgroundColor: colors.background, flex: 1, justifyContent: 'center', padding: spacing.md },
   blockDetail: { backgroundColor: colors.background, flex: 1 },
-  backButton: { minHeight: 48, justifyContent: 'center', paddingHorizontal: spacing.md },
-  backButtonText: { color: colors.primary, fontWeight: '600' },
-  pressed: { opacity: 0.6 },
+  backButton: { alignSelf: 'flex-start', marginLeft: spacing.sm, marginTop: spacing.xs },
 });
 
 export default TerritoryDetailScreen;

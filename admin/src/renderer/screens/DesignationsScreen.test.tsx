@@ -4,10 +4,11 @@
 // screen test in this folder follows.
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { IpcApi } from '../../shared/ipc-contract'
 import type { Assignment, Publisher, Territory } from '../../shared/models'
 import { DesignationsScreen } from './DesignationsScreen'
+import { answerConfirm } from '../components/ConfirmDialog.testing'
 
 // The real AssignmentsMap pulls in react-leaflet, which needs a real DOM
 // layout jsdom does not provide. This screen's own job -- the summary, the
@@ -67,7 +68,7 @@ function makeAssignment(overrides: Partial<Assignment> = {}): Assignment {
 /** The same formatting the screen uses, so the expectation does not hard-code
  * a locale the test runner may not have. */
 function asDate(date: Date): string {
-  return date.toLocaleDateString()
+  return date.toLocaleDateString('pt-BR')
 }
 
 type DeepPartialIpcApi = {
@@ -152,15 +153,8 @@ function makeApi(overrides: DeepPartialIpcApi = {}): IpcApi {
   }
 }
 
-let confirmSpy: ReturnType<typeof vi.spyOn>
-
-beforeEach(() => {
-  confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
-})
-
 afterEach(() => {
   vi.unstubAllGlobals()
-  confirmSpy.mockRestore()
 })
 
 describe('DesignationsScreen loading and summary', () => {
@@ -183,7 +177,7 @@ describe('DesignationsScreen loading and summary', () => {
 
     render(<DesignationsScreen />)
 
-    expect(await screen.findByText('1 de 2 territórios designados')).toBeInTheDocument()
+    expect(await screen.findByText('1 de 2 territórios designados · 1 livre')).toBeInTheDocument()
     const user = userEvent.setup()
     await user.click(
       within(screen.getByRole('radiogroup', { name: 'Visualização' })).getByRole('radio', {
@@ -218,7 +212,7 @@ describe('DesignationsScreen loading and summary', () => {
 
     await user.click(screen.getByRole('button', { name: /recarregar/i }))
 
-    expect(await screen.findByText('0 de 1 territórios designados')).toBeInTheDocument()
+    expect(await screen.findByText('0 de 1 territórios designados · 1 livre')).toBeInTheDocument()
     expect(listWithBlocks).toHaveBeenCalledTimes(2)
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
@@ -484,7 +478,8 @@ describe('DesignationsScreen assignment history panel', () => {
       await within(panel).findByRole('combobox', { name: 'Publicador' }),
       await within(panel).findByRole('option', { name: 'Ana' })
     )
-    await user.click(within(panel).getByRole('button', { name: /^designar$/i }))
+    await user.click(within(panel).getByRole('button', { name: /^designar publicador$/i }))
+    await answerConfirm(user, true)
 
     await waitFor(() => expect(designate).toHaveBeenCalledWith('territory-1', 'p1'))
     // Both the history and the territory list are refreshed: the
@@ -506,11 +501,11 @@ describe('DesignationsScreen assignment history panel', () => {
       await within(panel).findByRole('combobox', { name: 'Publicador' }),
       await within(panel).findByRole('option', { name: 'Ana' })
     )
-    await user.click(within(panel).getByRole('button', { name: /^designar$/i }))
+    await user.click(within(panel).getByRole('button', { name: /^designar publicador$/i }))
 
-    expect(confirmSpy).toHaveBeenCalledTimes(1)
-    expect(confirmSpy.mock.calls[0][0]).toMatch(/Bia/)
-    expect(confirmSpy.mock.calls[0][0]).toMatch(/encerrada/i)
+    const message = await answerConfirm(user, true)
+    expect(message).toMatch(/Bia/)
+    expect(message).toMatch(/encerrada/i)
   })
 
   it('"Marcar como concluído" calls complete once confirmed, and nothing when refused', async () => {
@@ -526,12 +521,12 @@ describe('DesignationsScreen assignment history panel', () => {
     const user = userEvent.setup()
 
     const panel = await openPanel()
-    confirmSpy.mockReturnValue(false)
     await user.click(await within(panel).findByRole('button', { name: /marcar como concluído/i }))
+    await answerConfirm(user, false)
     expect(complete).not.toHaveBeenCalled()
 
-    confirmSpy.mockReturnValue(true)
     await user.click(within(panel).getByRole('button', { name: /marcar como concluído/i }))
+    await answerConfirm(user, true)
 
     await waitFor(() => expect(complete).toHaveBeenCalledWith('territory-1'))
     await waitFor(() => expect(listWithBlocks).toHaveBeenCalledTimes(2))
@@ -552,15 +547,15 @@ describe('DesignationsScreen assignment history panel', () => {
       name: /apagar designação de ana/i
     })
 
-    confirmSpy.mockReturnValue(false)
     await user.click(deleteButton)
+    await answerConfirm(user, false)
     expect(deleteAssignment).not.toHaveBeenCalled()
 
-    confirmSpy.mockReturnValue(true)
     await user.click(deleteButton)
+    const message = await answerConfirm(user, true)
 
     await waitFor(() => expect(deleteAssignment).toHaveBeenCalledWith('territory-1', 'a-closed'))
-    expect(confirmSpy.mock.calls.at(-1)?.[0]).toMatch(/histórico/i)
+    expect(message).toMatch(/histórico/i)
   })
 
   it('allows editing current and past assignments via modal', async () => {
@@ -647,6 +642,7 @@ describe('DesignationsScreen assignment history panel', () => {
 
     const panel = await openPanel()
     await user.click(await within(panel).findByRole('button', { name: /marcar como concluído/i }))
+    await answerConfirm(user, true)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Designação não encontrada.')
     expect(screen.getByRole('table', { name: 'Territórios' })).toBeInTheDocument()
@@ -685,7 +681,7 @@ describe('DesignationsScreen assignment history panel', () => {
     expect(
       within(panel).queryByRole('button', { name: /marcar como concluído/i })
     ).not.toBeInTheDocument()
-    expect(within(panel).getByRole('button', { name: 'Designar' })).toBeDisabled()
+    expect(within(panel).getByRole('button', { name: 'Designar publicador' })).toBeDisabled()
     expect(within(panel).getByText(/conclua a campanha ou tire o território dela/)).toBeVisible()
     expect(
       within(screen.getByRole('table', { name: 'Territórios' })).getByText('Campanha: Celebração')
@@ -720,11 +716,11 @@ describe('DesignationsScreen assignment history panel', () => {
       await within(panel).findByRole('combobox', { name: 'Publicador' }),
       await within(panel).findByRole('option', { name: 'Ana' })
     )
-    await user.click(within(panel).getByRole('button', { name: /^designar$/i }))
+    await user.click(within(panel).getByRole('button', { name: /^designar publicador$/i }))
 
     await waitFor(() => expect(designate).toHaveBeenCalledWith('territory-1', 'p1'))
     // Nothing is being replaced, so there is nothing to warn about.
-    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(document.querySelector('.confirm-dialog')).toBeNull()
   })
 
   it('does not offer deactivated publishers, nor the current leader, to designate', async () => {

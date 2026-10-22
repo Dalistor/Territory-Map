@@ -114,10 +114,11 @@ describe('PublisherHistoryScreen', () => {
 
     expect(await screen.findByText('Centro - N5')).toBeOnTheScreen();
     expect(screen.queryByText('Ana como estava no histórico')).not.toBeOnTheScreen();
-    expect(screen.getByText('Em andamento')).toBeOnTheScreen();
-    expect(screen.getByText('RETIRADA')).toBeOnTheScreen();
+    // The status pill and the missing return date both say it.
+    expect(screen.getAllByText('Em andamento')).toHaveLength(2);
+    expect(screen.getByText('Retirada')).toBeOnTheScreen();
     expect(screen.getByText('01/08/2026')).toBeOnTheScreen();
-    expect(screen.getByText('DEVOLUÇÃO')).toBeOnTheScreen();
+    expect(screen.getByText('Devolução')).toBeOnTheScreen();
 
     fireEvent.press(screen.getByRole('button', { name: 'Próxima página' }));
 
