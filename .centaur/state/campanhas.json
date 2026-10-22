@@ -40,7 +40,10 @@
         "ev-db6e0acdd6744f43952a1a8854954768"
       ],
       "delivery": {
-        "stage": "local"
+        "stage": "integrated",
+        "reference": "main local, commit a01054d",
+        "revision": "a01054d",
+        "at": "2026-10-22"
       },
       "specs": [
         "master/0017"
@@ -82,10 +85,13 @@
         }
       ],
       "evidence": [
-        "ev-dfa4b59be8fd44a981e1f86a6186fc47"
+        "ev-e85424cbf1744292beaeeff0ff393c19"
       ],
       "delivery": {
-        "stage": "local"
+        "stage": "integrated",
+        "reference": "main local, commit a01054d",
+        "revision": "a01054d",
+        "at": "2026-10-22"
       },
       "specs": [
         "master/0017"
@@ -127,10 +133,13 @@
         }
       ],
       "evidence": [
-        "ev-093b888dcc9d40e4893ef277af439986"
+        "ev-c754a6f3854e48b180f8704d254308cd"
       ],
       "delivery": {
-        "stage": "local"
+        "stage": "integrated",
+        "reference": "main local, commit a01054d",
+        "revision": "a01054d",
+        "at": "2026-10-22"
       },
       "specs": [
         "master/0017"
@@ -172,10 +181,13 @@
         }
       ],
       "evidence": [
-        "ev-f99d929765604fea97368bd5cd6b6b5a"
+        "ev-858707e7dcc74bfcad7dc945b062cbd6"
       ],
       "delivery": {
-        "stage": "local"
+        "stage": "integrated",
+        "reference": "main local, commit a01054d",
+        "revision": "a01054d",
+        "at": "2026-10-22"
       },
       "specs": [
         "master/0017"
@@ -217,10 +229,13 @@
         }
       ],
       "evidence": [
-        "ev-203384729c4d422fa70735da8c453250"
+        "ev-34920bd7bed04ee5929f58bc0e1ade7c"
       ],
       "delivery": {
-        "stage": "local"
+        "stage": "integrated",
+        "reference": "main local, commit a01054d",
+        "revision": "a01054d",
+        "at": "2026-10-22"
       },
       "specs": [
         "master/0017"
@@ -262,10 +277,13 @@
         }
       ],
       "evidence": [
-        "ev-d066db17631a4a8ab869e2b7145e7667"
+        "ev-280b7ccdacf34fbc87315da7e29085eb"
       ],
       "delivery": {
-        "stage": "local"
+        "stage": "integrated",
+        "reference": "main local, commit a01054d",
+        "revision": "a01054d",
+        "at": "2026-10-22"
       },
       "specs": [
         "master/0017"
@@ -292,7 +310,10 @@
         "ev-c48f50b606054da8bf52101c3a387234"
       ],
       "delivery": {
-        "stage": "local"
+        "stage": "integrated",
+        "reference": "main local, commit a01054d",
+        "revision": "a01054d",
+        "at": "2026-10-22"
       },
       "specs": [
         "master/0017"
@@ -325,7 +346,10 @@
         "ev-322e6467a63a441ab01801d227b157c2"
       ],
       "delivery": {
-        "stage": "local"
+        "stage": "integrated",
+        "reference": "main local, commit a01054d",
+        "revision": "a01054d",
+        "at": "2026-10-22"
       },
       "specs": [
         "master/0017"
@@ -352,7 +376,10 @@
         "ev-756c30735a804205bd6afeaeb9bbceae"
       ],
       "delivery": {
-        "stage": "local"
+        "stage": "integrated",
+        "reference": "main local, commit a01054d",
+        "revision": "a01054d",
+        "at": "2026-10-22"
       },
       "specs": [
         "master/0017"
@@ -385,7 +412,10 @@
         "ev-149df431614a4415a7f1cea85c1aa5a0"
       ],
       "delivery": {
-        "stage": "local"
+        "stage": "integrated",
+        "reference": "main local, commit a01054d",
+        "revision": "a01054d",
+        "at": "2026-10-22"
       },
       "specs": [
         "master/0017"

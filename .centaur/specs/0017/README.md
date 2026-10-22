@@ -1,7 +1,7 @@
 # [0017] Campanhas: vários territórios designados a vários publicadores
 
 **Data:** 2026-10-22
-**Status:** Em revisão
+**Status:** Concluída
 **Escopo:** master
 **Responsável:** dalistor
 **Contrato:** campanhas@1
@@ -215,7 +215,7 @@ as linhas dela nos cartões S-13 (CASCADE) — o trabalho das quadras fica.
 - App (0247): `listCampaigns` (não `getCampaigns`); aba "Histórico de Trabalho" encurtada para "Histórico" para caberem três abas; 403 `territory_not_assigned` tem mensagem própria e recarrega.
 - App admin (0248): detalhe da campanha em tela de pilha (`CampaignDetailScreen`); corrigido um erro de tipo pré-existente em `domain/appUpdate.ts` que quebrava o typecheck.
 - Gates: servidor 722 testes (services 100%), admin 608, app 146, admin-app 341. Lint do `app/` mantém 2 erros pré-existentes fora do escopo.
-- Pendente para concluir: integração (commit autorizado) e verificação manual em `npm run dev` e em emulador Android (JDK 17 ausente).
+- Integrada em `main` no commit `a01054d` (autorizado pelo usuário em 2026-10-22); `--complete` verde. Verificação manual em `npm run dev` e em emulador Android (JDK 17 ausente) segue pendente, registrada nas notas de CMP-08/09. Não publicada.
 
 ## Checklist de conclusão
 - [x] Task 01 — Esquema de campanhas e linha de campanha no histórico → implements/0241
