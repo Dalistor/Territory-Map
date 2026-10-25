@@ -195,6 +195,7 @@ function parseTerritory(json: Record<string, unknown>): Territory {
     blocks: blocks.map(parseBlock),
     assignedUser: assignedUser ? parsePublisherBrief(assignedUser) : undefined,
     rotationDays: parseOptionalNumber(json.rotation_days),
+    assignedSince: parseOptionalDate(json.assigned_since),
     campaign: campaign ? parseCampaignBrief(campaign) : undefined,
   };
 }

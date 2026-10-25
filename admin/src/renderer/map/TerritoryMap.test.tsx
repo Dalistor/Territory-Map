@@ -57,7 +57,7 @@ describe('TerritoryMap block colours', () => {
   it('shows the three block status labels in its accessible legend', () => {
     render(<TerritoryMap territories={[]} now={NOW} />)
 
-    expect(screen.getByText('Nunca trabalhada')).toBeInTheDocument()
+    expect(screen.getByText('A trabalhar')).toBeInTheDocument()
     expect(screen.getByText('Vencida')).toBeInTheDocument()
     expect(screen.getByText('Em dia')).toBeInTheDocument()
   })
@@ -72,5 +72,16 @@ describe('TerritoryMap block colours', () => {
     render(<TerritoryMap territories={[makeTerritory(makeBlock(45))]} now={NOW} />)
 
     expect(blockColor()).toBe(CATEGORY_COLOR.recent)
+  })
+
+  it('draws red a block last worked before the territory was designated', () => {
+    const territory = {
+      ...makeTerritory(makeBlock(10)),
+      assignedSince: new Date(NOW.getTime() - 3 * DAY_MS)
+    }
+
+    render(<TerritoryMap territories={[territory]} now={NOW} />)
+
+    expect(blockColor()).toBe(CATEGORY_COLOR.never)
   })
 })

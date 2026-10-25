@@ -136,4 +136,33 @@ describe('blockColorCategory with a status the admin forced', () => {
       blockColorCategory(neverWorked, now, 30)
     )
   })
+
+  describe('while the territory is designated', () => {
+    const today = new Date(2026, 9, 25, 12)
+    const assignedSince = new Date(2026, 9, 20, 15)
+
+    it('is "never" when the block was last worked before the designation', () => {
+      const block = makeBlock({ lastWorkedAt: new Date(2026, 9, 19, 10) })
+
+      expect(blockColorCategory(block, today, undefined, assignedSince)).toBe('never')
+    })
+
+    it('is "recent" when worked on the day of the designation, even earlier that day', () => {
+      const block = makeBlock({ lastWorkedAt: new Date(2026, 9, 20, 0) })
+
+      expect(blockColorCategory(block, today, undefined, assignedSince)).toBe('recent')
+    })
+
+    it('stays "recent" past the rotation once worked during the designation', () => {
+      const block = makeBlock({ lastWorkedAt: new Date(2026, 9, 21) })
+
+      expect(blockColorCategory(block, new Date(2027, 9, 21), 30, assignedSince)).toBe('recent')
+    })
+
+    it('still honours a status the admin forced', () => {
+      const block = makeBlock({ lastWorkedAt: new Date(2026, 9, 21), statusOverride: 'overdue' })
+
+      expect(blockColorCategory(block, today, undefined, assignedSince)).toBe('overdue')
+    })
+  })
 })

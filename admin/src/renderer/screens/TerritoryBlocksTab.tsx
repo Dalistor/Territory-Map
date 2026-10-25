@@ -16,7 +16,7 @@ import { Icon } from '../components/Icon'
 import { SegmentedControl } from '../components/SegmentedControl'
 import { BlockWorkPanel } from './BlockWorkPanel'
 import {
-  BLOCK_STATUS_LABEL,
+  blockStatusLabel,
   daysSince,
   formatDaysAgo,
   fromDateInputValue,
@@ -205,7 +205,12 @@ export function TerritoryBlocksTab({
             </thead>
             <tbody>
               {blocks.map((block) => {
-                const category = blockColorCategory(block, today, territory.rotationDays)
+                const category = blockColorCategory(
+                  block,
+                  today,
+                  territory.rotationDays,
+                  territory.assignedSince
+                )
                 const isForced = block.statusOverride !== undefined && block.statusOverride !== null
                 const isOpen = openBlockId === block.id
                 return (
@@ -229,7 +234,7 @@ export function TerritoryBlocksTab({
                             style={{ background: CATEGORY_COLOR[category] }}
                             aria-hidden="true"
                           />
-                          {BLOCK_STATUS_LABEL[category]}
+                          {blockStatusLabel(block, category)}
                           {isForced && <span className="block-status-forced"> (forçado)</span>}
                         </span>
                       </td>

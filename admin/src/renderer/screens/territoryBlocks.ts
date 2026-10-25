@@ -8,10 +8,25 @@ import type { BlockColorCategory } from '../map/blockColor'
 const DAY_MS = 24 * 60 * 60 * 1000
 
 /** The map's three colours, said out loud -- the table never relies on colour alone. */
-export const BLOCK_STATUS_LABEL: Record<BlockColorCategory, string> = {
-  never: 'Nunca trabalhada',
+const BLOCK_STATUS_LABEL: Record<BlockColorCategory, string> = {
+  // Red is "never worked" or "not worked since the designation began".
+  never: 'A trabalhar',
   overdue: 'Vencida',
   recent: 'Em dia'
+}
+
+/**
+ * The block's category in words. A red block nobody ever visited, or one the
+ * admin forced red, reads "Nunca trabalhada" -- the option the admin picks
+ * when forcing it; any other red is "A trabalhar", which is all a block worked
+ * before the territory was designated is.
+ */
+export function blockStatusLabel(block: Block, category: BlockColorCategory): string {
+  const forced = block.statusOverride !== undefined && block.statusOverride !== null
+  const neverWorked = block.lastWorkedAt === undefined || block.lastWorkedAt === null
+  return category === 'never' && (forced || neverWorked)
+    ? 'Nunca trabalhada'
+    : BLOCK_STATUS_LABEL[category]
 }
 
 export type BlockSortOrder = 'number' | 'longest-unworked'

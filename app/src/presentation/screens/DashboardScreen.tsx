@@ -427,7 +427,9 @@ function WorkedTerritoriesSection({
 /** "12 quadras · 3 vencidas" -- the overdue count uses the same colour rule as the map. */
 function blocksSummary(territory: Territory, now: Date): string {
   const overdue = territory.blocks.filter(
-    (block) => blockColorCategory(block, now, territory.rotationDays) === 'overdue',
+    (block) =>
+      blockColorCategory(block, now, territory.rotationDays, territory.assignedSince) ===
+      'overdue',
   ).length;
   const blocks = plural(territory.blocks.length, 'quadra', 'quadras');
   return overdue === 0 ? blocks : `${blocks} · ${plural(overdue, 'vencida', 'vencidas')}`;

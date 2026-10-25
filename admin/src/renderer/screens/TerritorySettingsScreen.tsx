@@ -3,27 +3,16 @@
 import { Fragment, useMemo, useRef, useState } from 'react'
 import { campaignHolderLabel, type Territory } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
-import type { BlockColorCategory } from '../map/blockColor'
 import { DEFAULT_ROTATION_DAYS, blockColorCategory } from '../map/blockColor'
 import { deleteTerritoryConfirmMessage } from './confirmMessages'
 import { BlockWorkPanel } from './BlockWorkPanel'
+import { blockStatusLabel } from './territoryBlocks'
 import { useConfirm } from '../components/ConfirmDialog'
 
 /** `dd/mm/yyyy` in local time -- the same shape `BlockHistorySheet` shows a visit in. */
 function formatDate(moment: Date): string {
   const two = (value: number): string => value.toString().padStart(2, '0')
   return `${two(moment.getDate())}/${two(moment.getMonth() + 1)}/${moment.getFullYear()}`
-}
-
-/**
- * How each colour of the map reads in words. The table says the status out
- * loud instead of relying on the colour alone -- the same three categories
- * `blockColorCategory` already decides, never a second copy of the rule.
- */
-const CATEGORY_LABEL: Record<BlockColorCategory, string> = {
-  never: 'Nunca trabalhada',
-  overdue: 'Vencida',
-  recent: 'Em dia'
 }
 
 const BLANK_NAME_ERROR_MESSAGE = 'O nome do território não pode ficar em branco.'
@@ -89,7 +78,12 @@ export function TerritorySettingsScreen({
     let never = 0
     let lastVisit: Date | null = null
     for (const block of current.blocks) {
-      const category = blockColorCategory(block, moment, current.rotationDays)
+      const category = blockColorCategory(
+        block,
+        moment,
+        current.rotationDays,
+        current.assignedSince
+      )
       if (category === 'overdue') overdue += 1
       if (category === 'never') never += 1
       const workedAt = block.lastWorkedAt
@@ -98,7 +92,7 @@ export function TerritorySettingsScreen({
       }
     }
     return { total: current.blocks.length, overdue, never, lastVisit }
-  }, [now, current.blocks, current.rotationDays])
+  }, [now, current.blocks, current.rotationDays, current.assignedSince])
 
   // Ordered here rather than trusted from the API: the table is read as a
   // numbered list, and a territory whose blocks came back in creation order
@@ -112,9 +106,9 @@ export function TerritorySettingsScreen({
     const moment = now ?? new Date()
     return sortedBlocks.map((block) => ({
       block,
-      category: blockColorCategory(block, moment, current.rotationDays)
+      category: blockColorCategory(block, moment, current.rotationDays, current.assignedSince)
     }))
-  }, [now, sortedBlocks, current.rotationDays])
+  }, [now, sortedBlocks, current.rotationDays, current.assignedSince])
 
   // Which block has its work panel open, or `null` for none. A single id,
   // not a set: opening another row moves the panel instead of stacking a
@@ -246,7 +240,7 @@ export function TerritorySettingsScreen({
             <dd data-testid="summary-block-count">{summary.total}</dd>
             <dt>Quadras vencidas</dt>
             <dd data-testid="summary-overdue-count">{summary.overdue}</dd>
-            <dt>Quadras nunca trabalhadas</dt>
+            <dt>Quadras a trabalhar</dt>
             <dd data-testid="summary-never-count">{summary.never}</dd>
             <dt>Designado a</dt>
             <dd data-testid="summary-assigned-user">
@@ -298,7 +292,7 @@ export function TerritorySettingsScreen({
                         </button>
                       </td>
                       <td>
-                        {CATEGORY_LABEL[category]}
+                        {blockStatusLabel(block, category)}
                         {block.statusOverride !== undefined && block.statusOverride !== null && (
                           /* Without this the row would silently contradict the
                              date in the next column, and the admin would read

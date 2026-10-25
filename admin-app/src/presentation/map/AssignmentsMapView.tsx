@@ -180,6 +180,7 @@ export function AssignmentsMapView({
         feature.block,
         moment,
         feature.territory.rotationDays,
+        feature.territory.assignedSince,
       ),
     }));
   }, [territories, now]);

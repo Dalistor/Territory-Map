@@ -162,7 +162,10 @@ export function TerritoryMap({
         ))}
         {territories.map((territory) =>
           territory.blocks.map((block) => {
-            const color = CATEGORY_COLOR[blockColorCategory(block, now, territory.rotationDays)]
+            const color =
+              CATEGORY_COLOR[
+                blockColorCategory(block, now, territory.rotationDays, territory.assignedSince)
+              ]
             return (
               <Polygon
                 key={block.id}
@@ -174,7 +177,10 @@ export function TerritoryMap({
         )}
         {territories.map((territory) =>
           territory.blocks.map((block) => {
-            const color = CATEGORY_COLOR[blockColorCategory(block, now, territory.rotationDays)]
+            const color =
+              CATEGORY_COLOR[
+                blockColorCategory(block, now, territory.rotationDays, territory.assignedSince)
+              ]
             return (
               <Marker
                 key={block.id}

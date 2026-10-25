@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Block } from '../../shared/models'
 import {
+  blockStatusLabel,
   daysSince,
   formatDaysAgo,
   fromDateInputValue,
@@ -11,6 +12,31 @@ import {
 function block(number: number, lastWorkedAt?: Date): Block {
   return { id: `b${number}`, number, polygon: [], lastWorkedAt }
 }
+
+describe('blockStatusLabel', () => {
+  const base: Block = { id: 'b', number: 1, polygon: [] }
+
+  it('says a red block worked before is still to be worked', () => {
+    expect(blockStatusLabel({ ...base, lastWorkedAt: new Date(2026, 0, 1) }, 'never')).toBe(
+      'A trabalhar'
+    )
+  })
+
+  it('keeps "Nunca trabalhada" for a block nobody visited, or one forced red', () => {
+    expect(blockStatusLabel(base, 'never')).toBe('Nunca trabalhada')
+    expect(
+      blockStatusLabel(
+        { ...base, lastWorkedAt: new Date(2026, 0, 1), statusOverride: 'never' },
+        'never'
+      )
+    ).toBe('Nunca trabalhada')
+  })
+
+  it('names the other two colours', () => {
+    expect(blockStatusLabel(base, 'overdue')).toBe('Vencida')
+    expect(blockStatusLabel(base, 'recent')).toBe('Em dia')
+  })
+})
 
 describe('sortBlocks', () => {
   const blocks = [

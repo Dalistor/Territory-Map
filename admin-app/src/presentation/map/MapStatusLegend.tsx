@@ -3,7 +3,7 @@ import { BLOCK_CATEGORY_COLOR } from '../../domain/territoryMap';
 import { colors, radius, spacing } from '../theme';
 
 const STATUS_ITEMS = [
-  { label: 'Nunca trabalhada', color: BLOCK_CATEGORY_COLOR.never },
+  { label: 'A trabalhar', color: BLOCK_CATEGORY_COLOR.never },
   { label: 'Vencida', color: BLOCK_CATEGORY_COLOR.overdue },
   { label: 'Em dia', color: BLOCK_CATEGORY_COLOR.recent },
 ] as const;
@@ -14,7 +14,7 @@ export function MapStatusLegend(): React.JSX.Element {
     <View
       accessible
       accessibilityRole="text"
-      accessibilityLabel="Legenda de status das quadras: Nunca trabalhada, Vencida, Em dia"
+      accessibilityLabel="Legenda de status das quadras: A trabalhar, Vencida, Em dia"
       pointerEvents="none"
       style={styles.container}
     >

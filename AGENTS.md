@@ -665,6 +665,20 @@ deliberadamente idênticos — `admin/src/renderer/map/blockColor.ts`, `app/src/
 outros faz a mesma quadra ter cor diferente na mesa do admin, no celular dele e no celular do
 publicador. Exatamente no limiar a quadra ainda é recente; só estritamente acima vira vencida.
 
+**Designar reinicia o ciclo** (2026-10-25, pedido do dono do projeto). Enquanto o território tem
+designação aberta — de um dirigente ou de uma campanha —, toda quadra que **não foi trabalhada desde o
+dia da designação** fica **vermelha**, e a que foi trabalhada desde então fica **verde até a
+designação ser concluída**; o laranja da rotação só vale para território sem designação aberta. A
+comparação é por **dia de calendário**, não por instante: o admin lança trabalho por data (meia-noite),
+e uma quadra trabalhada no próprio dia da designação não pode ficar vermelha. O que decide é o
+`assigned_since` do território — o `started_at` da linha aberta do cartão S-13 —, que as rotas
+`/admin/*` já devolviam e que `GET /app/territories` passou a devolver também, porque o app do
+publicador pinta o mapa sozinho, a partir do cache. O vermelho agora tem dois sentidos, então os
+clientes o chamam de **"A trabalhar"** na legenda e nas listas, guardando "Nunca trabalhada" para a
+quadra que nunca teve registro ou que o admin forçou para vermelho. Na confirmação de marcar, o app do
+publicador mostra **primeiro a data do último trabalho** — com tudo vermelho depois de designar, a cor
+deixou de dizer se alguém já passou por ali.
+
 Acima de tudo isso vem o `status_override` da quadra (spec 0010): os clientes o consultam
 **antes** do cálculo por data, então `never` pinta de vermelho e `overdue` de laranja por mais
 recente que seja a última visita, e ausente cai na regra de datas de sempre. Só há esses dois

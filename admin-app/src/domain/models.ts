@@ -107,6 +107,12 @@ export interface Territory {
    * existed.
    */
   readonly rotationDays: number | null;
+  /**
+   * When the designation in force began -- a dirigente's or a campaign's.
+   * Every block not worked since that day shows red (`blockColorCategory`).
+   * `null` (or absent) means nobody holds the territory now.
+   */
+  readonly assignedSince?: Date | null;
   /** `null` means no block in the territory has been worked. */
   readonly lastWork?: LastWorkSummary | null;
   /** Empty on the listing endpoint, populated on the detail one. */

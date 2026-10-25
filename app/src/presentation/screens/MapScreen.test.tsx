@@ -166,6 +166,26 @@ describe('MapScreen marking a block as worked', () => {
     expect(screen.getByText('Marcar quadra 7 como trabalhada?')).toBeTruthy();
   });
 
+  it('says a block worked before the designation is still to be worked, with its last visit', async () => {
+    const designated = { ...territories[0], assignedSince: new Date('2026-08-10T12:00:00Z') };
+    await render(
+      <MapScreen
+        session={session}
+        apiClient={{
+          listTerritories: jest.fn().mockResolvedValue([designated]),
+          markBlockWorked: jest.fn(),
+        }}
+        now={now}
+      />,
+    );
+    await screen.findByText('Santa Helena - N 7');
+
+    await act(async () => mapProps.current?.onBlockTap?.(designated, workedBlock));
+
+    expect(screen.getByText('Última visita: 06/08/2026 (há 12 dias)')).toBeTruthy();
+    expect(screen.getByText('A trabalhar')).toBeTruthy();
+  });
+
   it('shows "Nunca trabalhada" for a block with no visit yet', async () => {
     await render(
       <MapScreen

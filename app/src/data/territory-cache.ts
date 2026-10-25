@@ -27,7 +27,10 @@ const CAMPAIGNS_CACHE_KEY = 'territory-map/campaigns-cache';
 
 /** `Block` as it exists after a JSON round trip: `Date` degrades to `string`. */
 type SerializedBlock = Omit<Block, 'lastWorkedAt'> & { lastWorkedAt?: string };
-type SerializedTerritory = Omit<Territory, 'blocks'> & { blocks: SerializedBlock[] };
+type SerializedTerritory = Omit<Territory, 'blocks' | 'assignedSince'> & {
+  blocks: SerializedBlock[];
+  assignedSince?: string;
+};
 type SerializedCampaign = Omit<Campaign, 'startedAt'> & { startedAt: string };
 
 function reviveBlock(block: SerializedBlock): Block {
@@ -48,6 +51,8 @@ export async function getCachedTerritories(): Promise<Territory[] | null> {
   const parsed = JSON.parse(raw) as SerializedTerritory[];
   return parsed.map((territory) => ({
     ...territory,
+    assignedSince:
+      territory.assignedSince === undefined ? undefined : new Date(territory.assignedSince),
     blocks: territory.blocks.map(reviveBlock),
   }));
 }

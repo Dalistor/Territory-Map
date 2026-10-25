@@ -32,11 +32,22 @@ export type BlockColorCategory = 'never' | 'overdue' | 'recent'
  * the territory never had one configured, and the default of
  * `DEFAULT_ROTATION_DAYS` applies — the behaviour of every territory before
  * the setting existed.
+ *
+ * `assignedSince` is when the territory's designation in force began (a
+ * dirigente's or a campaign's). While there is one, the cycle restarts there:
+ * a block not worked since that day is `'never'` (red, still to be worked by
+ * whoever holds it now) and one worked since is `'recent'` until the
+ * designation is completed — the rotation does not turn it orange meanwhile.
+ * The comparison is by calendar day, because work is recorded here by date
+ * (midnight) and a block worked on the very day of the designation must not
+ * stay red. Absent means nobody holds the territory, and the date rule above
+ * decides. Same rule as `app/` and `admin-app/`.
  */
 export function blockColorCategory(
   block: Block,
   now: Date,
-  rotationDays?: number
+  rotationDays?: number,
+  assignedSince?: Date
 ): BlockColorCategory {
   if (block.statusOverride !== undefined && block.statusOverride !== null) {
     return block.statusOverride
@@ -48,9 +59,19 @@ export function blockColorCategory(
     return 'never'
   }
 
+  if (assignedSince !== undefined && assignedSince !== null) {
+    const lastWorkedAt = now.getTime() - timeSinceWorked
+    return lastWorkedAt >= startOfDay(assignedSince).getTime() ? 'recent' : 'never'
+  }
+
   const overdueAfterMs = (rotationDays ?? DEFAULT_ROTATION_DAYS) * DAY_MS
 
   return timeSinceWorked > overdueAfterMs ? 'overdue' : 'recent'
+}
+
+/** Local midnight of the day `date` falls on. */
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
 }
 
 /**
@@ -59,7 +80,7 @@ export function blockColorCategory(
  * Fast Refresh needs) and so a test can name the category instead of a hex.
  */
 export const CATEGORY_COLOR: Record<BlockColorCategory, string> = {
-  never: '#c62828', // red -- never worked
+  never: '#c62828', // red -- never worked, or not since the designation began
   overdue: '#ef6c00', // orange -- past the territory's rotation
   recent: '#2e7d32' // green -- worked recently
 }

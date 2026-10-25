@@ -179,7 +179,12 @@ export function blockMapFeatures(
         center,
         color:
           BLOCK_CATEGORY_COLOR[
-            blockColorCategory(block, now, territory.rotationDays)
+            blockColorCategory(
+              block,
+              now,
+              territory.rotationDays,
+              territory.assignedSince,
+            )
           ],
         label: String(block.number),
       });

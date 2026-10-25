@@ -161,6 +161,35 @@ async def test_a_territory_arrives_with_its_boundary_and_its_numbered_blocks(
     assert block["last_worked_at"] is None
 
 
+async def test_the_map_says_since_when_each_territory_is_out(
+    client, make_admin, make_publisher, draw, session
+):
+    """The phone paints red every block not worked since the designation began.
+
+    It decides that offline, from the cache, so the start of the open row of the
+    card has to travel with the territory -- and a territory nobody holds says null.
+    """
+    from app.models.territory_assignment import TerritoryAssignment
+
+    congregation, _ = make_admin()
+    user, token = make_publisher(congregation)
+    held, _ = draw(congregation, "Centro", square(-18.90, -48.30))
+    draw(congregation, "Vila", square(5.0, 5.0))
+    started_at = (datetime.now(UTC) - timedelta(days=3)).replace(microsecond=0)
+    session.add(
+        TerritoryAssignment(
+            territory_id=held.id, user_id=user.id, user_name=user.name, started_at=started_at
+        )
+    )
+    session.flush()
+
+    response = await client.get("/app/territories", headers=bearer(token))
+
+    since = {item["name"]: item["assigned_since"] for item in response.json()}
+    assert datetime.fromisoformat(since["Centro"]) == started_at
+    assert since["Vila"] is None
+
+
 async def test_the_map_carries_the_status_the_admin_pinned_on_a_block(
     client, make_admin, make_publisher, draw, session
 ):

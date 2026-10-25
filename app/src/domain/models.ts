@@ -100,6 +100,12 @@ export interface Territory {
    */
   readonly rotationDays?: number
   /**
+   * When the designation in force began -- a dirigente's or a campaign's.
+   * Every block not worked since that day shows red (`blockColorCategory`).
+   * `undefined` means nobody holds the territory now.
+   */
+  readonly assignedSince?: Date
+  /**
    * The active campaign holding this territory, if any. While a campaign
    * holds it, `assignedUser` is always `undefined`: the campaign replaced the
    * individual designation, and who may mark it is answered by the

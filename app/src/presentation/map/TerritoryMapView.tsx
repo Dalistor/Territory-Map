@@ -296,8 +296,14 @@ export function TerritoryMapView({
           .map((block) => {
             // The rotation belongs to the territory that owns the block
             // (spec 0009): a block is only "overdue" against its own
-            // territory's cycle, not against a single global threshold.
-            const category = blockColorCategory(block, effectiveNow, territory.rotationDays);
+            // territory's cycle, not against a single global threshold --
+            // and, while it is designated, against the day it went out.
+            const category = blockColorCategory(
+              block,
+              effectiveNow,
+              territory.rotationDays,
+              territory.assignedSince,
+            );
             return {
               territory,
               block,
@@ -517,7 +523,7 @@ function StatusLegend(): React.JSX.Element {
     <View
       accessible
       accessibilityRole="text"
-      accessibilityLabel="Legenda das quadras: Nunca trabalhada, Vencida, Em dia"
+      accessibilityLabel="Legenda das quadras: A trabalhar, Vencida, Em dia"
       pointerEvents="none"
       style={styles.legend}
     >

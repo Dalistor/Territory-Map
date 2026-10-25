@@ -310,7 +310,7 @@ export function TerritoryDetailDialog({
 
   const counts = territory.blocks.reduce<Record<BlockColorCategory, number>>(
     (total, block) => {
-      total[blockColorCategory(block, today, territory.rotationDays)] += 1
+      total[blockColorCategory(block, today, territory.rotationDays, territory.assignedSince)] += 1
       return total
     },
     { recent: 0, overdue: 0, never: 0 }
@@ -408,7 +408,7 @@ export function TerritoryDetailDialog({
               <span className="dot-label dot-overdue">
                 {counts.overdue} {counts.overdue === 1 ? 'vencida' : 'vencidas'}
               </span>
-              <span className="dot-label dot-never">{counts.never} nunca</span>
+              <span className="dot-label dot-never">{counts.never} a trabalhar</span>
             </span>
           )}
         </div>

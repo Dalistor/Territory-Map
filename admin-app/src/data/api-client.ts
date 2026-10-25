@@ -409,6 +409,7 @@ function parseTerritory(json: Record<string, unknown>): Territory {
     boundary: parseRing(json.boundary),
     assignedPublisher: assignedUser ? parsePublisherBrief(assignedUser) : null,
     rotationDays: (json.rotation_days as number | null | undefined) ?? null,
+    assignedSince: parseOptionalDate(json.assigned_since),
     lastWork: lastWork ? parseLastWork(lastWork) : null,
     blocks: blocks.map(block => parseBlock(block, id)),
     campaign: parseOptionalCampaignBrief(json.campaign),

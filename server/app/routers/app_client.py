@@ -139,6 +139,7 @@ def _territory_out(
     blocks: BlockService,
     last_work: tuple[UUID, str, datetime] | None = None,
     campaign: Campaign | None = None,
+    assigned_since: datetime | None = None,
 ) -> TerritoryOut:
     """One territory with the blocks drawn inside it, ready to be cached offline.
 
@@ -149,6 +150,10 @@ def _territory_out(
 
     `campaign` names the active campaign holding the territory, if any, so the phone
     can tell a territory it may mark through a campaign from one nobody holds.
+
+    `assigned_since` is when the open row of the card began -- a dirigente's or a
+    campaign's. The phone paints red every block not worked since then, offline, so
+    the date travels with the territory like `rotation_days` does.
     """
     return TerritoryOut(
         id=territory.id,
@@ -170,6 +175,7 @@ def _territory_out(
             else None
         ),
         campaign=CampaignBriefOut(id=campaign.id, name=campaign.name) if campaign else None,
+        assigned_since=assigned_since,
     )
 
 
@@ -189,6 +195,7 @@ def list_territories(
     """
     latest_work = territories.latest_work_by_territory(user.congregation_id)
     held_by = assignments.open_campaign_by_territory(user.congregation_id)
+    out_since = assignments.open_started_by_territory(user.congregation_id)
     return [
         _territory_out(
             territory,
@@ -197,6 +204,7 @@ def list_territories(
             blocks,
             last_work=latest_work.get(territory.id),
             campaign=held_by.get(territory.id),
+            assigned_since=out_since.get(territory.id),
         )
         for territory in territories.list(user.congregation_id)
     ]

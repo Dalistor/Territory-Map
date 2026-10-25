@@ -103,13 +103,23 @@ export function BlockPanel({
                 {
                   backgroundColor:
                     BLOCK_CATEGORY_COLOR[
-                      blockColorCategory(block, moment, territory.rotationDays)
+                      blockColorCategory(
+                        block,
+                        moment,
+                        territory.rotationDays,
+                        territory.assignedSince,
+                      )
                     ],
                 },
               ]}
             />
             <Text style={styles.status}>
-              {blockStatusLabel(block, moment, territory.rotationDays)}
+              {blockStatusLabel(
+                block,
+                moment,
+                territory.rotationDays,
+                territory.assignedSince,
+              )}
             </Text>
           </View>
         </View>

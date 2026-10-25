@@ -61,7 +61,9 @@ class TerritoryOut(OutSchema):
     its map offline, from whatever it cached.
 
     `assigned_since` is when the assignment in force started -- the "retirada" date of
-    the S-13 card. Only the admin routes fill it; `None` means nobody has it now.
+    the S-13 card, a dirigente's or a campaign's. Both the admin and the app routes
+    fill it -- the clients paint red every block not worked since that day; `None`
+    means nobody has it now.
 
     `campaign` is the active campaign holding the territory, if any. Then
     `assigned_user` is `None` -- the campaign replaced the dirigente -- and clients show

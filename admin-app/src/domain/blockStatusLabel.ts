@@ -13,7 +13,10 @@ import type { BlockColorCategory } from './blockColor';
  * asking in the field -- whether the block still needs a visit this cycle.
  */
 const CATEGORY_LABEL: Record<BlockColorCategory, string> = {
-  never: 'Nunca trabalhada',
+  // Red is "never worked" or "not worked since the designation began"; the
+  // second reads "A trabalhar", and a block nobody ever visited keeps the more
+  // precise "Nunca trabalhada" (see `blockStatusLabel`).
+  never: 'A trabalhar',
   overdue: 'Vencida',
   recent: 'Em dia',
 };
@@ -25,15 +28,22 @@ const CATEGORY_LABEL: Record<BlockColorCategory, string> = {
  * "recent", so the suffix only ever lands on the two labels above it.
  *
  * `rotationDays` is the rotation of the territory that owns the block, passed
- * straight through to `blockColorCategory` -- `null` or absent means the
+ * straight through to `blockColorCategory`, and so is `assignedSince` -- `null`
+ * or absent means the
  * default rotation.
  */
 export function blockStatusLabel(
   block: Block,
   now: Date,
   rotationDays?: number | null,
+  assignedSince?: Date | null,
 ): string {
-  const label = CATEGORY_LABEL[blockColorCategory(block, now, rotationDays)];
-
-  return block.statusOverride === null ? label : `${label} (forçado)`;
+  const category = blockColorCategory(block, now, rotationDays, assignedSince);
+  const forced = block.statusOverride !== null;
+  // A forced red is the admin's "Nunca trabalhada", the option they picked.
+  const label =
+    category === 'never' && (forced || block.lastWorkedAt === null)
+      ? 'Nunca trabalhada'
+      : CATEGORY_LABEL[category];
+  return forced ? `${label} (forçado)` : label;
 }

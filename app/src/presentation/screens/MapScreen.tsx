@@ -386,7 +386,7 @@ export function MapScreen({
                 <Text style={styles.modalSubtitle}>{confirmTarget.territory.name}</Text>
               </View>
               <BlockStatusBox
-                label="Status recente:"
+                label="Último trabalho:"
                 target={confirmTarget}
                 now={effectiveNow}
               />
@@ -427,7 +427,11 @@ export function MapScreen({
                   Quadra {readOnlyTarget.block.number} — {readOnlyTarget.territory.name}
                 </Text>
               </View>
-              <BlockStatusBox label="Status:" target={readOnlyTarget} now={effectiveNow} />
+              <BlockStatusBox
+                label="Último trabalho:"
+                target={readOnlyTarget}
+                now={effectiveNow}
+              />
               <Text style={styles.readOnlyHint}>
                 Este território não está designado a você — fale com quem cuida dos territórios na
                 congregação para poder marcar quadras aqui.
@@ -455,9 +459,11 @@ export function MapScreen({
 const NO_CAMPAIGNS: readonly Campaign[] = [];
 
 /**
- * The block's status in words (honouring a status the admin forced) and when
- * it was last worked. When the two say the same thing ("Nunca trabalhada"),
- * it is said once.
+ * When the block was last worked and its status in words (honouring a status
+ * the admin forced). The date leads: since a designation repaints every block
+ * red, red alone no longer tells the publisher whether anyone has been there,
+ * and that date is what they check before confirming. When the two say the
+ * same thing ("Nunca trabalhada"), it is said once.
  */
 function BlockStatusBox({
   label,
@@ -468,15 +474,18 @@ function BlockStatusBox({
   readonly target: BlockTarget;
   readonly now: Date;
 }): React.JSX.Element {
-  const status = blockStatusLabel(target.block, now, target.territory.rotationDays);
+  const status = blockStatusLabel(
+    target.block,
+    now,
+    target.territory.rotationDays,
+    target.territory.assignedSince,
+  );
   const lastWorked = describeLastWorked(target.block, now);
   return (
     <View style={styles.modalInfoBox}>
       <Text style={styles.modalInfoLabel}>{label}</Text>
-      {status !== lastWorked && <Text style={styles.modalDetail}>{status}</Text>}
-      <Text style={status === lastWorked ? styles.modalDetail : styles.modalDetailSecondary}>
-        {lastWorked}
-      </Text>
+      <Text style={styles.modalDetail}>{lastWorked}</Text>
+      {status !== lastWorked && <Text style={styles.modalDetailSecondary}>{status}</Text>}
     </View>
   );
 }

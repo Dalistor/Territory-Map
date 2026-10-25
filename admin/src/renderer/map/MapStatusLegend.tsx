@@ -1,7 +1,7 @@
 import { CATEGORY_COLOR } from './blockColor'
 
 const STATUS_ITEMS = [
-  { label: 'Nunca trabalhada', color: CATEGORY_COLOR.never },
+  { label: 'A trabalhar', color: CATEGORY_COLOR.never },
   { label: 'Vencida', color: CATEGORY_COLOR.overdue },
   { label: 'Em dia', color: CATEGORY_COLOR.recent }
 ] as const

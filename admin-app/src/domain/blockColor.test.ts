@@ -106,6 +106,37 @@ describe('blockColorCategory, with a status the admin forced', () => {
   });
 });
 
+describe('blockColorCategory, while the territory is designated', () => {
+  const today = new Date(2026, 9, 25, 12);
+  const assignedSince = new Date(2026, 9, 20, 15);
+
+  it('is never when the block was last worked before the designation', () => {
+    const block = makeBlock(new Date(2026, 9, 19, 10));
+    expect(blockColorCategory(block, today, null, assignedSince)).toBe('never');
+  });
+
+  it('is recent when worked on the day of the designation, even earlier that day', () => {
+    const block = makeBlock(new Date(2026, 9, 20, 0));
+    expect(blockColorCategory(block, today, null, assignedSince)).toBe('recent');
+  });
+
+  it('stays recent past the rotation once worked during the designation', () => {
+    const block = makeBlock(new Date(2026, 9, 21));
+    expect(blockColorCategory(block, new Date(2027, 9, 21), 30, assignedSince)).toBe(
+      'recent',
+    );
+  });
+
+  it('still honours a status the admin forced', () => {
+    const block = makeBlock(new Date(2026, 9, 21), 'overdue');
+    expect(blockColorCategory(block, today, null, assignedSince)).toBe('overdue');
+  });
+
+  it('falls back to the date rule when nobody holds the territory', () => {
+    expect(blockColorCategory(makeBlock(daysBefore(200)), NOW, null, null)).toBe('overdue');
+  });
+});
+
 describe('DEFAULT_ROTATION_DAYS', () => {
   it('is the 120 days that was the only threshold before rotation was configurable', () => {
     expect(DEFAULT_ROTATION_DAYS).toBe(120);

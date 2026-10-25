@@ -23,6 +23,24 @@ function makeBlock(
   };
 }
 
+describe('blockStatusLabel, on a designated territory', () => {
+  const assignedSince = new Date(NOW.getTime() - 5 * DAY_MS);
+
+  it('says a block worked before the designation is still to be worked', () => {
+    expect(blockStatusLabel(makeBlock(daysBefore(10)), NOW, null, assignedSince)).toBe(
+      'A trabalhar',
+    );
+  });
+
+  it('still says a block nobody ever visited has never been worked', () => {
+    expect(blockStatusLabel(makeBlock(null), NOW, null, assignedSince)).toBe('Nunca trabalhada');
+  });
+
+  it('says a block worked during the designation is up to date', () => {
+    expect(blockStatusLabel(makeBlock(daysBefore(1)), NOW, null, assignedSince)).toBe('Em dia');
+  });
+});
+
 describe('blockStatusLabel, on a status the system derived', () => {
   it('says a block with no visit has never been worked', () => {
     expect(blockStatusLabel(makeBlock(null), NOW)).toBe('Nunca trabalhada');

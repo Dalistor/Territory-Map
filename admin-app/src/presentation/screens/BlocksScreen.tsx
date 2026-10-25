@@ -170,8 +170,18 @@ export function BlocksScreen({
         <QueryState kind="empty" title="Sem quadras" message={NO_BLOCKS_MESSAGE} />
       ) : (
         blocks.map(block => {
-          const status = blockStatusLabel(block, moment, current.rotationDays);
-          const category = blockColorCategory(block, moment, current.rotationDays);
+          const status = blockStatusLabel(
+            block,
+            moment,
+            current.rotationDays,
+            current.assignedSince,
+          );
+          const category = blockColorCategory(
+            block,
+            moment,
+            current.rotationDays,
+            current.assignedSince,
+          );
           return (
             <View key={block.id} style={styles.card}>
               <Pressable
