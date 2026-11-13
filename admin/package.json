@@ -1,6 +1,6 @@
 {
   "name": "territory-map-admin",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Territory Map admin — desktop app to draw territories/blocks and manage publishers",
   "main": "./out/main/index.js",
   "private": true,

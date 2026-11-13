@@ -411,6 +411,7 @@ function parseTerritory(json: Record<string, unknown>): Territory {
     rotationDays: (json.rotation_days as number | null | undefined) ?? null,
     assignedSince: parseOptionalDate(json.assigned_since),
     lastWork: lastWork ? parseLastWork(lastWork) : null,
+    lastCompletedAt: parseOptionalDate(json.last_completed_at),
     blocks: blocks.map(block => parseBlock(block, id)),
     campaign: parseOptionalCampaignBrief(json.campaign),
   };

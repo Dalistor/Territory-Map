@@ -49,7 +49,10 @@ export function SearchField({
         <button
           type="button"
           className="search-field-clear"
-          disabled={disabled || value.length === 0}
+          // Only there while there is something to clear: an always-visible
+          // button crowded the field and cut the placeholder short.
+          hidden={value.length === 0}
+          disabled={disabled}
           onClick={clear}
         >
           {clearLabel}

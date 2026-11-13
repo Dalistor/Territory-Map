@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { compareTerritoriesByNumber } from '../../domain/models';
+import { compareTerritoriesByNumber, territoryLastWorked } from '../../domain/models';
 import {
   territoryIsHeld,
   territoryLeaderLabel,
@@ -39,6 +39,7 @@ import type { BlockPanelApi } from './BlockPanel';
 import BlocksScreen from './BlocksScreen';
 import type { BlocksScreenApi } from './BlocksScreen';
 import { formatDate } from './BlockWorkSection';
+import QuickDesignateSheet from './QuickDesignateSheet';
 
 /**
  * How many blocks the territory has, as the row says it. The count is what
@@ -51,6 +52,21 @@ export function blockCountLabel(count: number): string {
     return 'Sem quadras';
   }
   return count === 1 ? '1 quadra' : `${count} quadras`;
+}
+
+/**
+ * "Último trabalho" as the rows and the territory detail say it: the later of
+ * the last block record and the last time the territory was handed back
+ * (`territoryLastWorked`).
+ */
+export function lastWorkedLabel(territory: Territory): string {
+  const last = territoryLastWorked(territory);
+  if (last === null) {
+    return 'Nunca trabalhado';
+  }
+  return last.source === 'work'
+    ? `Último trabalho: ${last.publisher.name} — ${formatDate(last.at)}`
+    : `Último trabalho: devolvido em ${formatDate(last.at)}`;
 }
 
 /**
@@ -142,6 +158,10 @@ const TERRITORY_VIEW_SEGMENTS = [
 ] as const;
 
 const NO_SEARCH_RESULTS_MESSAGE = 'Nenhum território corresponde à busca.';
+const NO_FILTER_RESULTS_MESSAGE = 'Nenhum território nesta situação.';
+
+/** Which territories the list and the map show: all, the free ones, or the ones out. */
+type SituationFilter = 'all' | 'available' | 'held';
 
 /** Which segment the territory detail opens on. */
 export type TerritoryDetailSegment = 'assignments' | 'blocks';
@@ -209,6 +229,11 @@ export function DesignationsScreen({
   const writeInFlight = useRef(false);
   const [view, setView] = useState<TerritoryView>('list');
   const [search, setSearch] = useState('');
+  const [situationFilter, setSituationFilter] = useState<SituationFilter>('all');
+  // The free territory being handed out from its row, by id for the same
+  // reason the detail is: the list reloads after every write.
+  const [designatingTerritoryId, setDesignatingTerritoryId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [selectedTerritoryId, setSelectedTerritoryId] = useState<string | null>(null);
   // Which territory has a detail open and which of the two it is, by id rather
   // than by object: the list is reloaded after every write, and holding the
@@ -234,14 +259,25 @@ export function DesignationsScreen({
 
   const visibleTerritories = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase('pt-BR');
-    if (normalizedSearch === '') return ordered;
-    return ordered.filter(territory =>
+    const inSituation =
+      situationFilter === 'all'
+        ? ordered
+        : ordered.filter(
+            territory => territoryIsHeld(territory) === (situationFilter === 'held'),
+          );
+    if (normalizedSearch === '') return inSituation;
+    return inSituation.filter(territory =>
       [territory.name, territoryLeaderLabel(territory)]
         .join(' ')
         .toLocaleLowerCase('pt-BR')
         .includes(normalizedSearch),
     );
-  }, [ordered, search]);
+  }, [ordered, search, situationFilter]);
+
+  const designatingTerritory =
+    designatingTerritoryId === null
+      ? null
+      : territories.find(territory => territory.id === designatingTerritoryId) ?? null;
 
   // Looked up in the current list, so the detail always holds the freshest copy
   // of the territory; a territory that vanished from a reload closes its own
@@ -391,7 +427,17 @@ export function DesignationsScreen({
 
   const isFirstLoad = !hasLoaded && isRefreshing;
   const searchHasNoResults = ordered.length > 0 && visibleTerritories.length === 0;
-  const clearSearch = useCallback(() => setSearch(''), []);
+  const clearSearch = useCallback(() => {
+    setSearch('');
+    setSituationFilter('all');
+  }, []);
+  const noResultsMessage =
+    search.trim() === '' ? NO_FILTER_RESULTS_MESSAGE : NO_SEARCH_RESULTS_MESSAGE;
+  const situationSegments = [
+    { value: 'all', label: `Todos (${territories.length})` },
+    { value: 'available', label: `Disponíveis (${territories.length - assignedCount})` },
+    { value: 'held', label: `Em campo (${assignedCount})` },
+  ];
 
   return (
     <View style={styles.screen}>
@@ -410,6 +456,14 @@ export function DesignationsScreen({
       </View>
 
       {!isDetailOpen && errorBanner}
+      {!isDetailOpen && notice !== null && (
+        <View style={styles.notice}>
+          <Text accessible accessibilityLiveRegion="polite" style={styles.noticeText}>
+            {notice}
+          </Text>
+          <Button label="OK" variant="quiet" onPress={() => setNotice(null)} />
+        </View>
+      )}
 
       {isFirstLoad ? (
         <View style={styles.stateArea}>
@@ -436,6 +490,12 @@ export function DesignationsScreen({
               segments={TERRITORY_VIEW_SEGMENTS}
               value={view}
               onChange={nextView => setView(nextView as TerritoryView)}
+            />
+            <QuerySegmentedControl
+              accessibilityLabel="Situação dos territórios"
+              segments={situationSegments}
+              value={situationFilter}
+              onChange={next => setSituationFilter(next as SituationFilter)}
             />
             <QuerySearchField
               accessibilityLabel="Buscar territórios"
@@ -470,7 +530,8 @@ export function DesignationsScreen({
                     compact
                     kind="no-results"
                     title="Nenhum território encontrado"
-                    message={NO_SEARCH_RESULTS_MESSAGE}
+                    message={noResultsMessage}
+                    clearLabel="Limpar filtros"
                     onClear={clearSearch}
                   />
                 </View>
@@ -492,7 +553,8 @@ export function DesignationsScreen({
                 <QueryState
                   kind="no-results"
                   title="Nenhum território encontrado"
-                  message={NO_SEARCH_RESULTS_MESSAGE}
+                  message={noResultsMessage}
+                    clearLabel="Limpar filtros"
                   onClear={clearSearch}
                 />
               )}
@@ -561,11 +623,7 @@ export function DesignationsScreen({
                           {blockCountLabel(territory.blocks.length)}
                         </Text>
                         <Text style={styles.meta}>
-                          {territory.lastWork
-                            ? `Último trabalho: ${
-                                territory.lastWork.publisher.name
-                              } — ${formatDate(territory.lastWork.workedAt)}`
-                            : 'Nunca trabalhado'}
+                          {lastWorkedLabel(territory)}
                         </Text>
                       </View>
                     </Pressable>
@@ -578,6 +636,23 @@ export function DesignationsScreen({
                         onPress={() => openTerritoryDetail(territory, 'blocks')}
                         style={styles.cardAction}
                       />
+
+                      {/* A free territory is one tap from being handed out;
+                          replacing a dirigente stays on the S-13 card, where
+                          the warning about closing the current one lives. */}
+                      {situation === 'available' && (
+                        <Button
+                          label="Designar"
+                          variant="quiet"
+                          accessibilityLabel={`Designar ${territory.name}`}
+                          onPress={() => {
+                            setNotice(null);
+                            setSelectedTerritoryId(territory.id);
+                            setDesignatingTerritoryId(territory.id);
+                          }}
+                          style={[styles.cardAction, styles.cardActionDivided]}
+                        />
+                      )}
 
                       {territory.assignedPublisher !== null && (
                         <Button
@@ -597,6 +672,20 @@ export function DesignationsScreen({
             </ScrollView>
           )}
         </>
+      )}
+
+      {designatingTerritory !== null && (
+        <QuickDesignateSheet
+          territory={designatingTerritory}
+          session={session}
+          api={api}
+          onClose={() => setDesignatingTerritoryId(null)}
+          onDesignated={publisherName => {
+            setDesignatingTerritoryId(null);
+            setNotice(`${designatingTerritory.name} designado a ${publisherName}.`);
+            load();
+          }}
+        />
       )}
 
       {/* The detail covers the list instead of replacing it: the list stays
@@ -684,6 +773,23 @@ const styles = StyleSheet.create({
   },
   bannerText: {
     color: colors.dangerText,
+    flex: 1,
+    fontSize: 14,
+    paddingVertical: spacing.sm,
+  },
+  notice: {
+    alignItems: 'center',
+    backgroundColor: colors.successSurface,
+    borderColor: colors.successBorder,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    flexDirection: 'row',
+    margin: spacing.md,
+    marginBottom: 0,
+    paddingLeft: spacing.md,
+  },
+  noticeText: {
+    color: colors.successText,
     flex: 1,
     fontSize: 14,
     paddingVertical: spacing.sm,

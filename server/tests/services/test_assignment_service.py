@@ -698,6 +698,33 @@ def test_open_started_by_territory_maps_each_open_assignment_to_its_start(
     assert free.id not in started
 
 
+def test_last_completed_by_territory_keeps_the_latest_return_of_each_territory(
+    service: AssignmentService,
+    make_congregation,
+    make_territory,
+    make_user,
+) -> None:
+    """The newest completion wins; open stints and other congregations do not count."""
+    congregation = make_congregation()
+    other = make_congregation(name="Norte", city="Contagem")
+    returned = make_territory(congregation.id, "Vila")
+    out = make_territory(congregation.id, "Centro")
+    foreign = make_territory(other.id, "Centro")
+    publisher = make_user(congregation.id)
+    first = service.designate(congregation.id, returned.id, publisher.id, now=EARLIER)
+    service.complete(congregation.id, returned.id)
+    second = service.designate(congregation.id, returned.id, publisher.id)
+    service.complete(congregation.id, returned.id)
+    service.update(congregation.id, first.id, completed_at=EARLIER)
+    service.designate(congregation.id, out.id, publisher.id, now=EARLIER)
+    service.designate(other.id, foreign.id, make_user(other.id).id)
+    service.complete(other.id, foreign.id)
+
+    completed = service.last_completed_by_territory(congregation.id)
+
+    assert completed == {returned.id: second.completed_at}
+
+
 # -- campaign lines on the card ------------------------------------------------------
 
 

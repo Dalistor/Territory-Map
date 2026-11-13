@@ -476,3 +476,20 @@ async def test_listing_and_detail_say_since_when_the_territory_is_out(client, ma
     assert listing[territory["id"]]["assigned_since"] == started_at
     assert detail["assigned_since"] == started_at
     assert listing[free["id"]]["assigned_since"] is None
+    assert listing[territory["id"]]["last_completed_at"] is None
+
+    completed = await client.post(
+        f"/admin/territories/{territory['id']}/assignments/complete", headers=bearer(token)
+    )
+    listing = {
+        item["id"]: item
+        for item in (await client.get("/admin/territories", headers=bearer(token))).json()
+    }
+    detail = (
+        await client.get(f"/admin/territories/{territory['id']}", headers=bearer(token))
+    ).json()
+
+    completed_at = completed.json()["completed_at"]
+    assert listing[territory["id"]]["last_completed_at"] == completed_at
+    assert detail["last_completed_at"] == completed_at
+    assert listing[free["id"]]["last_completed_at"] is None

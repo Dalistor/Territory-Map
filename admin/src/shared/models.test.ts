@@ -15,7 +15,8 @@ import {
   type Publisher,
   type PublisherBrief,
   type Territory,
-  type WorkLog
+  type WorkLog,
+  territoryLastWorked
 } from './models'
 
 function makePublisher(overrides: Partial<Publisher> = {}): Publisher {
@@ -323,5 +324,42 @@ describe('compareTerritoriesByNumber', () => {
 
   it('falls back to the name when two territories share a number', () => {
     expect(sorted(['Vila B - N3', 'Vila A - N3'])).toEqual(['Vila A - N3', 'Vila B - N3'])
+  })
+})
+
+describe('territoryLastWorked', () => {
+  const base = { id: 't', name: 'Centro - N1', boundary: [], blocks: [] }
+  const work = { publisher: { id: 'p', name: 'Ana' }, workedAt: new Date(2026, 8, 2, 9) }
+
+  it('is absent when the territory was never worked nor handed back', () => {
+    expect(territoryLastWorked(base as never)).toBe(undefined)
+  })
+
+  it('takes the day the territory was handed back when it is later than the last block record', () => {
+    const returned = new Date(2026, 10, 1, 21)
+    expect(
+      territoryLastWorked({ ...base, lastWork: work, lastCompletedAt: returned } as never)
+    ).toEqual({
+      source: 'returned',
+      at: returned
+    })
+    expect(territoryLastWorked({ ...base, lastCompletedAt: returned } as never)).toEqual({
+      source: 'returned',
+      at: returned
+    })
+  })
+
+  it('keeps the block record, which names who worked, on the same day or later', () => {
+    const sameDay = new Date(2026, 8, 2, 22)
+    expect(
+      territoryLastWorked({ ...base, lastWork: work, lastCompletedAt: sameDay } as never)
+    ).toEqual({
+      source: 'work',
+      at: work.workedAt,
+      publisher: work.publisher
+    })
+    expect(territoryLastWorked({ ...base, lastWork: work } as never)).toMatchObject({
+      source: 'work'
+    })
   })
 })

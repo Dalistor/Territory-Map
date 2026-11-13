@@ -121,6 +121,7 @@ def territory_out(
     last_work: tuple[UUID, str, datetime] | None = None,
     assigned_since: datetime | None = None,
     campaign: Campaign | None = None,
+    last_completed_at: datetime | None = None,
 ) -> TerritoryOut:
     """A territory as the admin reads it, with its blocks only where they are asked for.
 
@@ -154,6 +155,7 @@ def territory_out(
         ),
         assigned_since=assigned_since,
         campaign=CampaignBriefOut(id=campaign.id, name=campaign.name) if campaign else None,
+        last_completed_at=last_completed_at,
     )
 
 
@@ -195,6 +197,7 @@ def list_territories(
     latest_work = territories.latest_work_by_territory(congregation.id)
     assigned_since = assignments.open_started_by_territory(congregation.id)
     held_by = assignments.open_campaign_by_territory(congregation.id)
+    returned = assignments.last_completed_by_territory(congregation.id)
     return [
         territory_out(
             territories,
@@ -202,6 +205,7 @@ def list_territories(
             last_work=latest_work.get(item.id),
             assigned_since=assigned_since.get(item.id),
             campaign=held_by.get(item.id),
+            last_completed_at=returned.get(item.id),
         )
         for item in territories.list(congregation.id)
     ]
@@ -230,6 +234,9 @@ def get_territory(
         last_work=latest_work.get(territory.id),
         assigned_since=assignments.open_started_by_territory(congregation.id).get(territory.id),
         campaign=assignments.open_campaign_by_territory(congregation.id).get(territory.id),
+        last_completed_at=assignments.last_completed_by_territory(congregation.id).get(
+            territory.id
+        ),
     )
 
 

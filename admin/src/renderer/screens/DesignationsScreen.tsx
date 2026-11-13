@@ -15,10 +15,12 @@ import type { Territory } from '../../shared/models'
 import {
   campaignHolderLabel,
   compareTerritoriesByNumber,
-  getServiceYear
+  getServiceYear,
+  territoryLastWorked
 } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
 import { AssignmentsMap } from '../map/AssignmentsMap'
+import { blockColorCategory } from '../map/blockColor'
 import { Dialog } from '../components/Dialog'
 import {
   DataTable,
@@ -49,35 +51,43 @@ function territoryIsOut(territory: Territory): boolean {
 type SortKey = 'territory' | 'withdrawn' | 'last-work'
 
 /**
- * How each sortable column compares two territories in ascending order. Dates
- * ascend from the oldest, so "Retirada" ascending reads "out the longest
- * first" -- the question the column is there to answer. A territory with no
- * date always goes last, whatever the direction.
+ * Orders the table by one column. Dates ascend from the oldest, so "Retirada"
+ * ascending reads "out the longest first" -- the question the column is there
+ * to answer.
+ *
+ * Dates compare by calendar day, and territories on the same day (or with no
+ * date at all) keep their number order in *both* directions: only the dated
+ * comparison flips, never the tie-break. A free territory has no "Retirada"
+ * and always goes last. A territory never worked is the opposite case: it is
+ * the one waiting the longest, so it leads "Último trabalho" ascending.
  */
-function compareBy(key: SortKey, left: Territory, right: Territory): number {
-  if (key === 'territory') return compareTerritoriesByNumber(left.name, right.name)
-  const pick = (territory: Territory): Date | undefined =>
-    key === 'withdrawn' ? territory.assignedSince : territory.lastWork?.workedAt
-  const leftDate = pick(left)
-  const rightDate = pick(right)
-  if (leftDate === undefined && rightDate === undefined) {
-    return compareTerritoriesByNumber(left.name, right.name)
-  }
-  if (leftDate === undefined) return Number.POSITIVE_INFINITY
-  if (rightDate === undefined) return Number.NEGATIVE_INFINITY
-  return leftDate.getTime() - rightDate.getTime()
-}
-
 function sortTerritories(
   territories: readonly Territory[],
   key: SortKey,
   direction: DataTableSortDirection
 ): Territory[] {
+  const byNumber = (left: Territory, right: Territory): number =>
+    compareTerritoriesByNumber(left.name, right.name)
+  if (key === 'territory') {
+    const sorted = [...territories].sort(byNumber)
+    return direction === 'ascending' ? sorted : sorted.reverse()
+  }
+  const flip = direction === 'ascending' ? 1 : -1
+  const day = (territory: Territory): number | undefined => {
+    const date = key === 'withdrawn' ? territory.assignedSince : territoryLastWorked(territory)?.at
+    return date === undefined
+      ? undefined
+      : new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+  }
   return [...territories].sort((left, right) => {
-    const result = compareBy(key, left, right)
-    // Infinite results mark "no date": they stay last in both directions.
-    if (!Number.isFinite(result)) return result > 0 ? 1 : -1
-    return direction === 'ascending' ? result : -result
+    const leftDay = day(left)
+    const rightDay = day(right)
+    if (leftDay === rightDay) return byNumber(left, right)
+    if (leftDay === undefined || rightDay === undefined) {
+      const undatedFirst = key === 'last-work' ? flip : -1
+      return leftDay === undefined ? -undatedFirst : undatedFirst
+    }
+    return (leftDay - rightDay) * flip
   })
 }
 
@@ -177,6 +187,9 @@ export function DesignationsScreen({
   const [exportFormat, setExportFormat] = useState<'docx' | 'xlsx'>('docx')
   const [importPreview, setImportPreview] = useState<S13TImportPreview | null>(null)
   const [importStatus, setImportStatus] = useState<string | null>(null)
+  // What the import could not write, line by line: a partial import that only
+  // reported its successes would leave the admin trusting an incomplete card.
+  const [importErrors, setImportErrors] = useState<readonly string[]>([])
 
   /** The spreadsheet is written by the main process; `null` means the admin
    * dismissed the save dialog, which is not an error and says nothing. */
@@ -204,6 +217,7 @@ export function DesignationsScreen({
     runAction(async () => {
       setExportPath(null)
       setImportStatus(null)
+      setImportErrors([])
       const preview = await window.api.imports.s13tSelectAndPreview()
       if (preview !== null) setImportPreview(preview)
     })
@@ -215,6 +229,7 @@ export function DesignationsScreen({
       setImportStatus(
         `Importação concluída: ${result.importedAssignmentsCount} designações processadas (${result.importedPublishersCount} novos publicadores criados).`
       )
+      setImportErrors(result.errors)
       await load()
     })
 
@@ -330,25 +345,46 @@ export function DesignationsScreen({
       key: 'blocks',
       header: 'Quadras',
       numeric: true,
-      cell: (territory) => territory.blocks.length
+      // "3/5": how many are done in the current cycle, out of how many exist --
+      // the bare count said nothing about how far along the territory is.
+      cell: (territory) => {
+        const total = territory.blocks.length
+        if (total === 0) return <span className="cell-muted">0</span>
+        const done = territory.blocks.filter(
+          (block) =>
+            blockColorCategory(block, today, territory.rotationDays, territory.assignedSince) ===
+            'recent'
+        ).length
+        return (
+          <span
+            className="cell-stack"
+            title={`${done} de ${total} quadras em dia`}
+            aria-label={`${done} de ${total} quadras em dia`}
+          >
+            <span>
+              {done}/{total}
+            </span>
+            <span className="cell-sub">em dia</span>
+          </span>
+        )
+      }
     },
     {
       key: 'last-work',
       header: 'Último trabalho',
-      cell: (territory) =>
-        territory.lastWork === undefined ? (
-          <span className="cell-muted">Nunca</span>
-        ) : (
-          <span
-            className="cell-stack"
-            title={`Trabalhado por ${territory.lastWork.publisher.name}`}
-          >
-            <span>{formatDate(territory.lastWork.workedAt)}</span>
+      cell: (territory) => {
+        const last = territoryLastWorked(territory)
+        if (last === undefined) return <span className="cell-muted">Nunca</span>
+        return (
+          <span className="cell-stack">
+            <span>{formatDate(last.at)}</span>
             <span className="cell-sub">
-              {formatDaysAgo(daysSince(territory.lastWork.workedAt, today))}
+              {formatDaysAgo(daysSince(last.at, today))} ·{' '}
+              {last.source === 'work' ? last.publisher.name : 'devolvido'}
             </span>
           </span>
-        ),
+        )
+      },
       ...sortable('last-work')
     }
   ]
@@ -406,6 +442,20 @@ export function DesignationsScreen({
         )}
         {exportPath !== null && <p role="status">Arquivo salvo em {exportPath}</p>}
         {importStatus !== null && <p role="status">{importStatus}</p>}
+        {importErrors.length > 0 && (
+          <div role="alert" className="import-errors">
+            <strong>
+              {importErrors.length === 1
+                ? '1 linha não foi importada:'
+                : `${importErrors.length} linhas não foram importadas:`}
+            </strong>
+            <ul>
+              {importErrors.map((message, index) => (
+                <li key={index}>{message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <section className="territories-workspace" aria-label="Consulta de territórios">
           <div className="territories-workspace-toolbar">

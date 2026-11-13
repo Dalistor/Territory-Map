@@ -68,6 +68,11 @@ class TerritoryOut(OutSchema):
     `campaign` is the active campaign holding the territory, if any. Then
     `assigned_user` is `None` -- the campaign replaced the dirigente -- and clients show
     "Campanha: <nome>" in its place. Filled by the listings and the admin detail.
+
+    `last_completed_at` is when the territory was last handed back -- the newest
+    completion date on its S-13 card, `None` if it never was. The admin routes fill
+    it so the listing can show the later of this and `last_work`: a territory returned
+    without every block being marked was still worked on that day.
     """
 
     id: UUID
@@ -79,6 +84,7 @@ class TerritoryOut(OutSchema):
     last_work: LastWorkOut | None = None
     assigned_since: datetime | None = None
     campaign: CampaignBriefOut | None = None
+    last_completed_at: datetime | None = None
 
 
 class TerritoryBriefOut(OutSchema):

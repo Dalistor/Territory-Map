@@ -1191,4 +1191,91 @@ describe('DesignationsScreen', () => {
     // aviso da tela antes de o admin lê-lo.
     expect(listTerritoriesWithBlocks).toHaveBeenCalledTimes(1);
   });
+
+  it('designates a free territory straight from its row and reloads the list', async () => {
+    const free = makeTerritory({ id: 'free', name: 'Vila - N2' });
+    const api = makeApi({
+      listTerritoriesWithBlocks: jest.fn(async () => [free]),
+      listPublishers: jest.fn(async () => [
+        makePublisher('publisher-1', 'Ana'),
+        { ...makePublisher('publisher-2', 'Beto'), isActive: false },
+      ]),
+    });
+    await renderScreen(api);
+
+    await press(await screen.findByLabelText('Designar Vila - N2'));
+    expect(await screen.findByText('Designar Vila - N2')).toBeOnTheScreen();
+    // Deactivated publishers are not offered, same as on the S-13 card.
+    expect(screen.queryByTestId('quick-designate-publisher-2')).not.toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Designar publicador' })).toBeDisabled();
+
+    await press(screen.getByTestId('quick-designate-publisher-1'));
+    await press(screen.getByRole('button', { name: 'Designar publicador' }));
+
+    expect(api.designate).toHaveBeenCalledWith('free', 'publisher-1');
+    await waitFor(() => expect(api.listTerritoriesWithBlocks).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('Vila - N2 designado a Ana.')).toBeOnTheScreen();
+  });
+
+  it('keeps the sheet open and says why when the designation is refused', async () => {
+    const api = makeApi({
+      listTerritoriesWithBlocks: jest.fn(async () => [makeTerritory({ name: 'Vila - N2' })]),
+      listPublishers: jest.fn(async () => [makePublisher('publisher-1', 'Ana')]),
+      designate: jest.fn(async () => {
+        throw new Error('Território em campanha.');
+      }),
+    });
+    await renderScreen(api);
+
+    await press(await screen.findByLabelText('Designar Vila - N2'));
+    await press(await screen.findByTestId('quick-designate-publisher-1'));
+    await press(screen.getByRole('button', { name: 'Designar publicador' }));
+
+    expect(await screen.findByText('Território em campanha.')).toBeOnTheScreen();
+    expect(api.listTerritoriesWithBlocks).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers the shortcut only where nobody holds the territory, and filters by situation', async () => {
+    const api = makeApi({
+      listTerritoriesWithBlocks: jest.fn(async () => [
+        makeTerritory({ id: 'free', name: 'Vila - N2' }),
+        makeTerritory({
+          id: 'out',
+          name: 'Centro - N1',
+          assignedPublisher: { id: 'publisher-1', name: 'Ana' },
+        }),
+      ]),
+    });
+    await renderScreen(api);
+
+    expect(await screen.findByLabelText('Designar Vila - N2')).toBeOnTheScreen();
+    expect(screen.queryByLabelText('Designar Centro - N1')).not.toBeOnTheScreen();
+
+    await press(screen.getByRole('tab', { name: 'Disponíveis (1)' }));
+    expect(screen.queryByText('Centro - N1')).not.toBeOnTheScreen();
+    expect(screen.getByText('Vila - N2')).toBeOnTheScreen();
+
+    await press(screen.getByRole('tab', { name: 'Em campo (1)' }));
+    expect(screen.getByText('Centro - N1')).toBeOnTheScreen();
+    expect(screen.queryByText('Vila - N2')).not.toBeOnTheScreen();
+  });
+
+  it('counts the day the territory was handed back as its last work when it is later', async () => {
+    const api = makeApi({
+      listTerritoriesWithBlocks: jest.fn(async () => [
+        makeTerritory({
+          name: 'Vila - N2',
+          lastWork: { publisher: { id: 'publisher-1', name: 'Ana' }, workedAt: new Date(2026, 8, 2) },
+          lastCompletedAt: new Date(2026, 10, 1),
+        }),
+      ]),
+    });
+    await renderScreen(api);
+
+    expect(
+      await screen.findByText(
+        `Último trabalho: devolvido em ${new Date(2026, 10, 1).toLocaleDateString('pt-BR')}`,
+      ),
+    ).toBeOnTheScreen();
+  });
 });

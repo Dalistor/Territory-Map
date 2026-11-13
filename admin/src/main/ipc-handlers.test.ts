@@ -267,6 +267,8 @@ describe('import:s13t', () => {
     const api = fakeApi({
       designate,
       completeAssignment: complete,
+      updateAssignment: vi.fn().mockResolvedValue(ASSIGNMENT),
+      listAssignments: vi.fn().mockResolvedValue([]),
       createPublisher,
       listPublishers
     })
@@ -306,6 +308,104 @@ describe('import:s13t', () => {
     expect(createPublisher).toHaveBeenCalledWith('Maria')
     expect(designate).toHaveBeenCalledTimes(2)
     expect(complete).toHaveBeenCalledTimes(1)
+  })
+
+  function importPreview(
+    assignments: { publisherName: string; startedAt: string | null; completedAt: string | null }[]
+  ): Record<string, unknown> {
+    return {
+      fileName: 'S-13_T-2026.docx',
+      serviceYear: 2026,
+      totalTerritoriesFound: 1,
+      matchedTerritoriesCount: 1,
+      totalAssignmentsCount: assignments.length,
+      territories: [
+        { territoryNumberOrName: 'Centro - N6', matchedTerritoryId: 'terr-1', assignments }
+      ]
+    }
+  }
+
+  it("writes the document's own dates instead of leaving the day of the import", async () => {
+    const designate = vi
+      .fn()
+      .mockResolvedValueOnce({ ...ASSIGNMENT, id: 'new-1' })
+      .mockResolvedValueOnce({ ...ASSIGNMENT, id: 'new-2' })
+    const updateAssignment = vi.fn().mockResolvedValue(ASSIGNMENT)
+    const api = fakeApi({
+      designate,
+      updateAssignment,
+      completeAssignment: vi.fn().mockResolvedValue(ASSIGNMENT),
+      listAssignments: vi.fn().mockResolvedValue([]),
+      listPublishers: vi.fn().mockResolvedValue([{ id: 'pub-1', name: 'João' }])
+    })
+    registerIpcHandlers({
+      session: fakeSession(),
+      api,
+      geocoder: fakeGeocoder,
+      dialog: { showSaveDialog: vi.fn() }
+    })
+
+    // Out of order on purpose: the open line must still be written last.
+    await invoke(
+      IPC_CHANNELS.importS13TExecute,
+      importPreview([
+        { publisherName: 'João', startedAt: '01/03/2026', completedAt: null },
+        { publisherName: 'João', startedAt: '10/01/2026', completedAt: '15/02/2026' }
+      ])
+    )
+
+    expect(updateAssignment).toHaveBeenNthCalledWith(1, 'terr-1', 'new-1', {
+      startedAt: new Date(Date.UTC(2026, 0, 10, 12)),
+      completedAt: new Date(Date.UTC(2026, 1, 15, 12))
+    })
+    expect(updateAssignment).toHaveBeenNthCalledWith(2, 'terr-1', 'new-2', {
+      startedAt: new Date(Date.UTC(2026, 2, 1, 12))
+    })
+  })
+
+  it('skips a line the card already has and reopens the designation in force', async () => {
+    const open = {
+      id: 'open-1',
+      publisher: { id: 'pub-9', name: 'Nei' },
+      startedAt: new Date(2026, 9, 19, 21)
+    }
+    const already = {
+      id: 'old-1',
+      publisher: { id: 'pub-1', name: 'João' },
+      startedAt: new Date(2026, 0, 10, 9),
+      completedAt: new Date(2026, 1, 15, 9)
+    }
+    const designate = vi.fn().mockResolvedValue({ ...ASSIGNMENT, id: 'new-1' })
+    const updateAssignment = vi.fn().mockResolvedValue(ASSIGNMENT)
+    const api = fakeApi({
+      designate,
+      updateAssignment,
+      completeAssignment: vi.fn().mockResolvedValue(ASSIGNMENT),
+      listAssignments: vi.fn().mockResolvedValue([open, already]),
+      listPublishers: vi.fn().mockResolvedValue([{ id: 'pub-1', name: 'João' }])
+    })
+    registerIpcHandlers({
+      session: fakeSession(),
+      api,
+      geocoder: fakeGeocoder,
+      dialog: { showSaveDialog: vi.fn() }
+    })
+
+    const result = await invoke(
+      IPC_CHANNELS.importS13TExecute,
+      importPreview([
+        { publisherName: 'João', startedAt: '10/01/2026', completedAt: '15/02/2026' },
+        { publisherName: 'João', startedAt: '01/03/2026', completedAt: '20/03/2026' },
+        { publisherName: 'João', startedAt: 'sem data', completedAt: null }
+      ])
+    )
+
+    expect(designate).toHaveBeenCalledTimes(1)
+    expect(updateAssignment).toHaveBeenLastCalledWith('terr-1', 'open-1', {
+      clearCompletedAt: true
+    })
+    expect(result).toMatchObject({ importedAssignmentsCount: 1 })
+    expect((result as { errors: string[] }).errors).toHaveLength(1)
   })
 })
 

@@ -981,6 +981,52 @@ describe('DesignationsScreen territory table', () => {
     ])
   })
 
+  it('shows the later of the last block record and the last return as "Último trabalho"', async () => {
+    const api = makeApi({
+      territories: {
+        listWithBlocks: vi.fn().mockResolvedValue([
+          makeTerritory({
+            id: 'a',
+            name: 'Centro - N1',
+            lastWork: {
+              publisher: { id: 'p1', name: 'Ana' },
+              workedAt: new Date(2026, 4, 2, 9)
+            },
+            lastCompletedAt: new Date(2026, 5, 20, 9)
+          }),
+          makeTerritory({
+            id: 'b',
+            name: 'Centro - N2',
+            lastWork: {
+              publisher: { id: 'p1', name: 'Ana' },
+              workedAt: new Date(2026, 5, 10, 9)
+            }
+          }),
+          makeTerritory({ id: 'c', name: 'Centro - N3' }),
+          makeTerritory({ id: 'd', name: 'Centro - N4' })
+        ])
+      }
+    })
+    vi.stubGlobal('api', api)
+    const user = userEvent.setup()
+
+    render(<DesignationsScreen now={now} />)
+
+    const returned = await screen.findByRole('row', { name: /centro - n1/i })
+    expect(returned).toHaveTextContent(new Date(2026, 5, 20).toLocaleDateString('pt-BR'))
+    expect(returned).toHaveTextContent('devolvido')
+    expect(screen.getByRole('row', { name: /centro - n2/i })).toHaveTextContent('Ana')
+
+    const names = (): (string | null)[] =>
+      bodyRows().map((row) => (row as HTMLTableRowElement).cells[0].textContent)
+    // Never worked waits the longest: first ascending, in number order.
+    await user.click(screen.getByRole('button', { name: 'Ordenar por Último trabalho' }))
+    expect(names()).toEqual(['Centro - N3', 'Centro - N4', 'Centro - N2', 'Centro - N1'])
+    // Descending flips the dates, not the tie-break between equals.
+    await user.click(screen.getByRole('button', { name: 'Ordenar por Último trabalho' }))
+    expect(names()).toEqual(['Centro - N1', 'Centro - N2', 'Centro - N3', 'Centro - N4'])
+  })
+
   it('filters by situation and finds a territory by its leader name', async () => {
     stubTerritories()
     const user = userEvent.setup()

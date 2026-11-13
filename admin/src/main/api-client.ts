@@ -285,7 +285,8 @@ function parseTerritory(json: Record<string, unknown>): Territory {
     // same treatment `parseBlock` gives `last_worked_at`.
     rotationDays: (json.rotation_days as number | null | undefined) ?? undefined,
     lastWork: lastWorkJson ? parseLastWork(lastWorkJson) : undefined,
-    assignedSince: parseOptionalDate(json.assigned_since)
+    assignedSince: parseOptionalDate(json.assigned_since),
+    lastCompletedAt: parseOptionalDate(json.last_completed_at)
   }
 }
 

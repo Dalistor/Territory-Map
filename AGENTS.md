@@ -133,7 +133,7 @@ registros por território do S-13-T e o rodapé "S-13-T 01/22". Importar é o ca
 cartão preenchido em papel digitalizado: `imports.s13tSelectAndPreview` abre um seletor de `.docx`,
 `parseS13TDocx` extrai ano, territórios e designações, e o resultado é **casado com os territórios
 que já existem** — por número, e por nome quando não há número — e devolvido como *preview* com os
-contadores, antes de qualquer escrita. Só quando o admin confirma é que `imports.s13tExecute` grava:
+contadores, antes de qualquer escrita. Só quando o admin confirma é que `imports.s13tExecute` grava (as linhas em ordem cronológica, **com as datas do documento** — cada `designate` é seguido de um `updateAssignment` —, pulando a linha que o cartão já tem e reabrindo ao final a designação que estava em vigor):
 publicador que não existe é **criado pelo nome**, cada designação vira um `designate` e, se a linha
 tiver data de conclusão, um `completeAssignment` em seguida; território sem correspondente é pulado,
 e cada falha entra numa lista de erros devolvida ao final em vez de abortar o lote.
@@ -230,6 +230,11 @@ jeito: um `AssignmentsMapView` recebendo só o território em vista (`[current]`
 demarcação dele e suas quadras numeradas e coloridas sem nenhum código de mapa novo — o componente já
 sabia desenhar o que recebesse. Tocar numa quadra ali abre a mesma seção que tocar na sua linha na
 lista abre.
+
+**Designar direto da lista** (2026-11-12): a linha de um território **livre** tem o atalho
+"Designar", que abre a `QuickDesignateSheet` — escolher o publicador e confirmar, sem abrir o cartão
+S-13. Trocar o dirigente de um território já designado continua no cartão, onde mora o aviso de que a
+designação atual é encerrada. A lista também filtra por situação (Todos / Disponíveis / Em campo).
 
 A **lista de territórios** é ordenada por `compareTerritoriesByNumber`
 (`admin-app/src/domain/models.ts`), a mesma regra que o admin desktop já usa
@@ -526,6 +531,17 @@ está em uso com dados reais; registros novos preservam o nome no momento da esc
 existentes foram preenchidos antes da remoção das constraints. É o oposto do que as migrations de
 `d3ab774c1b2f` e `a1c7e4f92b83` fizeram, e pela razão contrária: lá o dado correto não existia para
 ser copiado; aqui ele existia.
+
+### "Último trabalho" de um território (2026-11-12)
+
+O que as listas de território mostram como "último trabalho" é **o mais recente entre dois fatos**,
+comparados por dia de calendário: o último `BlockWorkLog` do território (`last_work`) e a última
+**devolução** do cartão S-13 (`last_completed_at`, a maior `completed_at` de `territory_assignments`,
+devolvida pelas rotas `/admin/territories`). Só o registro de quadra subestimava a data: quem devolve
+o território sem marcar quadra por quadra — o cartão de papel, a campanha — trabalhou mesmo assim. No
+mesmo dia vence o registro de quadra, que diz também quem trabalhou. A regra é a função pura
+`territoryLastWorked`, em duas cópias idênticas (`admin/src/shared/models.ts` e
+`admin-app/src/domain/models.ts`). **A cor da quadra não muda**: ela continua vindo só dos registros.
 
 ### Divergências em relação ao brief inicial (e o porquê)
 

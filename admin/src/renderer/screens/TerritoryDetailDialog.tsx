@@ -18,7 +18,8 @@ import {
   assignmentHolderName,
   assignmentIsCampaign,
   assignmentIsOpen,
-  campaignHolderLabel
+  campaignHolderLabel,
+  territoryLastWorked
 } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
 import { blockColorCategory, type BlockColorCategory } from '../map/blockColor'
@@ -316,6 +317,7 @@ export function TerritoryDetailDialog({
     { recent: 0, overdue: 0, never: 0 }
   )
   const leader = openIndividual?.publisher ?? territory.assignedUser
+  const lastWorked = territoryLastWorked(territory)
   const since = openAssignment?.startedAt ?? territory.assignedSince
   // A publisher who left the active list still has to be offered when editing
   // a record that names them, or the select would silently show someone else.
@@ -414,12 +416,16 @@ export function TerritoryDetailDialog({
         </div>
         <div className="summary-item">
           <span className="summary-label">Último trabalho</span>
-          {territory.lastWork === undefined ? (
+          {lastWorked === undefined ? (
             <span className="summary-value cell-muted">Nunca registrado</span>
           ) : (
             <span className="summary-value">
-              {formatDate(territory.lastWork.workedAt)}
-              <span className="cell-sub">por {territory.lastWork.publisher.name}</span>
+              {formatDate(lastWorked.at)}
+              <span className="cell-sub">
+                {lastWorked.source === 'work'
+                  ? `por ${lastWorked.publisher.name}`
+                  : 'território devolvido'}
+              </span>
             </span>
           )}
         </div>

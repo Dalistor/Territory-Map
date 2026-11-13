@@ -101,6 +101,34 @@ export interface Territory {
    * `undefined` (absent) whenever neither `assignedUser` nor `campaign` is.
    */
   readonly assignedSince?: Date
+  /**
+   * When the territory was last handed back -- the newest completion date on
+   * its S-13 card. `undefined` (absent) when it never was, and also when the
+   * server is older than this field.
+   */
+  readonly lastCompletedAt?: Date
+}
+
+/**
+ * The last time the territory was worked, and what says so: the newest block
+ * record, or the day it was last handed back -- whichever is later by calendar
+ * day. A dirigente who returns a territory without marking every block still
+ * worked it, so the block records alone understate the date. On the same day
+ * the block record wins, because it also names who did the work.
+ */
+export type TerritoryLastWorked =
+  | { readonly source: 'work'; readonly at: Date; readonly publisher: PublisherBrief }
+  | { readonly source: 'returned'; readonly at: Date }
+
+export function territoryLastWorked(territory: Territory): TerritoryLastWorked | undefined {
+  const work = territory.lastWork ?? undefined
+  const returned = territory.lastCompletedAt ?? undefined
+  const dayOf = (date: Date): number =>
+    new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+  if (work !== undefined && (returned === undefined || dayOf(work.workedAt) >= dayOf(returned))) {
+    return { source: 'work', at: work.workedAt, publisher: work.publisher }
+  }
+  return returned === undefined ? undefined : { source: 'returned', at: returned }
 }
 
 export interface WorkLog {

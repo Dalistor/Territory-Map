@@ -10,6 +10,8 @@ export interface DataTableColumn<Row> {
   readonly sortDirection?: DataTableSortDirection
   /** Counts and dates line up digit for digit on the right edge. */
   readonly numeric?: boolean
+  /** Free text that may run long: it wraps instead of widening the table. */
+  readonly wrap?: boolean
 }
 
 export type DataTableState =
@@ -149,7 +151,12 @@ export function DataTable<Row>({
                     onKeyDown={(event) => activateRow(event, row)}
                   >
                     {columns.map((column) => (
-                      <td key={column.key} className={column.numeric ? 'cell-number' : undefined}>
+                      <td
+                        key={column.key}
+                        className={
+                          column.numeric ? 'cell-number' : column.wrap ? 'cell-wrap' : undefined
+                        }
+                      >
                         {column.cell(row)}
                       </td>
                     ))}

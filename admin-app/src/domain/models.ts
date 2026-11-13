@@ -115,6 +115,12 @@ export interface Territory {
   readonly assignedSince?: Date | null;
   /** `null` means no block in the territory has been worked. */
   readonly lastWork?: LastWorkSummary | null;
+  /**
+   * When the territory was last handed back -- the newest completion date on
+   * its S-13 card. `null` (or absent) when it never was, or when the server is
+   * older than this field.
+   */
+  readonly lastCompletedAt?: Date | null;
   /** Empty on the listing endpoint, populated on the detail one. */
   readonly blocks: Block[];
   /**
@@ -299,4 +305,27 @@ export function compareTerritoriesByNumber(a: string, b: string): number {
     return -1;
   }
   return a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true });
+}
+
+/**
+ * The last time the territory was worked, and what says so: the newest block
+ * record, or the day it was last handed back -- whichever is later by calendar
+ * day. A dirigente who returns a territory without marking every block still
+ * worked it, so the block records alone understate the date. On the same day
+ * the block record wins, because it also names who did the work. Same rule as
+ * the desktop admin (`admin/src/shared/models.ts`).
+ */
+export type TerritoryLastWorked =
+  | { readonly source: 'work'; readonly at: Date; readonly publisher: PublisherBrief }
+  | { readonly source: 'returned'; readonly at: Date };
+
+export function territoryLastWorked(territory: Territory): TerritoryLastWorked | null {
+  const work = territory.lastWork ?? null;
+  const returned = territory.lastCompletedAt ?? null;
+  const dayOf = (date: Date): number =>
+    new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  if (work !== null && (returned === null || dayOf(work.workedAt) >= dayOf(returned))) {
+    return { source: 'work', at: work.workedAt, publisher: work.publisher };
+  }
+  return returned === null ? null : { source: 'returned', at: returned };
 }

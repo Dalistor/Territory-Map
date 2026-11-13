@@ -213,6 +213,24 @@ class AssignmentService:
             for assignment in self._assignments.list_open_by_congregation(congregation_id)
         }
 
+    def last_completed_by_territory(self, congregation_id: UUID) -> dict[UUID, datetime]:
+        """When each territory was last handed back, for every one that ever was.
+
+        A completed designation is the card saying "this territory was covered": a
+        dirigente who returns it without marking block by block still worked it. The
+        territory listing shows this next to the latest block record, so "last worked"
+        does not stop at whichever block happened to be marked last.
+        """
+        latest: dict[UUID, datetime] = {}
+        for assignment in self._assignments.list_by_congregation(congregation_id):
+            completed_at = assignment.completed_at
+            if completed_at is None:
+                continue
+            known = latest.get(assignment.territory_id)
+            if known is None or completed_at > known:
+                latest[assignment.territory_id] = completed_at
+        return latest
+
     def open_campaign_by_territory(self, congregation_id: UUID) -> dict[UUID, Campaign]:
         """The active campaign holding each territory that is in one.
 

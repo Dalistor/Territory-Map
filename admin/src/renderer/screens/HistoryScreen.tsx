@@ -224,6 +224,7 @@ export function HistoryScreen(): React.JSX.Element {
             {
               key: 'publisher',
               header: 'Publicador',
+              wrap: true,
               cell: (entry: AssignmentWithTerritory) => assignmentHolderName(entry)
             },
             {

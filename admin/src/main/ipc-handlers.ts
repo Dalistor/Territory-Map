@@ -24,8 +24,12 @@ import {
   type SerializedIpcError
 } from '../shared/ipc-contract'
 import {
+  assignmentHolderName,
+  assignmentIsCampaign,
+  assignmentIsOpen,
   getServiceYear,
   territoryNumber,
+  type Assignment,
   type AssignmentHistoryQuery,
   type Territory
 } from '../shared/models'
@@ -34,7 +38,7 @@ import type { ApiClient } from './api-client'
 import type { Session } from './session'
 import type { Geocoder } from './geocode'
 import { buildAssignmentsWorkbook, buildS13TWorkbook } from './excel-export'
-import { buildS13TDocx, parseS13TDocx } from './docx-handler'
+import { buildS13TDocx, parseDocxDate, parseS13TDocx } from './docx-handler'
 
 /**
  * The slice of Electron's `dialog` this file uses. Narrowing it to these methods
@@ -62,6 +66,21 @@ export interface RegisterIpcHandlersOptions {
 }
 
 /** `designacoes-2026-08-18.xlsx` — the name the save dialog opens with. */
+/**
+ * Identifies one line of an S-13 card for the import: same holder, same day of
+ * withdrawal. Compared by local calendar day, the way the card is read.
+ */
+function importLineKey(holderName: string, startedAt: Date): string {
+  const day = `${startedAt.getFullYear()}-${startedAt.getMonth() + 1}-${startedAt.getDate()}`
+  return `${holderName.trim().toLowerCase()}|${day}`
+}
+
+/** The server's own message when there is one, instead of "[object Object]". */
+function importErrorText(error: unknown): string {
+  if (error instanceof ApiErrorException) return error.message
+  return error instanceof Error ? error.message : String(error)
+}
+
 function suggestedFileName(now: Date): string {
   const year = now.getFullYear()
   const month = String(now.getMonth() + 1).padStart(2, '0')
@@ -412,13 +431,59 @@ export function registerIpcHandlers({
         const errors: string[] = []
 
         for (const terr of preview.territories) {
-          if (!terr.matchedTerritoryId) {
+          const territoryId = terr.matchedTerritoryId
+          if (!territoryId) {
             continue
           }
 
-          for (const asg of terr.assignments) {
+          // What the card already holds: a line the document repeats is
+          // skipped (importing the same file twice must not double the
+          // history), and the designation in force is put back afterwards --
+          // `designate` closes it as a side effect of writing a past line.
+          let existing: Assignment[]
+          try {
+            existing = await api.listAssignments(territoryId)
+          } catch (err) {
+            errors.push(
+              `Erro ao ler o histórico do território ${terr.territoryNumberOrName}: ${importErrorText(err)}`
+            )
+            continue
+          }
+          const known = new Set(
+            existing.map((item) => importLineKey(assignmentHolderName(item), item.startedAt))
+          )
+          const previouslyOpen = existing.find(
+            (item) => assignmentIsOpen(item) && !assignmentIsCampaign(item)
+          )
+          let importedOpenLine = false
+          let wroteLine = false
+
+          // Oldest first, so the line still in progress (if any) is the last
+          // one written and stays the open one.
+          const lines = terr.assignments
+            .map((asg) => ({
+              asg,
+              startedAt: parseDocxDate(asg.startedAt ?? ''),
+              completedAt: parseDocxDate(asg.completedAt ?? '')
+            }))
+            .sort(
+              (left, right) =>
+                (left.startedAt?.getTime() ?? Number.POSITIVE_INFINITY) -
+                (right.startedAt?.getTime() ?? Number.POSITIVE_INFINITY)
+            )
+
+          for (const { asg, startedAt, completedAt } of lines) {
             const pubName = asg.publisherName.trim()
             if (!pubName) continue
+
+            if (startedAt === null) {
+              errors.push(
+                `Território ${terr.territoryNumberOrName}: a linha de ${pubName} não tem data de início legível e foi pulada.`
+              )
+              continue
+            }
+            const key = importLineKey(pubName, startedAt)
+            if (known.has(key)) continue
 
             const lower = pubName.toLowerCase()
             let publisherId = publisherMap.get(lower)
@@ -430,20 +495,43 @@ export function registerIpcHandlers({
                 publisherMap.set(lower, created.id)
                 importedPublishers++
               } catch (err) {
-                errors.push(`Erro ao criar publicador ${pubName}: ${String(err)}`)
+                errors.push(`Erro ao criar publicador ${pubName}: ${importErrorText(err)}`)
                 continue
               }
             }
 
             try {
-              await api.designate(terr.matchedTerritoryId, publisherId)
-              if (asg.completedAt) {
-                await api.completeAssignment(terr.matchedTerritoryId)
+              const created = await api.designate(territoryId, publisherId)
+              wroteLine = true
+              const isCompleted = Boolean(asg.completedAt)
+              if (isCompleted) {
+                await api.completeAssignment(territoryId)
+              } else {
+                importedOpenLine = true
               }
+              // The server stamps both dates with "now"; the document's own
+              // dates are what the card has to show.
+              await api.updateAssignment(territoryId, created.id, {
+                startedAt,
+                ...(isCompleted && completedAt !== null ? { completedAt } : {})
+              })
+              known.add(key)
               importedAssignments++
             } catch (err) {
               errors.push(
-                `Erro ao designar território ${terr.territoryNumberOrName} para ${pubName}: ${String(err)}`
+                `Erro ao designar território ${terr.territoryNumberOrName} para ${pubName}: ${importErrorText(err)}`
+              )
+            }
+          }
+
+          if (previouslyOpen !== undefined && wroteLine && !importedOpenLine) {
+            try {
+              await api.updateAssignment(territoryId, previouslyOpen.id, {
+                clearCompletedAt: true
+              })
+            } catch (err) {
+              errors.push(
+                `Território ${terr.territoryNumberOrName}: a designação em vigor de ${assignmentHolderName(previouslyOpen)} foi encerrada pela importação e não pôde ser reaberta: ${importErrorText(err)}`
               )
             }
           }

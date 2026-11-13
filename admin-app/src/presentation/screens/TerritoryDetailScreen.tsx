@@ -12,8 +12,7 @@ import { BlockPanel } from './BlockPanel';
 import type { BlockPanelApi } from './BlockPanel';
 import { BlocksScreen } from './BlocksScreen';
 import type { BlocksScreenApi } from './BlocksScreen';
-import { formatDate } from './BlockWorkSection';
-import { blockCountLabel } from './DesignationsScreen';
+import { blockCountLabel, lastWorkedLabel } from './DesignationsScreen';
 import type { TerritoryDetailSegment } from './DesignationsScreen';
 
 type DetailSegment = TerritoryDetailSegment;
@@ -171,9 +170,7 @@ export function TerritoryDetailScreen({
         <Text style={styles.summaryMeta}>
           {[
             blockCountLabel(territory.blocks.length),
-            territory.lastWork
-              ? `Último trabalho: ${formatDate(territory.lastWork.workedAt)}`
-              : 'Nunca trabalhado',
+            lastWorkedLabel(territory),
           ].join(' · ')}
         </Text>
       </View>

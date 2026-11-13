@@ -8,7 +8,11 @@
 // props instead of an import, so this file does not need to know they exist.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { LatLngTuple } from 'leaflet'
-import { campaignHolderLabel, compareTerritoriesByNumber } from '../../shared/models'
+import {
+  campaignHolderLabel,
+  compareTerritoriesByNumber,
+  territoryLastWorked
+} from '../../shared/models'
 import type { Block, Territory } from '../../shared/models'
 import { parseIpcError } from '../../shared/ipc-error'
 import { TerritoryMap } from '../map/TerritoryMap'
@@ -20,6 +24,15 @@ import { MarkWorkedForm } from './MarkWorkedForm'
 import { formatDate } from '../formatDate'
 
 const GENERIC_ERROR_MESSAGE = 'Não foi possível completar a operação.'
+
+/** The same "last worked" the Territories table shows, as one line. */
+function lastWorkedText(territory: Territory): string {
+  const last = territoryLastWorked(territory)
+  if (last === undefined) return 'Nunca trabalhado'
+  return last.source === 'work'
+    ? `Último trabalho: ${last.publisher.name} — ${formatDate(last.at)}`
+    : `Último trabalho: devolvido em ${formatDate(last.at)}`
+}
 
 export interface HomeScreenProps {
   /**
@@ -318,11 +331,7 @@ export function HomeScreen({
                             Designado a {territory.assignedUser.name}
                           </span>
                         )}
-                        <span className="territory-last-work">
-                          {territory.lastWork === undefined || territory.lastWork === null
-                            ? 'Nunca trabalhado'
-                            : `Último trabalho: ${territory.lastWork.publisher.name} — ${formatDate(territory.lastWork.workedAt)}`}
-                        </span>
+                        <span className="territory-last-work">{lastWorkedText(territory)}</span>
                         <button
                           type="button"
                           className="icon-button"

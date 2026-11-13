@@ -38,6 +38,10 @@
   box-shadow: none;
 }
 
+.search-field-clear[hidden] {
+  display: none;
+}
+
 .search-field-clear {
   flex: 0 0 auto;
   font-size: 0.8125rem;
@@ -99,8 +103,17 @@
 
 .data-table table {
   border-collapse: collapse;
-  min-width: 100%;
-  width: max-content;
+  /* Never `max-content`: a wrappable cell (a long campaign name, the work
+     panel under a block) would then stretch the table to its one-line width
+     and push the last columns out of view. Cells that must not wrap still
+     hold the table at its minimum, and the wrapper scrolls from there. */
+  width: 100%;
+}
+
+.data-table td.cell-wrap {
+  min-width: 12rem;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .data-table th,
